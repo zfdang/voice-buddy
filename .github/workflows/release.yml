@@ -18,8 +18,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+  PUBLIC_REPO: zfdang/voice-buddy
 
 jobs:
   release:
@@ -28,6 +28,8 @@ jobs:
     env:
       CERTIFICATE_BASE64: ${{ secrets.VOICE_BUDDY_SIGNING_P12_BASE64 }}
       P12_PASSWORD: ${{ secrets.VOICE_BUDDY_SIGNING_P12_PASSWORD }}
+      PUBLIC_REPO_TOKEN: ${{ secrets.VOICE_BUDDY_REPO_ACCESS_TOKEN }}
+      SPARKLE_ED_KEY: ${{ secrets.SPARKLE_ED_KEY }}
     steps:
       - name: Resolve release tag
         id: tag
@@ -90,15 +92,63 @@ jobs:
           tag="${{ steps.tag.outputs.tag }}"
           scripts/build-app.sh release "$tag" --package
 
-      - name: Publish GitHub Release
+      - name: Generate Sparkle Appcast
+        id: appcast
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          raw_tag="${TAG#v}"
+          zip_file="dist/Voice-Buddy-${TAG}-macOS.zip"
+          if [[ ! -f "$zip_file" ]]; then
+            zip_file="dist/Voice-Buddy-${raw_tag}-macOS.zip"
+          fi
+
+          appcast_stage="$RUNNER_TEMP/sparkle_appcast"
+          mkdir -p "$appcast_stage"
+          cp "$zip_file" "$appcast_stage/"
+
+          # Fetch existing appcast.xml from public repo if available to keep update history
+          curl -fsSL "https://raw.githubusercontent.com/${PUBLIC_REPO}/main/appcast.xml" -o "$appcast_stage/appcast.xml" || true
+
+          appcast_tool="$(find .build -name generate_appcast -type f -perm +111 2>/dev/null | head -n 1 || true)"
+          if [[ -z "$appcast_tool" ]]; then
+            echo "generate_appcast not found in .build, compiling from Sparkle source..."
+            swift build -c release --product generate_appcast
+            appcast_tool="$(find .build -name generate_appcast -type f -perm +111 2>/dev/null | head -n 1)"
+          fi
+
+          download_prefix="https://github.com/${PUBLIC_REPO}/releases/download/${TAG}/"
+
+          if [[ -n "${SPARKLE_ED_KEY:-}" ]]; then
+            printf '%s' "$SPARKLE_ED_KEY" | "$appcast_tool" --ed-key-file - --download-url-prefix "$download_prefix" "$appcast_stage"
+          else
+            "$appcast_tool" --download-url-prefix "$download_prefix" "$appcast_stage"
+          fi
+
+          cp "$appcast_stage/appcast.xml" "dist/appcast.xml"
+          echo "Generated dist/appcast.xml:"
+          cat "dist/appcast.xml"
+
+      - name: Publish Release to Public Repository
         id: publish
         env:
           TAG: ${{ steps.tag.outputs.tag }}
           COMMIT: ${{ steps.commit.outputs.sha }}
+          GH_TOKEN: ${{ secrets.VOICE_BUDDY_REPO_ACCESS_TOKEN }}
         run: |
+          set -euo pipefail
+          raw_tag="${TAG#v}"
           zip_file="dist/Voice-Buddy-${TAG}-macOS.zip"
+          if [[ ! -f "$zip_file" ]]; then
+            zip_file="dist/Voice-Buddy-${raw_tag}-macOS.zip"
+          fi
           dmg_file="dist/Voice-Buddy-${TAG}-macOS.dmg"
+          if [[ ! -f "$dmg_file" ]]; then
+            dmg_file="dist/Voice-Buddy-${raw_tag}-macOS.dmg"
+          fi
           checksum_file="dist/SHA256SUMS.txt"
+          appcast_file="dist/appcast.xml"
 
           if [[ ! -f "$zip_file" || ! -f "$dmg_file" || ! -f "$checksum_file" ]]; then
             echo "::error::Release assets missing from dist/"
@@ -107,24 +157,56 @@ jobs:
 
           release_notes="## Voice Buddy ${TAG}
 
-          - **Commit**: \`${COMMIT}\`
-          - **Architecture**: Apple Silicon / macOS 15+
-          - **Offline-first voice typing with local Qwen3-ASR and Qwen LLM**
+- **Commit**: \`${COMMIT}\`
+- **Architecture**: Apple Silicon (M1/M2/M3/M4) / macOS 15.0+
+- **Offline-first voice typing with local Qwen3-ASR and Qwen LLM**
 
-          ### SHA256 Checksums
-          \`\`\`
-          $(cat "$checksum_file")
-          \`\`\`"
+### Sparkle Update Feed
+- Automated update feed available at: \`https://raw.githubusercontent.com/${PUBLIC_REPO}/main/appcast.xml\`
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG exists, uploading assets and updating notes..."
-            gh release upload "$TAG" "$dmg_file" "$zip_file" "$checksum_file" --clobber
-            gh release edit "$TAG" --notes "$release_notes"
+### SHA256 Checksums
+\`\`\`
+$(cat "$checksum_file")
+\`\`\`"
+
+          echo "Checking if release $TAG exists in $PUBLIC_REPO..."
+          if gh release view "$TAG" --repo "$PUBLIC_REPO" >/dev/null 2>&1; then
+            echo "Release $TAG exists in $PUBLIC_REPO, uploading assets and updating notes..."
+            gh release upload "$TAG" "$dmg_file" "$zip_file" "$checksum_file" "$appcast_file" --repo "$PUBLIC_REPO" --clobber
+            gh release edit "$TAG" --repo "$PUBLIC_REPO" --notes "$release_notes"
           else
-            echo "Creating new release for $TAG..."
-            gh release create "$TAG" "$dmg_file" "$zip_file" "$checksum_file" \
+            echo "Creating new release for $TAG in $PUBLIC_REPO..."
+            gh release create "$TAG" "$dmg_file" "$zip_file" "$checksum_file" "$appcast_file" \
+              --repo "$PUBLIC_REPO" \
               --title "Voice Buddy ${TAG}" \
               --notes "$release_notes"
+          fi
+
+      - name: Update appcast.xml in Public Repository
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PUBLIC_REPO_TOKEN:-}" ]]; then
+            echo "::warning::PUBLIC_REPO_TOKEN is not set, skipping appcast.xml push to public repo"
+            exit 0
+          fi
+
+          pub_stage="$RUNNER_TEMP/public-repo"
+          rm -rf "$pub_stage"
+          git clone "https://x-access-token:${PUBLIC_REPO_TOKEN}@github.com/${PUBLIC_REPO}.git" "$pub_stage"
+          cd "$pub_stage"
+          cp "$GITHUB_WORKSPACE/dist/appcast.xml" ./appcast.xml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet appcast.xml; then
+            git add appcast.xml
+            git commit -m "chore(release): update appcast.xml for ${TAG}"
+            git push origin main
+            echo "Successfully updated appcast.xml in ${PUBLIC_REPO} main branch."
+          else
+            echo "appcast.xml already up to date in ${PUBLIC_REPO}."
           fi
 
       - name: Deployment Summary
@@ -133,11 +215,13 @@ jobs:
           COMMIT: ${{ steps.commit.outputs.sha }}
         run: |
           {
-            echo "## Release $TAG published"
-            echo "- **Commit**: $COMMIT"
+            echo "## Release $TAG published to $PUBLIC_REPO"
+            echo "- **Source Commit**: $COMMIT"
+            echo "- **Public Release**: https://github.com/${PUBLIC_REPO}/releases/tag/${TAG}"
             echo "- **Artifacts**:"
             echo "  - \`dist/Voice-Buddy-${TAG}-macOS.dmg\`"
             echo "  - \`dist/Voice-Buddy-${TAG}-macOS.zip\`"
+            echo "  - \`dist/appcast.xml\`"
             echo '```'
             cat dist/SHA256SUMS.txt
             echo '```'
