@@ -83,7 +83,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 
 ## 发布与自动化 (Release Workflow)
 
-项目参考 [ip402.xyz](https://github.com/zfdang/ip402.xyz) 的安全发布模式：
+项目采用双仓库隔离的安全发布模式（私有库构建签名，公开库分发二进制与 Sparkle 更新源）：
 
 1. **推送语义化版本 Tag**：
    ```bash
