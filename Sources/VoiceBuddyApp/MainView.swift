@@ -135,7 +135,7 @@ struct MainView: View {
                 Spacer()
                 Button(t("Re-check", "重新检查")) {
                     state.refreshPermissions()
-                }
+                }.accessibilityLabel(t("Re-check", "重新检查"))
             }
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
@@ -171,15 +171,15 @@ struct MainView: View {
                         if state.micStatus == .notDetermined {
                             Button(t("Request Microphone Permission", "请求麦克风权限")) {
                                 state.requestMicrophoneAccess()
-                            }
+                            }.accessibilityLabel(t("Request Microphone Permission", "请求麦克风权限"))
                         }
                         Button(t("Open System Settings", "打开系统麦克风设置")) {
                             state.openSystemSettings(for: "microphone")
-                        }
+                        }.accessibilityLabel(t("Open System Settings", "打开系统麦克风设置"))
                     } else {
                         Button(t("Open System Settings", "打开系统麦克风设置")) {
                             state.openSystemSettings(for: "microphone")
-                        }
+                        }.accessibilityLabel(t("Open System Settings", "打开系统麦克风设置"))
                     }
                 }
             }
@@ -212,11 +212,11 @@ struct MainView: View {
                     if !state.axAuthorized {
                         Button(t("Request Accessibility Permission", "请求辅助功能权限")) {
                             state.requestAccessibilityAccess()
-                        }
+                        }.accessibilityLabel(t("Request Accessibility Permission", "请求辅助功能权限"))
                     }
                     Button(t("Open System Settings", "打开系统辅助功能设置")) {
                         state.openSystemSettings(for: "accessibility")
-                    }
+                    }.accessibilityLabel(t("Open System Settings", "打开系统辅助功能设置"))
                 }
             }
             .padding()
@@ -270,7 +270,7 @@ struct MainView: View {
             Divider()
             Button(t("View Permissions…", "查看权限检查…")) {
                 state.selectedTab = .permissions
-            }
+            }.accessibilityLabel(t("View Permissions…", "查看权限检查…"))
         }
     }
 
@@ -293,13 +293,13 @@ struct MainView: View {
             Text(t("Review before copying or inserting.", "请检查后复制或插入。 ")).foregroundStyle(.secondary)
             TextEditor(text: $state.result).frame(minHeight: 160).border(.quaternary)
             HStack {
-                Button(t("Copy", "复制")) { state.copyResult() }
-                Button(t("Show original", "查看原文")) { state.result = state.original }
+                Button(t("Copy", "复制")) { state.copyResult() }.accessibilityLabel(t("Copy", "复制"))
+                Button(t("Show original", "查看原文")) { state.result = state.original }.accessibilityLabel(t("Show original", "查看原文"))
                 Button(t("Insert", "插入")) {
                     if !state.insertIfSafe(state.result) {
                         state.status = t("Return to the original field and copy manually.", "请回到原输入框并手动粘贴。")
                     }
-                }
+                }.accessibilityLabel(t("Insert", "插入"))
             }
         }
     }
