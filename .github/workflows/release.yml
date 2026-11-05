@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-app-${{ github.event.inputs.tag || github.ref_name }}
+  group: release-app-public-distribution
   cancel-in-progress: false
 
 env:
@@ -90,12 +90,23 @@ jobs:
         id: build
         run: |
           tag="${{ steps.tag.outputs.tag }}"
-          scripts/build-app.sh release "$tag" --package
+          scripts/build-app.sh release "$tag" --package --strict-signing -s "Voice Buddy Local Development"
+
+          # Verify the app bundle is strictly signed with valid certificate
+          echo "Verifying release app signature..."
+          codesign --verify --deep --strict "dist/Voice Buddy.app"
+          sig_info="$(codesign -dvvv "dist/Voice Buddy.app" 2>&1)"
+          echo "$sig_info"
+          if echo "$sig_info" | grep -q "Signature=adhoc"; then
+            echo "::error::Release build was signed with ad-hoc signature! Expected valid certificate."
+            exit 1
+          fi
 
       - name: Generate Sparkle Appcast
         id: appcast
         env:
           TAG: ${{ steps.tag.outputs.tag }}
+          SPARKLE_ED_KEY: ${{ secrets.SPARKLE_ED_KEY }}
         run: |
           set -euo pipefail
           raw_tag="${TAG#v}"
@@ -103,6 +114,34 @@ jobs:
           if [[ ! -f "$zip_file" ]]; then
             zip_file="dist/Voice-Buddy-${raw_tag}-macOS.zip"
           fi
+
+          if [[ -z "${SPARKLE_ED_KEY:-}" ]]; then
+            echo "::error::SPARKLE_ED_KEY secret is not configured. Sparkle EdDSA update signing is mandatory for all releases."
+            exit 1
+          fi
+
+          app_plist="dist/Voice Buddy.app/Contents/Info.plist"
+          embedded_pubkey="$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$app_plist" 2>/dev/null || true)"
+          if [[ -z "$embedded_pubkey" ]]; then
+            echo "::error::SUPublicEDKey is missing from $app_plist!"
+            exit 1
+          fi
+
+          derived_pubkey="$(swift -e '
+          import CryptoKit
+          import Foundation
+          guard let privData = Data(base64Encoded: CommandLine.arguments[1]),
+                let priv = try? Curve25519.Signing.PrivateKey(rawRepresentation: privData) else {
+              exit(1)
+          }
+          print(priv.publicKey.rawRepresentation.base64EncodedString())
+          ' "$SPARKLE_ED_KEY" 2>/dev/null || true)"
+
+          if [[ "$derived_pubkey" != "$embedded_pubkey" ]]; then
+            echo "::error::SPARKLE_ED_KEY secret does not match SUPublicEDKey in the app ($embedded_pubkey vs derived $derived_pubkey)!"
+            exit 1
+          fi
+          echo "Verified SPARKLE_ED_KEY matches app SUPublicEDKey ($embedded_pubkey)."
 
           appcast_stage="$RUNNER_TEMP/sparkle_appcast"
           mkdir -p "$appcast_stage"
@@ -120,11 +159,14 @@ jobs:
 
           download_prefix="https://github.com/${PUBLIC_REPO}/releases/download/${TAG}/"
 
-          if [[ -n "${SPARKLE_ED_KEY:-}" ]]; then
-            printf '%s' "$SPARKLE_ED_KEY" | "$appcast_tool" --ed-key-file - --download-url-prefix "$download_prefix" "$appcast_stage"
-          else
-            "$appcast_tool" --download-url-prefix "$download_prefix" "$appcast_stage"
+          channel_args=()
+          if [[ "$raw_tag" =~ -(alpha|beta|rc) ]]; then
+            channel_args=(--channel "${BASH_REMATCH[1]}")
+          elif [[ "$raw_tag" =~ - ]]; then
+            channel_args=(--channel "beta")
           fi
+
+          printf '%s' "$SPARKLE_ED_KEY" | "$appcast_tool" ${channel_args[@]+"${channel_args[@]}"} --ed-key-file - --download-url-prefix "$download_prefix" "$appcast_stage"
 
           cp "$appcast_stage/appcast.xml" "dist/appcast.xml"
           echo "Generated dist/appcast.xml:"
@@ -155,6 +197,12 @@ jobs:
             exit 1
           fi
 
+          prerelease_flag=""
+          if [[ "$raw_tag" =~ - ]]; then
+            prerelease_flag="--prerelease"
+            echo "Configuring GitHub Release as pre-release for tag ${TAG}."
+          fi
+
           release_notes="## Voice Buddy ${TAG}
 
           - **Commit**: \`${COMMIT}\`
@@ -173,13 +221,14 @@ jobs:
           if gh release view "$TAG" --repo "$PUBLIC_REPO" >/dev/null 2>&1; then
             echo "Release $TAG exists in $PUBLIC_REPO, uploading assets and updating notes..."
             gh release upload "$TAG" "$dmg_file" "$zip_file" "$checksum_file" "$appcast_file" --repo "$PUBLIC_REPO" --clobber
-            gh release edit "$TAG" --repo "$PUBLIC_REPO" --notes "$release_notes"
+            gh release edit "$TAG" --repo "$PUBLIC_REPO" --notes "$release_notes" $prerelease_flag
           else
             echo "Creating new release for $TAG in $PUBLIC_REPO..."
             gh release create "$TAG" "$dmg_file" "$zip_file" "$checksum_file" "$appcast_file" \
               --repo "$PUBLIC_REPO" \
               --title "Voice Buddy ${TAG}" \
-              --notes "$release_notes"
+              --notes "$release_notes" \
+              $prerelease_flag
           fi
 
       - name: Update appcast.xml in Public Repository
@@ -200,8 +249,8 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet appcast.xml; then
-            git add appcast.xml
+          git add appcast.xml
+          if ! git diff --cached --quiet; then
             git commit -m "chore(release): update appcast.xml for ${TAG}"
             git -c credential.helper= push origin main
             echo "Successfully updated appcast.xml in ${PUBLIC_REPO} main branch."
