@@ -1,6 +1,8 @@
 name: Release macOS App
 
 on:
+  push:
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
