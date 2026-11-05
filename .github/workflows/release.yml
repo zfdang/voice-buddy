@@ -194,7 +194,7 @@ $(cat "$checksum_file")
 
           pub_stage="$RUNNER_TEMP/public-repo"
           rm -rf "$pub_stage"
-          git clone "https://x-access-token:${PUBLIC_REPO_TOKEN}@github.com/${PUBLIC_REPO}.git" "$pub_stage"
+          git -c credential.helper= clone "https://${PUBLIC_REPO_TOKEN}@github.com/${PUBLIC_REPO}.git" "$pub_stage"
           cd "$pub_stage"
           cp "$GITHUB_WORKSPACE/dist/appcast.xml" ./appcast.xml
 
@@ -203,7 +203,7 @@ $(cat "$checksum_file")
           if ! git diff --quiet appcast.xml; then
             git add appcast.xml
             git commit -m "chore(release): update appcast.xml for ${TAG}"
-            git push origin main
+            git -c credential.helper= push origin main
             echo "Successfully updated appcast.xml in ${PUBLIC_REPO} main branch."
           else
             echo "appcast.xml already up to date in ${PUBLIC_REPO}."
