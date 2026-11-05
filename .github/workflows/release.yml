@@ -70,20 +70,21 @@ jobs:
             exit 1
           fi
           certificate="$RUNNER_TEMP/voice-buddy-signing.p12"
-          public_certificate="$RUNNER_TEMP/voice-buddy-signing.pem"
           keychain="$RUNNER_TEMP/voice-buddy-signing.keychain-db"
           keychain_password="$(openssl rand -hex 32)"
 
-          printf '%s' "$CERTIFICATE_BASE64" | base64 -D > "$certificate"
-          openssl pkcs12 -in "$certificate" -passin env:P12_PASSWORD -clcerts -nokeys -out "$public_certificate"
+          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$certificate"
 
           security create-keychain -p "$keychain_password" "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
-          security list-keychains -d user -s "$keychain"
-          security import "$certificate" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
-          security add-trusted-cert -r trustRoot -p codeSign -k "$keychain" "$public_certificate"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$keychain"
+          security import "$certificate" -k "$keychain" -P "$P12_PASSWORD" -A -t cert -f pkcs12
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" || true
+
+          echo "Discovered codesigning identities in keychain:"
+          security find-identity -v -p codesigning "$keychain"
 
       - name: Build and package signed release
         id: build
@@ -225,3 +226,11 @@ jobs:
             cat dist/SHA256SUMS.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup signing keychain
+        if: always()
+        run: |
+          keychain="$RUNNER_TEMP/voice-buddy-signing.keychain-db"
+          if [[ -f "$keychain" ]]; then
+            security delete-keychain "$keychain" || true
+          fi
