@@ -890,17 +890,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 .frame(minWidth: 700, minHeight: 540)
         }
         MenuBarExtra {
-            Text("Voice Buddy: \(state.status)")
-            Divider()
             Button(state.label("Settings…", "设置…")) {
                 state.showWindow(tab: .general)
-            }
-            Button(state.label("Permissions…", "权限检查…")) {
-                state.showWindow(tab: .permissions)
-            }
-            Button(state.label("Result Editor…", "文本编辑器…")) {
-                state.showWindow(tab: .recovery)
-            }
+            }.keyboardShortcut(",")
             Divider()
             Button(state.label("About Voice Buddy…", "关于 Voice Buddy…")) {
                 state.showWindow(tab: .about)
