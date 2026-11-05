@@ -51,6 +51,20 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         preferences = UserDefaults.standard.data(forKey: defaultsKey).flatMap { try? JSONDecoder().decode(Preferences.self, from: $0) } ?? Preferences()
         refreshPermissions()
         registerHotkey()
+        autoPreloadModels()
+    }
+    func autoPreloadModels() {
+        let speechId = preferences.speechModel
+        Task {
+            if await models.isSpeechModelCached(id: speechId) {
+                prepareSpeech()
+            }
+            if preferences.refinement.needsModel {
+                if await models.isEditorModelCached() {
+                    prepareEditor()
+                }
+            }
+        }
     }
     func refreshPermissions() {
         micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -104,15 +118,29 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         preferences.shortcutKeyCode = key; preferences.shortcutModifiers = mods
         return true
     }
-    func prepareSpeech() {
-        guard !busy else { return }; busy = true; modelPreparing = true; modelProgress = 0; ready = false; status = label("Preparing speech model…", "正在准备语音模型…")
+    func prepareSpeech(completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
+        guard !busy else { completion?(false); return }
+        busy = true; modelPreparing = true; modelProgress = 0; ready = false; status = label("Preparing speech model…", "正在准备语音模型…")
         let id = preferences.speechModel, operation = UUID(); generation = operation
         task = Task {
             do {
                 try await models.prepareSpeech(id: id) { [weak self] value, _ in Task { @MainActor in guard self?.generation == operation else { return }; self?.modelProgress = value } }
-                guard generation == operation else { return }; ready = true; status = label("Speech model ready", "语音模型已就绪")
-            } catch { guard generation == operation else { return }; status = error.localizedDescription }
-            modelPreparing = false; busy = false
+                guard generation == operation else {
+                    await MainActor.run { completion?(false) }
+                    return
+                }
+                ready = true; status = label("Speech model ready", "语音模型已就绪")
+                modelPreparing = false; busy = false
+                await MainActor.run { completion?(true) }
+            } catch {
+                guard generation == operation else {
+                    await MainActor.run { completion?(false) }
+                    return
+                }
+                status = error.localizedDescription
+                modelPreparing = false; busy = false
+                await MainActor.run { completion?(false) }
+            }
         }
     }
     func prepareEditor() {
@@ -148,31 +176,70 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     func toggle() { if recording { finish() } else { start(whileHeld: false) } }
     private func start(whileHeld: Bool) {
         guard !busy && !recording else { return }
-        guard ready else { status = label("Prepare the speech model first.", "请先准备语音模型。"); showWindow(); return }
-        if preferences.refinement.needsModel && !editorReady { status = label("Prepare the text model first.", "请先准备文本模型。"); showWindow(); return }
+        guard ready else {
+            status = label("Loading speech model…", "正在加载语音模型…")
+            overlay.show(state: self)
+            if !modelPreparing {
+                prepareSpeech { [weak self] success in
+                    guard let self else { return }
+                    if success {
+                        self.status = self.label("Speech model ready. Press hotkey to talk.", "语音模型已就绪，请按快捷键说话。")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            if !self.recording { self.overlay.hide() }
+                        }
+                    } else {
+                        self.overlay.hide()
+                    }
+                }
+            }
+            return
+        }
+        if preferences.refinement.needsModel && !editorReady {
+            status = label("Loading text model…", "正在加载文本模型…")
+            overlay.show(state: self)
+            if !modelPreparing {
+                prepareEditor()
+            }
+            return
+        }
         // Snapshot the destination before requesting permissions or presenting UI.
         let frontmost = NSWorkspace.shared.frontmostApplication
         let pid = frontmost?.processIdentifier ?? 0
         let name = frontmost?.localizedName ?? ""
         let element = focusedElement(pid: pid)
-        busy = true
-        Task {
-            let allowed = await AVCaptureDevice.requestAccess(for: .audio)
-            busy = false
-            refreshPermissions()
-            guard allowed else { status = label("Microphone permission is required.", "需要麦克风权限。"); showWindow(tab: .permissions); return }
-            guard !whileHeld || gesture.isDown else { status = label("Press and hold to dictate.", "请按住快捷键说话。"); return }
-            targetPID = pid
-            targetAppName = name
-            targetElement = element
-            do {
-                try recorder.start(deviceUID: preferences.microphoneUID); recording = true; status = label("Listening…", "正在听你说…"); overlay.show(state: self)
-                if preferences.sounds { NSSound(named: "Tink")?.play() }
-                meter = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in Task { @MainActor in self?.level = self?.recorder.currentLevel ?? 0 } }
-                escMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                    if event.keyCode == 53 { Task { @MainActor in self?.cancel() } }
-                }
-            } catch { status = error.localizedDescription; showWindow() }
+
+        refreshPermissions()
+        guard micAuthorized else {
+            status = label("Microphone permission required.", "需要麦克风权限。")
+            requestMicrophoneAccess()
+            overlay.show(state: self)
+            return
+        }
+
+        guard !whileHeld || gesture.isDown else {
+            status = label("Press and hold to dictate.", "请按住快捷键说话。")
+            return
+        }
+
+        targetPID = pid
+        targetAppName = name
+        targetElement = element
+
+        do {
+            try recorder.start(deviceUID: preferences.microphoneUID)
+            recording = true
+            status = label("Listening…", "正在听你说…")
+            overlay.show(state: self)
+            if preferences.sounds { NSSound(named: "Tink")?.play() }
+            meter = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.level = self?.recorder.currentLevel ?? 0 }
+            }
+            escMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                if event.keyCode == 53 { Task { @MainActor in self?.cancel() } }
+            }
+        } catch {
+            status = error.localizedDescription
+            overlay.show(state: self)
         }
     }
     func cancel() {

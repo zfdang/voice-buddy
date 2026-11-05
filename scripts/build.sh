@@ -204,6 +204,8 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<PLIST
     <string>${BUNDLE_VERSION}</string>
     <key>LSMinimumSystemVersion</key>
     <string>15.0</string>
+    <key>LSUIElement</key>
+    <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Voice Buddy uses the microphone to transcribe your speech locally with on-device AI.</string>
 </dict>
