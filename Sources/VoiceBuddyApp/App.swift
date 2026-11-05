@@ -17,6 +17,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
 @MainActor final class AppState: ObservableObject {
     @Published var preferences: Preferences { didSet { save() } }
     @Published var status = "Ready"
+    @Published var liveTranscript = ""
+    @Published var liveTranscriptState = LiveTranscriptState()
+    private let tracker = TranscriptStreamTracker()
     @Published var result = ""
     @Published var original = ""
     @Published var recording = false
@@ -38,6 +41,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private var targetAppName = ""
     private var targetElement: AXUIElement?
     private var task: Task<Void, Never>?
+    private var liveTask: Task<Void, Never>?
     private var meter: Timer?
     private var generation = UUID()
     private var hotKey: EventHotKeyRef?
@@ -229,6 +233,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             try recorder.start(deviceUID: preferences.microphoneUID)
             recording = true
             status = label("Listening…", "正在听你说…")
+            startLiveStreaming()
             overlay.show(state: self)
             if preferences.sounds { NSSound(named: "Tink")?.play() }
             meter = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -242,14 +247,104 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             overlay.show(state: self)
         }
     }
+    private func startLiveStreaming() {
+        liveTask?.cancel()
+        tracker.reset()
+        tracker.onUpdate = { [weak self] state in
+            self?.liveTranscriptState = state
+        }
+        liveTranscriptState.clear()
+        liveTranscript = ""
+        let lang = preferences.speechLanguage
+        liveTask = Task.detached(priority: .userInitiated) { [weak self] in
+            var lastCount = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 280_000_000)
+                guard let self else { break }
+                let isRec = await self.recording
+                guard isRec else { break }
+                let samples = await self.recorder.currentSamples
+                guard samples.count >= 5600, samples.count >= lastCount + 3200 else { continue }
+                lastCount = samples.count
+                if let text = try? await self.models.transcribe(samples: samples, language: lang) {
+                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        await MainActor.run {
+                            if self.recording {
+                                self.liveTranscript = trimmed
+                                self.liveTranscriptState = self.tracker.update(rawText: trimmed)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     func cancel() {
+        liveTask?.cancel(); liveTask = nil; liveTranscript = ""; liveTranscriptState.clear(); tracker.reset()
         if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
         generation = UUID(); gesture.reset(); task?.cancel(); task = nil
         if recording { _ = recorder.stop() }; recording = false; busy = false; modelPreparing = false; meter?.invalidate(); level = 0
         overlay.hide(); if preferences.sounds { NSSound(named: "Basso")?.play() }
         status = label("Cancelled", "已取消")
     }
+    func targetInsertionPoint() -> CGPoint? {
+        guard let primaryScreen = NSScreen.screens.first else { return nil }
+        let primaryHeight = primaryScreen.frame.height
+        let element = targetElement ?? (targetPID != 0 ? focusedElement(pid: targetPID) : nil)
+
+        if let element {
+            // 1. Try cursor bounds from selected text range (standard native text inputs)
+            var rangeValue: CFTypeRef?
+            if AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeValue) == .success,
+               let rv = rangeValue, CFGetTypeID(rv) == AXValueGetTypeID() {
+                var range = CFRange()
+                if AXValueGetValue(rv as! AXValue, .cfRange, &range) {
+                    var boundsValue: CFTypeRef?
+                    if let axRange = AXValueCreate(.cfRange, &range),
+                       AXUIElementCopyParameterizedAttributeValue(element, kAXBoundsForRangeParameterizedAttribute as CFString, axRange, &boundsValue) == .success,
+                       let bv = boundsValue, CFGetTypeID(bv) == AXValueGetTypeID() {
+                        var rect = CGRect.zero
+                        if AXValueGetValue(bv as! AXValue, .cgRect, &rect), rect.width > 0 || rect.height > 0 || rect.origin.x > 0 || rect.origin.y > 0 {
+                            let cocoaY = primaryHeight - rect.midY
+                            return CGPoint(x: rect.midX, y: cocoaY)
+                        }
+                    }
+                }
+            }
+
+            // 2. Try element position & size (custom controls / editors like Sublime, Word, Chrome canvas)
+            var posVal: CFTypeRef?
+            var sizeVal: CFTypeRef?
+            if AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &posVal) == .success,
+               AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeVal) == .success,
+               let pos = posVal, let size = sizeVal {
+                var pt = CGPoint.zero
+                var sz = CGSize.zero
+                AXValueGetValue(pos as! AXValue, .cgPoint, &pt)
+                AXValueGetValue(size as! AXValue, .cgSize, &sz)
+                if sz.width > 20 && sz.height > 10 {
+                    let mouse = NSEvent.mouseLocation
+                    let cocoaY = primaryHeight - pt.y - sz.height
+                    let elementCocoaRect = CGRect(x: pt.x, y: cocoaY, width: sz.width, height: sz.height)
+                    if elementCocoaRect.contains(mouse) {
+                        return mouse
+                    }
+                    return CGPoint(x: pt.x + min(160, sz.width * 0.35), y: cocoaY + sz.height * 0.65)
+                }
+            }
+        }
+
+        // 3. Fallback: mouse pointer location
+        let mouse = NSEvent.mouseLocation
+        if mouse.x > 0 && mouse.y > 0 {
+            return mouse
+        }
+
+        return nil
+    }
     private func finish() {
+        liveTask?.cancel(); liveTask = nil
         if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
         let audio = recorder.stop(); recording = false; meter?.invalidate(); level = 0; busy = true
         if preferences.sounds { NSSound(named: "Pop")?.play() }
@@ -258,18 +353,37 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         task = Task {
             do {
                 let output = try await pipeline.run(samples: audio, language: settings.speechLanguage, mode: settings.refinement)
-                guard generation == id else { return }; overlay.hide(); original = output.original; result = output.result; busy = false
-                if settings.refinement.needsModel { status = label("Review edited text before inserting.", "请先确认整理结果。"); showWindow(tab: .recovery); return }
-                if settings.autoInsert && insertIfSafe(output.result) {
-                    let appName = targetAppName.isEmpty ? label("target application", "目标应用") : targetAppName
-                    status = label("Inserted into \(appName)", "已插入到 \(appName)")
+                guard generation == id else { return }; original = output.original; result = output.result; busy = false
+                if settings.refinement.needsModel {
+                    overlay.hide()
+                    liveTranscriptState.clear()
+                    status = label("Review edited text before inserting.", "请先确认整理结果。")
+                    showWindow(tab: .recovery)
+                    return
+                }
+                if settings.autoInsert {
+                    let targetPt = targetInsertionPoint()
+                    overlay.flyAndDismiss(to: targetPt) { [weak self] in
+                        guard let self else { return }
+                        self.liveTranscriptState.clear()
+                        if self.insertIfSafe(output.result) {
+                            let appName = self.targetAppName.isEmpty ? self.label("target application", "目标应用") : self.targetAppName
+                            self.status = self.label("Inserted into \(appName)", "已插入到 \(appName)")
+                        } else {
+                            self.status = !self.insertFailure.isEmpty ? self.insertFailure : self.label("Result ready to copy.", "文字已准备好，请复制。 ")
+                            self.showWindow(tab: .recovery)
+                        }
+                    }
                 } else {
-                    status = settings.autoInsert && !insertFailure.isEmpty ? insertFailure : label("Result ready to copy.", "文字已准备好，请复制。 ");
+                    overlay.hide()
+                    liveTranscriptState.clear()
+                    status = label("Result ready to copy.", "文字已准备好，请复制。 ")
                     showWindow(tab: .recovery)
                 }
             } catch {
                 guard generation == id else { return }
                 overlay.hide()
+                liveTranscriptState.clear()
                 busy = false
                 if let failure = error as? RefinementFailure {
                     original = failure.original

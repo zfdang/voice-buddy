@@ -8,6 +8,7 @@ final class Recorder {
     private var samples: [Float] = []
     private var level: Float = 0
     var currentLevel: Float { lock.lock(); defer { lock.unlock() }; return level }
+    var currentSamples: [Float] { lock.lock(); defer { lock.unlock() }; return samples }
 
     func start(deviceUID: String) throws {
         let engine = AVAudioEngine()
