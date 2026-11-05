@@ -146,6 +146,10 @@ BUILD_DIR="${ROOT_DIR}/.build" bash "${ROOT_DIR}/.build/checkouts/speech-swift/s
 # 3. Assemble App Bundle
 echo ""
 echo "==> Step 3/4: Assembling dist/Voice Buddy.app..."
+mkdir -p "${ROOT_DIR}/dist"
+if [ "${DO_PACKAGE}" != "true" ]; then
+    rm -f "${ROOT_DIR}/dist"/*.dmg "${ROOT_DIR}/dist"/*.zip "${ROOT_DIR}/dist"/SHA256SUMS.txt
+fi
 APP_BUNDLE="${ROOT_DIR}/dist/Voice Buddy.app"
 rm -rf "${APP_BUNDLE}"
 mkdir -p "${APP_BUNDLE}/Contents/MacOS" "${APP_BUNDLE}/Contents/Resources"
