@@ -4,6 +4,34 @@ import SpeechVAD
 import Qwen3Chat
 import VoiceBuddyCore
 
+public struct SpeechModelSpec: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public let size: String
+    public let quantization: String
+    public let description: String
+    public let descriptionEn: String
+
+    public static let allModels: [SpeechModelSpec] = [
+        SpeechModelSpec(
+            id: "qwen-asr-0.6b",
+            name: "Qwen 3 ASR 0.6B",
+            size: "480 MB",
+            quantization: "4-bit",
+            description: "极速轻量 · 推荐日常快速听写与中英混说，显存占用极低",
+            descriptionEn: "Ultra-fast & lightweight · Recommended for daily dictation, minimal memory footprint"
+        ),
+        SpeechModelSpec(
+            id: "qwen-asr-1.7b",
+            name: "Qwen 3 ASR 1.7B",
+            size: "1.7 GB",
+            quantization: "8-bit",
+            description: "高精旗舰 · 复杂术语、长句及多语种识别更严谨细腻",
+            descriptionEn: "Flagship precision · Highly accurate for complex terms, long sentences, and multilingual speech"
+        )
+    ]
+}
+
 public struct TextModelSpec: Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String
@@ -40,7 +68,7 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     private var selectedEditorID = ""
     private let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("VoiceBuddy/Models", isDirectory: true)
     private func directory(_ name: String) -> URL { root.appendingPathComponent(name, isDirectory: true) }
-    private func speechDirectory(_ id: String) -> URL { directory(id.contains("1.7B") ? "qwen-asr-1.7b" : "qwen-asr-0.6b") }
+    private func speechDirectory(_ id: String) -> URL { directory(id.contains("1.7") ? "qwen-asr-1.7b" : "qwen-asr-0.6b") }
     private func textDirectory(_ id: String) -> URL { directory(id) }
 
     func isSpeechModelCached(id: String) -> Bool {
@@ -78,8 +106,9 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     }
 
     func prepareSpeech(id: String, progress: @escaping @Sendable (Double, String) -> Void) async throws {
+        let hfModelId = (id.contains("1.7") || id.contains("large")) ? Qwen3ASRModel.largeModelId : Qwen3ASRModel.defaultModelId
         if asr == nil || selectedID != id {
-            asr = try await Qwen3ASRModel.fromPretrained(modelId: id, cacheDir: speechDirectory(id), progressHandler: { value, message in progress(value * 0.9, message) })
+            asr = try await Qwen3ASRModel.fromPretrained(modelId: hfModelId, cacheDir: speechDirectory(id), progressHandler: { value, message in progress(value * 0.9, message) })
             selectedID = id
         }
         if vad == nil { vad = try await SileroVADModel.fromPretrained(cacheDir: directory("silero-vad"), progressHandler: { value, message in progress(0.9 + value * 0.1, message) }) }

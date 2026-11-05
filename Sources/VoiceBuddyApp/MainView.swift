@@ -9,6 +9,7 @@ import KeyboardShortcuts
 struct MainView: View {
     @EnvironmentObject var state: AppState
     @State private var confirmSpeechDelete = false
+    @State private var speechModelToDelete: String? = nil
     @State private var confirmTextDelete = false
     @State private var textModelToDelete: String? = nil
     private func t(_ en: String, _ zh: String) -> String { state.label(en, zh) }
@@ -476,120 +477,221 @@ struct MainView: View {
 
     private var speech: some View {
         VStack(alignment: .leading, spacing: 20) {
-            // 1. Model Selection Card
-            settingsCard(title: t("Speech Recognition Model", "语音识别模型")) {
-                settingRow(
-                    title: t("Recognition Model", "识别模型规格"),
-                    subtitle: t("On-device speech-to-text acoustic model", "端侧声学转录模型")
-                ) {
-                    Picker("", selection: $state.preferences.speechModel) {
-                        Text("Qwen3-ASR 0.6B (推荐 · 480 MB)").tag("mlx-community/Qwen3-ASR-0.6B-8bit")
-                        Text("Qwen3-ASR 1.7B (高精 · 16 GB+ Mac)").tag("mlx-community/Qwen3-ASR-1.7B-8bit")
+            // 1. Model Library & Local Storage Management
+            settingsCard(title: t("Local Speech Models & Storage", "本地语音模型列表与存储管理")) {
+                VStack(spacing: 14) {
+                    ForEach(Array(SpeechModelSpec.allModels.enumerated()), id: \.element.id) { index, spec in
+                        if index > 0 {
+                            Divider()
+                        }
+
+                        let isDownloadingThis = state.speechPreparing && state.activeDownloadingSpeechModelID == spec.id
+                        let isCached = state.cachedSpeechModelIDs.contains(spec.id)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .center, spacing: 10) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(spacing: 8) {
+                                        Text(spec.name)
+                                            .font(.headline)
+                                        Text(spec.quantization)
+                                            .font(.caption2.bold())
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.secondary.opacity(0.15))
+                                            .clipShape(Capsule())
+                                        Text(spec.size)
+                                            .font(.caption2.monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text(t(spec.descriptionEn, spec.description))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                // Status indicator (Download status only)
+                                if isDownloadingThis {
+                                    HStack(spacing: 4) {
+                                        ProgressView().controlSize(.small)
+                                        Text("\(Int(state.speechProgress * 100))%")
+                                            .font(.caption.monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                } else if isCached {
+                                    HStack(spacing: 4) {
+                                        Circle().fill(Color.green).frame(width: 8, height: 8)
+                                        Text(t("Downloaded", "已下载"))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                } else {
+                                    HStack(spacing: 4) {
+                                        Circle().stroke(Color.secondary, lineWidth: 1.5).frame(width: 8, height: 8)
+                                        Text(t("Not Downloaded", "尚未下载"))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+
+                                // Action button
+                                if isDownloadingThis {
+                                    Button(t("Cancel", "取消")) {
+                                        state.cancel()
+                                    }
+                                    .controlSize(.small)
+                                } else if isCached {
+                                    Button(role: .destructive) {
+                                        speechModelToDelete = spec.id
+                                        confirmSpeechDelete = true
+                                    } label: {
+                                        Text(t("Delete Cache…", "删除本地缓存…"))
+                                    }
+                                    .controlSize(.small)
+                                    .disabled(state.busy || state.recording)
+                                } else {
+                                    Button {
+                                        state.downloadSpeechModel(id: spec.id)
+                                    } label: {
+                                        Text(t("Download", "下载"))
+                                    }
+                                    .controlSize(.small)
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(state.busy || state.recording)
+                                }
+                            }
+
+                            if isDownloadingThis {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    ProgressView(value: state.speechProgress)
+                                    if !state.speechProgressMessage.isEmpty {
+                                        Text(state.speechProgressMessage)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.top, 2)
+                            }
+                        }
                     }
-                    .labelsHidden()
-                    .fixedSize()
-                    .disabled(state.busy || state.recording)
-                    .onChange(of: state.preferences.speechModel) { _, newModel in
-                        state.selectSpeechModel(id: newModel)
-                    }
-                }
-                Divider()
-                settingRow(
-                    title: t("Spoken Language", "识别语言"),
-                    subtitle: t("Select primary spoken language or auto-detect", "选择听写主要使用的语言或开启多语种自动混说检测")
-                ) {
-                    Picker("", selection: $state.preferences.speechLanguage) {
-                        Text(t("Automatic", "自动识别 / 混说")).tag("auto")
-                        Text("中文").tag("Chinese")
-                        Text("English").tag("English")
-                        Text("Français").tag("French")
-                    }
-                    .labelsHidden()
-                    .fixedSize()
                 }
             }
 
-            // 2. Status & Storage Card
-            settingsCard(title: t("Model Status & Storage", "下载与运行状态")) {
-                HStack(alignment: .top, spacing: 12) {
-                    if state.speechPreparing {
-                        ProgressView()
-                            .controlSize(.small)
-                            .frame(width: 22, height: 22)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(t("Downloading / Loading speech model…", "正在准备语音识别模型…"))
-                                .font(.headline)
-                            Text(state.speechProgressMessage.isEmpty ? t("Downloading weights from Hugging Face…", "正在下载模型权重…") : state.speechProgressMessage)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else if state.ready || state.isSpeechDownloaded {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.green)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(t("Ready in Memory", "已载入内存 · 随时可用"))
-                                .font(.headline)
-                                .foregroundStyle(.green)
-                            Text(t("Acoustic and VAD models are loaded in unified memory for instant dictation.", "声学识别与语音检测模型已载入统一内存，按下快捷键即可开始听写。"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else {
-                        Image(systemName: "arrow.down.circle")
+            // 2. Active Model & Language Selection Card
+            settingsCard(title: t("Speech Recognition Model", "语音识别模型与语言选择")) {
+                let downloadedSpecs = SpeechModelSpec.allModels.filter { state.cachedSpeechModelIDs.contains($0.id) }
+
+                if downloadedSpecs.isEmpty {
+                    HStack(spacing: 12) {
+                        Image(systemName: "info.circle")
                             .font(.title3)
                             .foregroundStyle(.orange)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(t("Not Downloaded", "尚未下载"))
+                            Text(t("No Speech Models Downloaded Locally", "本地尚未下载任何语音模型"))
                                 .font(.headline)
-                                .foregroundStyle(.orange)
-                            Text(t("Model downloads once from Hugging Face and runs 100% locally thereafter.", "首次使用前从 Hugging Face 下载，之后全流程在 Mac 本机离线运行。"))
+                            Text(t("Please click 'Download' on a model in the list above. Once downloaded, you can select it here for instant use.", "请在上方模型列表中点击“下载”获取所需模型。下载完成后即可在此处选择生效。"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
+                        Spacer()
                     }
-                    Spacer()
-                }
+                    .padding(.vertical, 4)
+                } else {
+                    settingRow(
+                        title: t("Active Recognition Model", "当前生效模型"),
+                        subtitle: t("On-device acoustic model for speech-to-text", "用于端侧实时语音转文字的声学转录模型")
+                    ) {
+                        Picker("", selection: Binding(
+                            get: { state.preferences.speechModel },
+                            set: { newModel in state.selectSpeechModel(id: newModel) }
+                        )) {
+                            ForEach(downloadedSpecs) { spec in
+                                Text("\(spec.name) (\(spec.quantization) · \(spec.size))").tag(spec.id)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .disabled(state.busy || state.recording)
+                    }
 
-                if state.speechPreparing {
                     Divider()
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(t("Preparation Progress", "准备进度"))
-                                .font(.caption.bold())
-                            Spacer()
-                            Text("\(Int(state.speechProgress * 100))%")
-                                .font(.caption.monospacedDigit())
+
+                    HStack(spacing: 8) {
+                        if state.ready {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text(t("Model & VAD are loaded in unified memory · Ready for instant dictation.", "声学识别与语音检测模型已载入统一内存 · 随时可用 (快捷键即刻听写)"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else if state.speechPreparing {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text(t("Loading model into unified memory…", "正在载入统一内存…"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Image(systemName: "clock")
+                                .foregroundStyle(.secondary)
+                            Text(t("Preparing model…", "准备中…"))
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        ProgressView(value: state.speechProgress)
+                        Spacer()
                     }
-                }
 
-                Divider()
+                    Divider()
 
-                HStack(spacing: 12) {
-                    if state.speechPreparing {
-                        Button(t("Cancel", "取消")) { state.cancel() }
-                    } else if state.ready || state.isSpeechDownloaded {
-                        Button(role: .destructive) {
-                            confirmSpeechDelete = true
-                        } label: {
-                            Text(t("Delete Local Cache…", "删除本地缓存…"))
+                    settingRow(
+                        title: t("Spoken Language", "识别语言"),
+                        subtitle: t("Select primary spoken language or auto-detect", "选择听写主要使用的语言或开启多语种自动混说检测")
+                    ) {
+                        Picker("", selection: $state.preferences.speechLanguage) {
+                            Text(t("Automatic", "自动识别 / 混说")).tag("auto")
+                            Text("中文").tag("Chinese")
+                            Text("English").tag("English")
+                            Text("Français").tag("French")
                         }
-                        .disabled(state.busy || state.recording)
-                    } else {
-                        Button(t("Download Model", "下载语音模型")) { state.prepareSpeech() }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(state.busy)
+                        .labelsHidden()
+                        .fixedSize()
                     }
                 }
-                .confirmationDialog(t("Delete this speech model?", "删除当前语音模型？"), isPresented: $confirmSpeechDelete) {
-                    Button(t("Delete", "删除"), role: .destructive) { state.removeSpeechModel() }
+            }
+
+            // 3. How Speech Recognition Works Guide
+            settingsCard(title: t("How Speech Recognition Works", "语音识别工作机制")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top, spacing: 10) {
+                        Text("•")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(t("Qwen3-ASR Acoustic Transcription", "Qwen3-ASR 端侧声学识别")).font(.subheadline.bold())
+                            Text(t("Runs locally on Apple Neural Engine and GPU via MLX. Accurately transcribes Chinese, English, code terms, and mixed speech with proper punctuation.", "通过 MLX 引擎全本地运行于 Apple 芯片 GPU 与神经引擎。精准识别中英双语、技术术语与混合说话，并自带标点分句。")).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Divider()
+                    HStack(alignment: .top, spacing: 10) {
+                        Text("•")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(t("Silero VAD Voice Activity Detection", "Silero VAD 语音活动检测")).font(.subheadline.bold())
+                            Text(t("Ultra-low latency speech boundary detection. Seamlessly isolates speech from background noise and silence with zero external server transmission.", "毫秒级精准检测人声起止时刻，有效过滤环境杂音与静音段，全程 100% 离线，完全保护隐私。")).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
         }
         .frame(maxWidth: 580)
+        .confirmationDialog(t("Delete this speech model from disk?", "从本机删除此语音模型？"), isPresented: $confirmSpeechDelete) {
+            Button(t("Delete", "删除"), role: .destructive) {
+                if let targetId = speechModelToDelete {
+                    state.removeSpeechModel(id: targetId)
+                    speechModelToDelete = nil
+                } else {
+                    state.removeSpeechModel()
+                }
+            }
+        } message: {
+            Text(t("Model files will be removed from your disk. You can re-download anytime.", "模型文件将从本机存储中移除，后续需要时可随时重新下载。"))
+        }
     }
 
     private var editor: some View {

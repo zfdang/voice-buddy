@@ -99,12 +99,21 @@ extension PipelineTests {
         let prefs = Preferences()
         XCTAssertEqual(prefs.interfaceLanguage, "system")
         XCTAssertEqual(prefs.speechLanguage, "auto")
-        XCTAssertEqual(prefs.speechModel, "mlx-community/Qwen3-ASR-0.6B-8bit")
+        XCTAssertEqual(prefs.speechModel, "qwen-asr-0.6b")
         XCTAssertEqual(prefs.refinement, .light)
         XCTAssertTrue(prefs.sounds)
         XCTAssertTrue(prefs.autoInsert)
         XCTAssertEqual(prefs.shortcutKeyCode, 49)
         XCTAssertEqual(prefs.shortcutModifiers, 6144)
+    }
+    func testLegacySpeechModelMigration() throws {
+        let json = #"{"speechModel": "mlx-community/Qwen3-ASR-0.6B-8bit"}"#.data(using: .utf8)!
+        let prefs = try JSONDecoder().decode(Preferences.self, from: json)
+        XCTAssertEqual(prefs.speechModel, "qwen-asr-0.6b")
+
+        let json17 = #"{"speechModel": "mlx-community/Qwen3-ASR-1.7B-8bit"}"#.data(using: .utf8)!
+        let prefs17 = try JSONDecoder().decode(Preferences.self, from: json17)
+        XCTAssertEqual(prefs17.speechModel, "qwen-asr-1.7b")
     }
     func testGestureReset() {
         var gesture = HotkeyGesture()
