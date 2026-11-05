@@ -396,6 +396,19 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         return (value as! AXUIElement)
     }
     func copyResult() { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(result, forType: .string); status = label("Copied", "已复制") }
+    static let menuBarMascotIcon: NSImage = {
+        let size = NSSize(width: 20, height: 18)
+        if let url = Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png") ?? Bundle.module.url(forResource: "MenuBarIcon@2x", withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            img.size = size
+            img.isTemplate = true
+            return img
+        }
+        let fallback = NSImage(systemSymbolName: "figure.wave", accessibilityDescription: "Voice Buddy") ?? NSImage()
+        fallback.size = size
+        fallback.isTemplate = true
+        return fallback
+    }()
     func showWindow(tab: AppTab? = nil) {
         if let tab { selectedTab = tab }
         refreshPermissions()
@@ -421,7 +434,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 .environmentObject(state)
                 .frame(minWidth: 700, minHeight: 540)
         }
-        MenuBarExtra("Voice Buddy", systemImage: state.recording ? "waveform.circle.fill" : "waveform") {
+        MenuBarExtra {
             Text("Voice Buddy: \(state.status)")
             Divider()
             Button(state.recording ? state.label("Stop Dictation", "结束听写") : state.label("Start Dictation", "开始听写")) {
@@ -441,6 +454,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             Button(state.label("Quit Voice Buddy", "退出 Voice Buddy")) {
                 NSApp.terminate(nil)
             }.keyboardShortcut("q")
+        } label: {
+            if state.recording {
+                Image(systemName: "waveform")
+            } else {
+                Image(nsImage: AppState.menuBarMascotIcon)
+            }
         }
     }
 }

@@ -182,6 +182,9 @@ fi
 if [ -f "${ICON_SRC}" ]; then
     cp "${ICON_SRC}" "${APP_BUNDLE}/Contents/Resources/AppIcon.icns"
 fi
+if [ -f "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/MenuBarIcon.png" ]; then
+    cp "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/MenuBarIcon"*.png "${APP_BUNDLE}/Contents/Resources/" 2>/dev/null || true
+fi
 
 cat > "${APP_BUNDLE}/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
