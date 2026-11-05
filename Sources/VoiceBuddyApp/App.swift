@@ -59,10 +59,14 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private var targetPID: pid_t = 0
     private var targetAppName = ""
     private var targetElement: AXUIElement?
-    private var task: Task<Void, Never>?
+    private var transcriptionTask: Task<Void, Never>?
+    private var transcriptionGeneration = UUID()
+    private var speechTask: Task<Void, Never>?
+    private var speechGeneration = UUID()
+    private var editorTask: Task<Void, Never>?
+    private var editorGeneration = UUID()
     private var liveTask: Task<Void, Never>?
     private var meter: Timer?
-    private var generation = UUID()
     private var hotKey: EventHotKeyRef?
     private var hotKeyID: UInt32 = 0
     private var gesture = HotkeyGesture()
@@ -223,12 +227,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         activeDownloadingSpeechModelID = targetId
         speechProgressMessage = label("Preparing speech model…", "正在准备语音识别模型…")
         let operation = UUID()
-        generation = operation
-        task = Task {
+        speechGeneration = operation
+        speechTask = Task {
             do {
                 try await models.prepareSpeech(id: targetId) { [weak self] value, msg in
                     Task { @MainActor in
-                        guard self?.generation == operation else { return }
+                        guard self?.speechGeneration == operation else { return }
                         self?.speechProgress = value
                         if isSelectedModel {
                             self?.modelProgress = value
@@ -236,8 +240,14 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self?.speechProgressMessage = msg
                     }
                 }
-                guard generation == operation else {
-                    await MainActor.run { completion?(false) }
+                guard speechGeneration == operation else {
+                    await MainActor.run {
+                        if self.speechGeneration == operation {
+                            self.speechPreparing = false
+                            self.activeDownloadingSpeechModelID = nil
+                        }
+                        completion?(false)
+                    }
                     return
                 }
                 await MainActor.run {
@@ -255,8 +265,14 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     completion?(true)
                 }
             } catch {
-                guard generation == operation else {
-                    await MainActor.run { completion?(false) }
+                guard speechGeneration == operation else {
+                    await MainActor.run {
+                        if self.speechGeneration == operation {
+                            self.speechPreparing = false
+                            self.activeDownloadingSpeechModelID = nil
+                        }
+                        completion?(false)
+                    }
                     return
                 }
                 await MainActor.run {
@@ -315,12 +331,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         activeDownloadingTextModelID = targetId
         editorProgressMessage = label("Preparing text model…", "正在准备文本模型…")
         let operation = UUID()
-        generation = operation
-        task = Task {
+        editorGeneration = operation
+        editorTask = Task {
             do {
                 try await models.prepareEditor(id: targetId) { [weak self] value, msg in
                     Task { @MainActor in
-                        guard self?.generation == operation else { return }
+                        guard self?.editorGeneration == operation else { return }
                         self?.editorProgress = value
                         if isSelectedModel {
                             self?.modelProgress = value
@@ -328,8 +344,14 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self?.editorProgressMessage = msg
                     }
                 }
-                guard generation == operation else {
-                    await MainActor.run { completion?(false) }
+                guard editorGeneration == operation else {
+                    await MainActor.run {
+                        if self.editorGeneration == operation {
+                            self.editorPreparing = false
+                            self.activeDownloadingTextModelID = nil
+                        }
+                        completion?(false)
+                    }
                     return
                 }
                 await MainActor.run {
@@ -347,8 +369,14 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     completion?(true)
                 }
             } catch {
-                guard generation == operation else {
-                    await MainActor.run { completion?(false) }
+                guard editorGeneration == operation else {
+                    await MainActor.run {
+                        if self.editorGeneration == operation {
+                            self.editorPreparing = false
+                            self.activeDownloadingTextModelID = nil
+                        }
+                        completion?(false)
+                    }
                     return
                 }
                 await MainActor.run {
@@ -561,7 +589,13 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
         liveTask?.cancel(); liveTask = nil; liveTranscript = ""; liveTranscriptState.clear(); tracker.reset()
         if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
-        generation = UUID(); gesture.reset(); task?.cancel(); task = nil
+        transcriptionGeneration = UUID()
+        speechGeneration = UUID()
+        editorGeneration = UUID()
+        gesture.reset()
+        transcriptionTask?.cancel(); transcriptionTask = nil
+        speechTask?.cancel(); speechTask = nil
+        editorTask?.cancel(); editorTask = nil
         if recording { _ = recorder.stop() }
         recording = false
         busy = false
@@ -638,12 +672,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
         let audio = recorder.stop(); recording = false; meter?.invalidate(); level = 0; busy = true
         if preferences.sounds { NSSound(named: "Pop")?.play() }
-        status = label("Transcribing…", "正在识别…"); overlay.show(state: self); let id = UUID(); generation = id
+        status = label("Transcribing…", "正在识别…"); overlay.show(state: self); let id = UUID(); transcriptionGeneration = id
         let settings = preferences; let pipeline = Pipeline(detector: models, transcription: models, refinement: models)
-        task = Task {
+        transcriptionTask = Task {
             do {
                 let output = try await pipeline.run(samples: audio, language: settings.speechLanguage, mode: settings.refinement)
-                guard generation == id else { return }; original = output.original; result = output.result; busy = false
+                guard transcriptionGeneration == id else { return }; original = output.original; result = output.result; busy = false
                 if settings.refinement.needsModel {
                     overlay.hide()
                     liveTranscriptState.clear()
@@ -671,7 +705,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     showWindow(tab: .recovery)
                 }
             } catch {
-                guard generation == id else { return }
+                guard transcriptionGeneration == id else { return }
                 overlay.hide()
                 liveTranscriptState.clear()
                 busy = false

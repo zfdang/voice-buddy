@@ -66,6 +66,9 @@ struct MainView: View {
                 state.selectedTab = .recovery
             }
         }
+        .onChange(of: state.selectedTab) { _, _ in
+            state.checkModelCacheStatus()
+        }
     }
 
     private var mascot: NSImage {
@@ -485,8 +488,8 @@ struct MainView: View {
                             Divider()
                         }
 
-                        let isDownloadingThis = state.speechPreparing && state.activeDownloadingSpeechModelID == spec.id
                         let isCached = state.cachedSpeechModelIDs.contains(spec.id)
+                        let isDownloadingThis = state.speechPreparing && state.activeDownloadingSpeechModelID == spec.id && !isCached
 
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .center, spacing: 10) {
@@ -541,6 +544,7 @@ struct MainView: View {
                                         state.cancel()
                                     }
                                     .controlSize(.small)
+                                    .accessibilityLabel(t("Cancel", "取消"))
                                 } else if isCached {
                                     Button(role: .destructive) {
                                         speechModelToDelete = spec.id
@@ -550,6 +554,7 @@ struct MainView: View {
                                     }
                                     .controlSize(.small)
                                     .disabled(state.busy || state.recording)
+                                    .accessibilityLabel(t("Delete Cache…", "删除本地缓存…"))
                                 } else {
                                     Button {
                                         state.downloadSpeechModel(id: spec.id)
@@ -559,6 +564,7 @@ struct MainView: View {
                                     .controlSize(.small)
                                     .buttonStyle(.borderedProminent)
                                     .disabled(state.busy || state.recording)
+                                    .accessibilityLabel(t("Download", "下载"))
                                 }
                             }
 
@@ -631,11 +637,17 @@ struct MainView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            Image(systemName: "clock")
-                                .foregroundStyle(.secondary)
-                            Text(t("Preparing model…", "准备中…"))
+                            Image(systemName: "pause.circle")
+                                .foregroundStyle(.orange)
+                            Text(t("Model not loaded into unified memory.", "模型尚未载入统一内存。"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            Button(t("Load into Memory", "载入内存")) {
+                                state.loadActiveSpeechModel()
+                            }
+                            .controlSize(.small)
+                            .buttonStyle(.bordered)
+                            .accessibilityLabel(t("Load into Memory", "载入内存"))
                         }
                         Spacer()
                     }
@@ -704,8 +716,8 @@ struct MainView: View {
                             Divider()
                         }
 
-                        let isDownloadingThis = state.editorPreparing && state.activeDownloadingTextModelID == spec.id
                         let isCached = state.cachedTextModelIDs.contains(spec.id)
+                        let isDownloadingThis = state.editorPreparing && state.activeDownloadingTextModelID == spec.id && !isCached
 
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .center, spacing: 10) {
@@ -760,6 +772,7 @@ struct MainView: View {
                                         state.cancel()
                                     }
                                     .controlSize(.small)
+                                    .accessibilityLabel(t("Cancel", "取消"))
                                 } else if isCached {
                                     Button(role: .destructive) {
                                         textModelToDelete = spec.id
@@ -769,6 +782,7 @@ struct MainView: View {
                                     }
                                     .controlSize(.small)
                                     .disabled(state.busy || state.recording)
+                                    .accessibilityLabel(t("Delete Cache…", "删除本地缓存…"))
                                 } else {
                                     Button {
                                         state.downloadTextModel(id: spec.id)
@@ -778,6 +792,7 @@ struct MainView: View {
                                     .controlSize(.small)
                                     .buttonStyle(.borderedProminent)
                                     .disabled(state.busy || state.recording)
+                                    .accessibilityLabel(t("Download", "下载"))
                                 }
                             }
 
@@ -850,11 +865,17 @@ struct MainView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            Image(systemName: "clock")
-                                .foregroundStyle(.secondary)
-                            Text(t("Preparing model…", "准备中…"))
+                            Image(systemName: "pause.circle")
+                                .foregroundStyle(.orange)
+                            Text(t("Model not loaded into unified memory.", "模型尚未载入统一内存。"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            Button(t("Load into Memory", "载入内存")) {
+                                state.loadActiveEditorModel()
+                            }
+                            .controlSize(.small)
+                            .buttonStyle(.bordered)
+                            .accessibilityLabel(t("Load into Memory", "载入内存"))
                         }
                         Spacer()
                     }
