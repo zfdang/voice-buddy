@@ -14,6 +14,7 @@
 | [OpenWhispr](https://github.com/OpenWhispr/openwhispr) | MIT，Electron 跨平台；支持本地与云端。 | 跨平台输入、模型适配和非标准 ASR 接口的 shim；可用于梳理后续 Windows 的接口边界。 | 功能范围较大，适合局部对照；其云端、会议和分享能力不是首期范围。 |
 | [VoiceInk](https://github.com/Beingpax/VoiceInk) | 原生 macOS，Swift，GPL-3.0；whisper.cpp + FluidAudio + 可选云端 API。 | 完备的应用场景模式（Context-Aware Modes / Profiles）、专有词典与纠错自学习、历史搜索、听写与 AI 助手双模态。详见 [VoiceInk 技术调研与后续演进方向](voiceink-technical-review.md)。 | **核心进阶功能参考标杆**。其应用级规则、用户词典与本地历史归档为 Voice Buddy P1/P2 阶段的核心规划输入；代码复用须评估 GPL 兼容性。 |
 | [Voicetypr](https://github.com/ideaplexa/voicetypr) | Rust + Tauri，跨 macOS、Windows；本地 Whisper/ONNX + 可选云端。 | 本地 CLI 与 Agent API 交互、音视频文件本地拖拽转文字、面向开发者（Vibe Coding）的代码/Prompt 格式化规则。详见 [Voicetypr 技术调研与功能借鉴分析](voicetypr-technical-review.md)。 | **开发者工具与接口生态标杆**。其 CLI 命令行能力、Agent Socket 接口及长音频文件转录为 Voice Buddy P2/P3 阶段的重要输入。 |
+| [VoiceKey](https://github.com/J3n5en/voicekey) | Swift + Tauri，跨 macOS、iOS、多端；接入豆包/微信输入法等中文云端 ASR。 | 长按/点按双模手势、修饰键监听、中文口语停顿与断句容错。详见 [核心参考项目与行业标杆调研](references.md)。 | **中文输入手势与交互标杆**。其长按说话防误触与中文断句停顿策略为 Voice Buddy 手势体验的重要参考。 |
 
 许可证只描述仓库主项目，模型权重、依赖、构建产物和商标需分别核查。MIT 也要求保留适用的版权与许可声明；不要直接复制代码而不检查具体文件和版本。仓库的隐私声明不能替代我们对版本、模型和网络行为的验证。
 

@@ -21,6 +21,7 @@ Voice Buddy 是一个离线优先的跨应用语音输入工具：用户在目�
 | [Superwhisper](https://superwhisper.com/blog/s1) | 有本地语音识别与本地文本整理组合，也有云模式；[更新记录](https://superwhisper.com/changelog)提及模式、语气和剪贴板保留。 | 本地并非空白市场；需重点比较中文、模型切换和插入稳定性。 |
 | [VoiceInk](https://github.com/Beingpax/VoiceInk) | 开源原生 macOS，Swift；支持上下文感知场景规则（App Modes）、专有词典自学习、历史归档与听写/助手双模态。 | **关键开源对标标杆**。其应用级场景规则（IDE/Mail/Chat 自动适配）与专有词汇表为 Voice Buddy 提供了极好的演进参考，详见 [VoiceInk 技术调研](voiceink-technical-review.md)。 |
 | [Voicetypr](https://github.com/ideaplexa/voicetypr) | 开源跨平台（macOS/Windows），Rust+Tauri；支持本地音视频长文件转写、CLI 命令行与本地 Agent 接口。 | **开发者生态与工具链标杆**。其 CLI 支持与 Agent API 接口启发了 Voice Buddy 与 Cursor/Claude Code 等 AI 编程助手深度集成的可能性，详见 [Voicetypr 技术调研](voicetypr-technical-review.md)。 |
+| [VoiceKey](https://github.com/J3n5en/voicekey) | 开源跨平台（macOS/iOS），Swift+Tauri；支持长按/点按手势、修饰键监听与中文口语停顿调优。 | **中文手势交互标杆**。详见 [核心参考项目与行业标杆调研](references.md)。 |
 
 以上依据官方公开材料，未实测各产品，功能、定价和隐私设置可能变化。“Superwhisper”是应用产品，不是可直接选用的单一识别模型；可评估 Whisper 系列等具体开放权重和运行时，不能假定其专有模型可再分发。
 
