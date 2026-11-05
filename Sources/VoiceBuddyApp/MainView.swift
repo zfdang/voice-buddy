@@ -502,8 +502,6 @@ struct MainView: View {
 
                         let isDownloadingThis = state.editorPreparing && state.activeDownloadingTextModelID == spec.id
                         let isCached = state.cachedTextModelIDs.contains(spec.id)
-                        let isActive = state.preferences.textModel == spec.id
-                        let isLoaded = isActive && state.editorReady
 
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .center, spacing: 10) {
@@ -528,7 +526,7 @@ struct MainView: View {
 
                                 Spacer()
 
-                                // Status indicator
+                                // Status indicator (Download status only)
                                 if isDownloadingThis {
                                     HStack(spacing: 4) {
                                         ProgressView().controlSize(.small)
@@ -536,26 +534,12 @@ struct MainView: View {
                                             .font(.caption.monospacedDigit())
                                             .foregroundStyle(.secondary)
                                     }
-                                } else if isLoaded {
-                                    HStack(spacing: 4) {
-                                        Circle().fill(Color.green).frame(width: 8, height: 8)
-                                        Text(t("Active · Ready", "生效中 · 已载入内存"))
-                                            .font(.caption.bold())
-                                            .foregroundStyle(.green)
-                                    }
-                                } else if isActive && state.editorPreparing {
-                                    HStack(spacing: 4) {
-                                        ProgressView().controlSize(.small)
-                                        Text(t("Loading…", "载入中…"))
-                                            .font(.caption)
-                                            .foregroundStyle(.blue)
-                                    }
                                 } else if isCached {
                                     HStack(spacing: 4) {
-                                        Circle().fill(Color.blue).frame(width: 8, height: 8)
-                                        Text(t("Downloaded", "本地已缓存"))
+                                        Circle().fill(Color.green).frame(width: 8, height: 8)
+                                        Text(t("Downloaded", "已下载"))
                                             .font(.caption)
-                                            .foregroundStyle(.blue)
+                                            .foregroundStyle(.secondary)
                                     }
                                 } else {
                                     HStack(spacing: 4) {
