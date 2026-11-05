@@ -5,6 +5,15 @@ import ApplicationServices
 import AVFoundation
 import VoiceBuddyCore
 
+public enum AppTab: Int, CaseIterable, Identifiable {
+    case general = 0
+    case permissions = 1
+    case speech = 2
+    case editor = 3
+    case recovery = 4
+    public var id: Int { rawValue }
+}
+
 @MainActor final class AppState: ObservableObject {
     @Published var preferences: Preferences { didSet { save() } }
     @Published var status = "Ready"
@@ -17,7 +26,10 @@ import VoiceBuddyCore
     @Published var modelProgress: Double = 0
     @Published var modelPreparing = false
     @Published var level: Float = 0
-    @Published var selectedTab = 0
+    @Published var selectedTab: AppTab = .general
+    @Published var micAuthorized = false
+    @Published var axAuthorized = false
+    @Published var micStatus: AVAuthorizationStatus = .notDetermined
     let models = LocalModels()
     private let recorder = Recorder()
     private let overlay = Overlay()
@@ -36,7 +48,30 @@ import VoiceBuddyCore
 
     init() {
         preferences = UserDefaults.standard.data(forKey: defaultsKey).flatMap { try? JSONDecoder().decode(Preferences.self, from: $0) } ?? Preferences()
+        refreshPermissions()
         registerHotkey()
+    }
+    func refreshPermissions() {
+        micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        micAuthorized = (micStatus == .authorized)
+        axAuthorized = AXIsProcessTrusted()
+    }
+    func requestMicrophoneAccess() {
+        Task {
+            _ = await AVCaptureDevice.requestAccess(for: .audio)
+            refreshPermissions()
+        }
+    }
+    func requestAccessibilityAccess() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+        refreshPermissions()
+    }
+    func openSystemSettings(for permission: String) {
+        let urlString = permission == "microphone"
+            ? "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+            : "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+        if let url = URL(string: urlString) { NSWorkspace.shared.open(url) }
     }
     func label(_ en: String, _ zh: String) -> String {
         let chinese = preferences.interfaceLanguage == "zh" || (preferences.interfaceLanguage == "system" && Locale.preferredLanguages.first?.hasPrefix("zh") == true)
@@ -121,7 +156,8 @@ import VoiceBuddyCore
         Task {
             let allowed = await AVCaptureDevice.requestAccess(for: .audio)
             busy = false
-            guard allowed else { status = label("Microphone permission is required.", "需要麦克风权限。"); showWindow(); return }
+            refreshPermissions()
+            guard allowed else { status = label("Microphone permission is required.", "需要麦克风权限。"); showWindow(tab: .permissions); return }
             guard !whileHeld || gesture.isDown else { status = label("Press and hold to dictate.", "请按住快捷键说话。"); return }
             targetPID = pid; targetElement = element
             do {
@@ -151,14 +187,15 @@ import VoiceBuddyCore
             do {
                 let output = try await pipeline.run(samples: audio, language: settings.speechLanguage, mode: settings.refinement)
                 guard generation == id else { return }; overlay.hide(); original = output.original; result = output.result; busy = false
-                if settings.refinement.needsModel { status = label("Review edited text before inserting.", "请先确认整理结果。"); showWindow(); return }
+                if settings.refinement.needsModel { status = label("Review edited text before inserting.", "请先确认整理结果。"); showWindow(tab: .recovery); return }
                 if settings.autoInsert && insertIfSafe(output.result) { status = label("Paste requested; check the target.", "已请求粘贴，请检查目标应用。") }
-                else { status = settings.autoInsert && !insertFailure.isEmpty ? insertFailure : label("Result ready to copy.", "文字已准备好，请复制。 "); showWindow() }
-            } catch { guard generation == id else { return }; overlay.hide(); busy = false; if let failure = error as? RefinementFailure { original = failure.original; result = failure.original; selectedTab = 3 }; status = error.localizedDescription; showWindow() }
+                else { status = settings.autoInsert && !insertFailure.isEmpty ? insertFailure : label("Result ready to copy.", "文字已准备好，请复制。 "); showWindow(tab: .recovery) }
+            } catch { guard generation == id else { return }; overlay.hide(); busy = false; if let failure = error as? RefinementFailure { original = failure.original; result = failure.original; selectedTab = .recovery }; status = error.localizedDescription; showWindow(tab: .recovery) }
         }
     }
     func insertIfSafe(_ text: String) -> Bool {
         insertFailure = ""
+        refreshPermissions()
         guard !text.isEmpty else { insertFailure = label("No text to insert.", "没有可插入的文字。"); return false }
         guard AXIsProcessTrusted() else { insertFailure = label("Accessibility access is needed; copy manually.", "需要辅助功能权限，请手动复制。 "); return false }
         guard !IsSecureEventInputEnabled() else { insertFailure = label("Secure input is active; copy manually.", "安全输入模式已启用，请手动复制。 "); return false }
@@ -191,7 +228,12 @@ import VoiceBuddyCore
         return (value as! AXUIElement)
     }
     func copyResult() { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(result, forType: .string); status = label("Copied", "已复制") }
-    func showWindow() { NSApp.activate(ignoringOtherApps: true); NSApp.windows.first(where: { $0.identifier?.rawValue == "main" })?.makeKeyAndOrderFront(nil) }
+    func showWindow(tab: AppTab? = nil) {
+        if let tab { selectedTab = tab }
+        refreshPermissions()
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first(where: { $0.identifier?.rawValue == "main" })?.makeKeyAndOrderFront(nil)
+    }
 }
 
 @main struct VoiceBuddyApp: App {
