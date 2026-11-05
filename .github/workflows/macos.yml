@@ -20,6 +20,18 @@ jobs:
       - name: Run tests
         run: swift test -j 4
 
+      - name: Build and smoke-test macOS application package
+        run: |
+          scripts/build-app.sh release --package -s - --allow-adhoc
+          test -d "dist/Voice Buddy.app"
+          plutil -lint "dist/Voice Buddy.app/Contents/Info.plist"
+          test -f dist/Voice-Buddy-*-macOS.dmg
+          test -f dist/Voice-Buddy-*-macOS.zip
+          test -s "dist/SHA256SUMS.txt"
+          codesign --verify --deep --strict "dist/Voice Buddy.app"
+          /usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "dist/Voice Buddy.app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :SUFeedURL" "dist/Voice Buddy.app/Contents/Info.plist"
+
   signed-development-build:
     if: github.event_name == 'workflow_dispatch'
     runs-on: macos-15
@@ -39,20 +51,39 @@ jobs:
             exit 1
           fi
           certificate="$RUNNER_TEMP/voice-buddy-development.p12"
-          public_certificate="$RUNNER_TEMP/voice-buddy-development.pem"
           keychain="$RUNNER_TEMP/voice-buddy-signing.keychain-db"
           keychain_password="$(openssl rand -hex 32)"
-          printf '%s' "$CERTIFICATE_BASE64" | base64 -D > "$certificate"
-          openssl pkcs12 -in "$certificate" -passin env:P12_PASSWORD -clcerts -nokeys -out "$public_certificate"
+
+          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+
           security create-keychain -p "$keychain_password" "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
-          security list-keychains -d user -s "$keychain"
-          security import "$certificate" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
-          security add-trusted-cert -r trustRoot -p codeSign -k "$keychain" "$public_certificate"
-          scripts/build-app.sh release
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$keychain"
+          security import "$certificate" -k "$keychain" -P "$P12_PASSWORD" -A -t cert -f pkcs12
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" || true
+
+          scripts/build-app.sh release --strict-signing -s "Voice Buddy Local Development"
+
+          echo "Verifying code signature..."
+          codesign --verify --deep --strict "dist/Voice Buddy.app"
+          sig_info="$(codesign -dvvv "dist/Voice Buddy.app" 2>&1)"
+          echo "$sig_info"
+          if echo "$sig_info" | grep -q "Signature=adhoc"; then
+            echo "::error::Signed development build resulted in adhoc signature!"
+            exit 1
+          fi
+
           ditto -c -k --keepParent 'dist/Voice Buddy.app' "$RUNNER_TEMP/Voice-Buddy-development.zip"
+
+      - name: Cleanup signing keychain
+        if: always()
+        run: |
+          keychain="$RUNNER_TEMP/voice-buddy-signing.keychain-db"
+          if [[ -f "$keychain" ]]; then
+            security delete-keychain "$keychain" || true
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: Voice-Buddy-development

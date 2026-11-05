@@ -35,6 +35,8 @@ Options:
   -o, --open            Launch dist/Voice Buddy.app after successful build
   -v, --version <ver>   Specify application bundle version (e.g. 0.1.0)
   -s, --sign <id>       Override codesigning identity
+  --strict-signing      Enforce non-adhoc codesigning certificate (fails if ad-hoc)
+  --allow-adhoc         Explicitly allow ad-hoc signing even in strict mode
   -h, --help            Show this help message
 
 Output:
@@ -69,6 +71,14 @@ while [[ $# -gt 0 ]]; do
         -s|--sign)
             CUSTOM_IDENTITY="$2"
             shift 2
+            ;;
+        --strict-signing)
+            STRICT_SIGNING="true"
+            shift
+            ;;
+        --allow-adhoc)
+            ALLOW_ADHOC="true"
+            shift
             ;;
         -h|--help)
             usage
@@ -121,6 +131,12 @@ else
         SIGN_IDENTITY="-"
         SIGN_REASON="ad-hoc signing (no keychain certificate found)"
     fi
+fi
+
+if [ "${STRICT_SIGNING:-false}" = "true" ] && [ "${SIGN_IDENTITY}" = "-" ] && [ "${ALLOW_ADHOC:-false}" != "true" ]; then
+    echo "Error: Strict codesigning required, but no valid codesigning certificate was found in Keychain (resolved to ad-hoc '-')." >&2
+    echo "Please configure a valid signing certificate in keychain or pass --allow-adhoc." >&2
+    exit 1
 fi
 
 echo "=========================================================="
@@ -240,6 +256,8 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<PLIST
     <string>https://raw.githubusercontent.com/zfdang/voice-buddy/main/appcast.xml</string>
     <key>SUEnableAutomaticChecks</key>
     <true/>
+    <key>SUPublicEDKey</key>
+    <string>${SPARKLE_PUBLIC_EDKEY:-DFo0eXPztCxiR8+rSEIV/Odz4I9eT8p1UcjFSUaAqoo=}</string>
 </dict>
 </plist>
 PLIST
@@ -258,6 +276,13 @@ fi
 echo "Verifying code signature..."
 codesign --verify --deep --strict "${APP_BUNDLE}"
 codesign -dvvv "${APP_BUNDLE}" 2>&1 | grep -E "(Identifier|Format|Authority|TeamIdentifier|Signature)" || true
+
+if [ "${STRICT_SIGNING:-false}" = "true" ] && [ "${ALLOW_ADHOC:-false}" != "true" ]; then
+    if codesign -dvvv "${APP_BUNDLE}" 2>&1 | grep -q "Signature=adhoc"; then
+        echo "Error: Application bundle ${APP_BUNDLE} was signed with ad-hoc signature, failing strict signing check." >&2
+        exit 1
+    fi
+fi
 
 # Optional: Packaging
 if [ "${DO_PACKAGE}" = "true" ]; then
