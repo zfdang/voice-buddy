@@ -18,6 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
   PUBLIC_REPO: zfdang/voice-buddy
 
@@ -47,13 +48,11 @@ jobs:
         with:
           ref: refs/tags/${{ steps.tag.outputs.tag }}
           fetch-depth: 0
-          persist-credentials: false
 
       - name: Verify release commit is on main
         id: commit
         run: |
-          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
-            fetch --quiet origin +refs/heads/main:refs/remotes/origin/main
+          git fetch --quiet origin +refs/heads/main:refs/remotes/origin/main
           sha="$(git rev-parse HEAD)"
           git merge-base --is-ancestor "$sha" origin/main
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
