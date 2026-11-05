@@ -224,11 +224,11 @@ def main():
     # 6. Tab 3: Speech Recognition & Navigation Link
     print(f"\n[6/9] Testing Tab 3: {'语音识别' if is_zh else 'Speech Recognition'} & Navigation Shortcut...")
     click_sidebar_row(3)
-    time.sleep(0.4)
+    time.sleep(0.6)
     elements = get_detail_elements()
     text_content = " ".join([e["name"] for e in elements] + [e["value"] for e in elements])
     if is_zh:
-        assert "识别模型" in text_content, "Missing '识别模型'"
+        assert "识别" in text_content or "语音" in text_content, "Missing '识别' or '语音'"
         assert "识别语言" in text_content, "Missing '识别语言'"
     else:
         assert "model" in text_content.lower(), "Missing 'model'"

@@ -32,6 +32,10 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     @Published var editorReady = false
     @Published var isSpeechDownloaded = false
     @Published var isEditorDownloaded = false
+    @Published var cachedSpeechModelIDs: Set<String> = []
+    @Published var activeDownloadingSpeechModelID: String? = nil
+    @Published var cachedTextModelIDs: Set<String> = []
+    @Published var activeDownloadingTextModelID: String? = nil
     @Published var speechPreparing = false
     @Published var speechProgress: Double = 0
     @Published var speechProgressMessage = ""
@@ -86,34 +90,50 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         updater.checkForUpdates()
     }
     func checkModelCacheStatus() {
-        let speechId = preferences.speechModel
-        let textId = preferences.textModel
         Task {
-            let sDownloaded = await models.isSpeechModelCached(id: speechId)
-            let eDownloaded = await models.isEditorModelCached(id: textId)
+            var cachedSpeeches = Set<String>()
+            for spec in SpeechModelSpec.allModels {
+                if await models.isSpeechModelCached(id: spec.id) {
+                    cachedSpeeches.insert(spec.id)
+                }
+            }
+            var cachedTexts = Set<String>()
+            for spec in TextModelSpec.allModels {
+                if await models.isEditorModelCached(id: spec.id) {
+                    cachedTexts.insert(spec.id)
+                }
+            }
             await MainActor.run {
-                self.isSpeechDownloaded = sDownloaded
-                self.isEditorDownloaded = eDownloaded
+                self.cachedSpeechModelIDs = cachedSpeeches
+                self.cachedTextModelIDs = cachedTexts
+
+                if !cachedSpeeches.contains(self.preferences.speechModel), let first = SpeechModelSpec.allModels.first(where: { cachedSpeeches.contains($0.id) }) {
+                    self.preferences.speechModel = first.id
+                }
+
+                let speechCached = self.cachedSpeechModelIDs.contains(self.preferences.speechModel)
+                self.isSpeechDownloaded = speechCached
+
+                if !cachedTexts.contains(self.preferences.textModel), let first = TextModelSpec.allModels.first(where: { cachedTexts.contains($0.id) }) {
+                    self.preferences.textModel = first.id
+                }
+
+                let editorCached = self.cachedTextModelIDs.contains(self.preferences.textModel)
+                self.isEditorDownloaded = editorCached
+
+                // Auto-load text model into memory if cached on disk
+                if editorCached && !self.editorReady && !self.editorPreparing && !self.busy {
+                    self.loadActiveEditorModel()
+                }
+                // Auto-load speech model into memory if cached on disk
+                if speechCached && !self.ready && !self.speechPreparing && !self.busy {
+                    self.loadActiveSpeechModel()
+                }
             }
         }
     }
     func autoPreloadModels() {
-        let speechId = preferences.speechModel
-        let textId = preferences.textModel
-        Task {
-            let sDownloaded = await models.isSpeechModelCached(id: speechId)
-            let eDownloaded = await models.isEditorModelCached(id: textId)
-            await MainActor.run {
-                self.isSpeechDownloaded = sDownloaded
-                self.isEditorDownloaded = eDownloaded
-            }
-            if sDownloaded {
-                prepareSpeech()
-            }
-            if preferences.refinement.needsModel && eDownloaded {
-                prepareEditor()
-            }
-        }
+        checkModelCacheStatus()
     }
     func refreshPermissions() {
         micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -167,24 +187,57 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         preferences.shortcutKeyCode = key; preferences.shortcutModifiers = mods
         return true
     }
-    func prepareSpeech(completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
+    func loadActiveSpeechModel() {
+        prepareSpeech(id: preferences.speechModel)
+    }
+
+    func selectSpeechModel(id: String) {
+        guard preferences.speechModel != id else { return }
+        preferences.speechModel = id
+        ready = false
+        if cachedSpeechModelIDs.contains(id) {
+            prepareSpeech(id: id)
+        }
+    }
+
+    func downloadSpeechModel(id: String) {
+        prepareSpeech(id: id) { [weak self] success in
+            guard let self, success else { return }
+            if !self.cachedSpeechModelIDs.contains(self.preferences.speechModel) || self.preferences.speechModel == id {
+                self.preferences.speechModel = id
+                self.ready = true
+            } else {
+                // Restore active model in memory if user was using another model
+                self.loadActiveSpeechModel()
+            }
+        }
+    }
+
+    func prepareSpeech(id: String? = nil, completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
         guard !busy else { completion?(false); return }
         busy = true
         speechPreparing = true
-        modelPreparing = true
+        let targetId = id ?? preferences.speechModel
+        let isSelectedModel = (targetId == preferences.speechModel)
+        if isSelectedModel {
+            modelPreparing = true
+            modelProgress = 0
+            status = label("Preparing speech model…", "正在准备语音识别模型…")
+        }
         speechProgress = 0
+        activeDownloadingSpeechModelID = targetId
         speechProgressMessage = label("Preparing speech model…", "正在准备语音识别模型…")
-        status = label("Preparing speech model…", "正在准备语音识别模型…")
-        let id = preferences.speechModel
         let operation = UUID()
         generation = operation
         task = Task {
             do {
-                try await models.prepareSpeech(id: id) { [weak self] value, msg in
+                try await models.prepareSpeech(id: targetId) { [weak self] value, msg in
                     Task { @MainActor in
                         guard self?.generation == operation else { return }
                         self?.speechProgress = value
-                        self?.modelProgress = value
+                        if isSelectedModel {
+                            self?.modelProgress = value
+                        }
                         self?.speechProgressMessage = msg
                     }
                 }
@@ -192,38 +245,83 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     await MainActor.run { completion?(false) }
                     return
                 }
-                ready = true
-                isSpeechDownloaded = true
-                speechPreparing = false
-                modelPreparing = false
-                busy = false
-                checkModelCacheStatus()
-                await MainActor.run { completion?(true) }
+                await MainActor.run {
+                    self.cachedSpeechModelIDs.insert(targetId)
+                    if isSelectedModel {
+                        self.ready = true
+                    }
+                    self.isSpeechDownloaded = self.cachedSpeechModelIDs.contains(self.preferences.speechModel)
+                    self.speechPreparing = false
+                    if isSelectedModel {
+                        self.modelPreparing = false
+                    }
+                    self.activeDownloadingSpeechModelID = nil
+                    self.busy = false
+                    completion?(true)
+                }
             } catch {
                 guard generation == operation else {
                     await MainActor.run { completion?(false) }
                     return
                 }
-                status = error.localizedDescription
-                speechProgressMessage = error.localizedDescription
-                speechPreparing = false
-                modelPreparing = false
-                busy = false
-                checkModelCacheStatus()
-                await MainActor.run { completion?(false) }
+                await MainActor.run {
+                    if isSelectedModel {
+                        self.status = error.localizedDescription
+                    }
+                    self.speechProgressMessage = error.localizedDescription
+                    self.speechPreparing = false
+                    if isSelectedModel {
+                        self.modelPreparing = false
+                    }
+                    self.activeDownloadingSpeechModelID = nil
+                    self.busy = false
+                    self.checkModelCacheStatus()
+                    completion?(false)
+                }
             }
         }
     }
 
-    func prepareEditor() {
-        guard !busy else { return }
+    func loadActiveEditorModel() {
+        prepareEditor(id: preferences.textModel)
+    }
+
+    func selectTextModel(id: String) {
+        guard preferences.textModel != id else { return }
+        preferences.textModel = id
+        editorReady = false
+        if cachedTextModelIDs.contains(id) {
+            prepareEditor(id: id)
+        }
+    }
+
+    func downloadTextModel(id: String) {
+        prepareEditor(id: id) { [weak self] success in
+            guard let self, success else { return }
+            if !self.cachedTextModelIDs.contains(self.preferences.textModel) || self.preferences.textModel == id {
+                self.preferences.textModel = id
+                self.editorReady = true
+            } else {
+                // Restore active model in memory if user was using another model
+                self.loadActiveEditorModel()
+            }
+        }
+    }
+
+    func prepareEditor(id: String? = nil, completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
+        guard !busy else { completion?(false); return }
         busy = true
         editorPreparing = true
-        modelPreparing = true
+        let targetId = id ?? preferences.textModel
+        let isSelectedModel = (targetId == preferences.textModel)
+        if isSelectedModel {
+            modelPreparing = true
+            modelProgress = 0
+            status = label("Preparing text model…", "正在准备文本模型…")
+        }
         editorProgress = 0
+        activeDownloadingTextModelID = targetId
         editorProgressMessage = label("Preparing text model…", "正在准备文本模型…")
-        status = label("Preparing text model…", "正在准备文本模型…")
-        let targetId = preferences.textModel
         let operation = UUID()
         generation = operation
         task = Task {
@@ -232,62 +330,112 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     Task { @MainActor in
                         guard self?.generation == operation else { return }
                         self?.editorProgress = value
-                        self?.modelProgress = value
+                        if isSelectedModel {
+                            self?.modelProgress = value
+                        }
                         self?.editorProgressMessage = msg
                     }
                 }
-                guard generation == operation else { return }
-                editorReady = true
-                isEditorDownloaded = true
-                editorPreparing = false
-                modelPreparing = false
-                busy = false
-                checkModelCacheStatus()
+                guard generation == operation else {
+                    await MainActor.run { completion?(false) }
+                    return
+                }
+                await MainActor.run {
+                    self.cachedTextModelIDs.insert(targetId)
+                    if isSelectedModel {
+                        self.editorReady = true
+                    }
+                    self.isEditorDownloaded = self.cachedTextModelIDs.contains(self.preferences.textModel)
+                    self.editorPreparing = false
+                    if isSelectedModel {
+                        self.modelPreparing = false
+                    }
+                    self.activeDownloadingTextModelID = nil
+                    self.busy = false
+                    completion?(true)
+                }
             } catch {
-                guard generation == operation else { return }
-                status = error.localizedDescription
-                editorProgressMessage = error.localizedDescription
-                editorPreparing = false
-                modelPreparing = false
-                busy = false
-                checkModelCacheStatus()
+                guard generation == operation else {
+                    await MainActor.run { completion?(false) }
+                    return
+                }
+                await MainActor.run {
+                    if isSelectedModel {
+                        self.status = error.localizedDescription
+                    }
+                    self.editorProgressMessage = error.localizedDescription
+                    self.editorPreparing = false
+                    if isSelectedModel {
+                        self.modelPreparing = false
+                    }
+                    self.activeDownloadingTextModelID = nil
+                    self.busy = false
+                    self.checkModelCacheStatus()
+                    completion?(false)
+                }
             }
         }
     }
 
-    func removeSpeechModel() {
+    func removeSpeechModel(id: String? = nil) {
         guard !busy && !recording else { return }
-        let id = preferences.speechModel
+        let targetId = id ?? preferences.speechModel
         busy = true
         Task {
             do {
-                try await models.removeSpeech(id: id)
-                ready = false
-                isSpeechDownloaded = false
-                status = label("Speech model removed", "语音模型已删除")
+                try await models.removeSpeech(id: targetId)
+                await MainActor.run {
+                    self.cachedSpeechModelIDs.remove(targetId)
+                    if self.preferences.speechModel == targetId {
+                        self.ready = false
+                        self.isSpeechDownloaded = false
+                        if let next = SpeechModelSpec.allModels.first(where: { self.cachedSpeechModelIDs.contains($0.id) }) {
+                            self.preferences.speechModel = next.id
+                            self.prepareSpeech(id: next.id)
+                        }
+                    }
+                    self.status = self.label("Speech model removed", "语音模型已删除")
+                }
             } catch {
-                status = error.localizedDescription
+                await MainActor.run {
+                    self.status = error.localizedDescription
+                }
             }
-            busy = false
-            checkModelCacheStatus()
+            await MainActor.run {
+                self.busy = false
+                self.checkModelCacheStatus()
+            }
         }
     }
 
-    func removeTextModel() {
+    func removeTextModel(id: String? = nil) {
         guard !busy && !recording else { return }
-        let targetId = preferences.textModel
+        let targetId = id ?? preferences.textModel
         busy = true
         Task {
             do {
                 try await models.removeEditor(id: targetId)
-                editorReady = false
-                isEditorDownloaded = false
-                status = label("Text model removed", "文本模型已删除")
+                await MainActor.run {
+                    self.cachedTextModelIDs.remove(targetId)
+                    if self.preferences.textModel == targetId {
+                        self.editorReady = false
+                        self.isEditorDownloaded = false
+                        if let next = TextModelSpec.allModels.first(where: { self.cachedTextModelIDs.contains($0.id) }) {
+                            self.preferences.textModel = next.id
+                            self.prepareEditor(id: next.id)
+                        }
+                    }
+                    self.status = self.label("Text model removed", "文本模型已删除")
+                }
             } catch {
-                status = error.localizedDescription
+                await MainActor.run {
+                    self.status = error.localizedDescription
+                }
             }
-            busy = false
-            checkModelCacheStatus()
+            await MainActor.run {
+                self.busy = false
+                self.checkModelCacheStatus()
+            }
         }
     }
     func hotkeyDown() {
@@ -414,7 +562,17 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         liveTask?.cancel(); liveTask = nil; liveTranscript = ""; liveTranscriptState.clear(); tracker.reset()
         if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
         generation = UUID(); gesture.reset(); task?.cancel(); task = nil
-        if recording { _ = recorder.stop() }; recording = false; busy = false; modelPreparing = false; meter?.invalidate(); level = 0
+        if recording { _ = recorder.stop() }
+        recording = false
+        busy = false
+        modelPreparing = false
+        speechPreparing = false
+        editorPreparing = false
+        activeDownloadingSpeechModelID = nil
+        activeDownloadingTextModelID = nil
+        meter?.invalidate()
+        level = 0
+        checkModelCacheStatus()
         overlay.hide(); if preferences.sounds { NSSound(named: "Basso")?.play() }
         status = label("Cancelled", "已取消")
     }
@@ -732,17 +890,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 .frame(minWidth: 700, minHeight: 540)
         }
         MenuBarExtra {
-            Text("Voice Buddy: \(state.status)")
-            Divider()
             Button(state.label("Settings…", "设置…")) {
                 state.showWindow(tab: .general)
-            }
-            Button(state.label("Permissions…", "权限检查…")) {
-                state.showWindow(tab: .permissions)
-            }
-            Button(state.label("Result Editor…", "文本编辑器…")) {
-                state.showWindow(tab: .recovery)
-            }
+            }.keyboardShortcut(",")
             Divider()
             Button(state.label("About Voice Buddy…", "关于 Voice Buddy…")) {
                 state.showWindow(tab: .about)

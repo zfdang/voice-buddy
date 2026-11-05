@@ -4,6 +4,62 @@ import SpeechVAD
 import Qwen3Chat
 import VoiceBuddyCore
 
+public struct SpeechModelSpec: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public let size: String
+    public let quantization: String
+    public let description: String
+    public let descriptionEn: String
+
+    public static let allModels: [SpeechModelSpec] = [
+        SpeechModelSpec(
+            id: "qwen-asr-0.6b",
+            name: "Qwen 3 ASR 0.6B",
+            size: "480 MB",
+            quantization: "4-bit",
+            description: "极速轻量 · 推荐日常快速听写与中英混说，显存占用极低",
+            descriptionEn: "Ultra-fast & lightweight · Recommended for daily dictation, minimal memory footprint"
+        ),
+        SpeechModelSpec(
+            id: "qwen-asr-1.7b",
+            name: "Qwen 3 ASR 1.7B",
+            size: "1.7 GB",
+            quantization: "8-bit",
+            description: "高精旗舰 · 复杂术语、长句及多语种识别更严谨细腻",
+            descriptionEn: "Flagship precision · Highly accurate for complex terms, long sentences, and multilingual speech"
+        )
+    ]
+}
+
+public struct TextModelSpec: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public let size: String
+    public let quantization: String
+    public let description: String
+    public let descriptionEn: String
+
+    public static let allModels: [TextModelSpec] = [
+        TextModelSpec(
+            id: "qwen35-text-0.8b-int5",
+            name: "Qwen 3.5 0.8B",
+            size: "494 MB",
+            quantization: "INT5",
+            description: "极速轻量 · 显存占用极低，推荐日常快速听写与标点整理",
+            descriptionEn: "Ultra-lightweight · Minimal memory footprint, recommended for fast dictation and punctuation"
+        ),
+        TextModelSpec(
+            id: "qwen35-text-0.8b-int8",
+            name: "Qwen 3.5 0.8B",
+            size: "763 MB",
+            quantization: "INT8",
+            description: "高精量化 · 表达更加严谨细腻，推荐正式长文与重写润色",
+            descriptionEn: "Higher precision · Rigorous and nuanced phrasing, recommended for long-form rewrite and polishing"
+        )
+    ]
+}
+
 actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     private var asr: Qwen3ASRModel?
     private var vad: SileroVADModel?
@@ -12,35 +68,47 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     private var selectedEditorID = ""
     private let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("VoiceBuddy/Models", isDirectory: true)
     private func directory(_ name: String) -> URL { root.appendingPathComponent(name, isDirectory: true) }
-    private func speechDirectory(_ id: String) -> URL { directory(id.contains("1.7B") ? "qwen-asr-1.7b" : "qwen-asr-0.6b") }
+    private func speechDirectory(_ id: String) -> URL { directory(id.contains("1.7") ? "qwen-asr-1.7b" : "qwen-asr-0.6b") }
     private func textDirectory(_ id: String) -> URL { directory(id) }
 
     func isSpeechModelCached(id: String) -> Bool {
         let dir = speechDirectory(id)
         let vadDir = directory("silero-vad")
-        var isDir: ObjCBool = false
-        let hasAsr = FileManager.default.fileExists(atPath: dir.path, isDirectory: &isDir) && isDir.boolValue
-        let hasVad = FileManager.default.fileExists(atPath: vadDir.path, isDirectory: &isDir) && isDir.boolValue
-        return hasAsr && hasVad
+        return hasSafetensors(in: dir) && hasSafetensors(in: vadDir)
     }
 
     func isEditorModelCached(id: String? = nil) -> Bool {
         let targetId = id ?? "qwen35-text-0.8b-int5"
         let dir = textDirectory(targetId)
-        var isDir: ObjCBool = false
-        if FileManager.default.fileExists(atPath: dir.path, isDirectory: &isDir) && isDir.boolValue {
+        if hasSafetensors(in: dir) {
             return true
         }
         if targetId == "qwen35-text-0.8b-int5" {
             let legacy = directory("qwen35-text-0.8b")
-            return FileManager.default.fileExists(atPath: legacy.path, isDirectory: &isDir) && isDir.boolValue
+            return hasSafetensors(in: legacy)
+        }
+        return false
+    }
+
+    private func hasSafetensors(in dir: URL) -> Bool {
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return false }
+        for f in files {
+            if f.hasSuffix(".safetensors") && !f.hasPrefix(".") {
+                return true
+            }
+            var isDir: ObjCBool = false
+            let sub = dir.appendingPathComponent(f)
+            if FileManager.default.fileExists(atPath: sub.path, isDirectory: &isDir), isDir.boolValue, !f.hasPrefix(".") {
+                if hasSafetensors(in: sub) { return true }
+            }
         }
         return false
     }
 
     func prepareSpeech(id: String, progress: @escaping @Sendable (Double, String) -> Void) async throws {
+        let hfModelId = (id.contains("1.7") || id.contains("large")) ? Qwen3ASRModel.largeModelId : Qwen3ASRModel.defaultModelId
         if asr == nil || selectedID != id {
-            asr = try await Qwen3ASRModel.fromPretrained(modelId: id, cacheDir: speechDirectory(id), progressHandler: { value, message in progress(value * 0.9, message) })
+            asr = try await Qwen3ASRModel.fromPretrained(modelId: hfModelId, cacheDir: speechDirectory(id), progressHandler: { value, message in progress(value * 0.9, message) })
             selectedID = id
         }
         if vad == nil { vad = try await SileroVADModel.fromPretrained(cacheDir: directory("silero-vad"), progressHandler: { value, message in progress(0.9 + value * 0.1, message) }) }

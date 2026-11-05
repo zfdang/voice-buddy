@@ -10,7 +10,7 @@ public struct Preferences: Codable, Equatable {
     public var interfaceLanguage = "system"
     public var speechLanguage = "auto"
     public var microphoneUID = ""
-    public var speechModel = "mlx-community/Qwen3-ASR-0.6B-8bit"
+    public var speechModel = "qwen-asr-0.6b"
     public var textModel = "qwen35-text-0.8b-int5"
     public var refinement: Refinement = .light
     public var holdToTalk: Bool? = nil // nil preserves older settings and defaults to hold
@@ -26,7 +26,12 @@ public struct Preferences: Codable, Equatable {
         interfaceLanguage = try container.decodeIfPresent(String.self, forKey: .interfaceLanguage) ?? "system"
         speechLanguage = try container.decodeIfPresent(String.self, forKey: .speechLanguage) ?? "auto"
         microphoneUID = try container.decodeIfPresent(String.self, forKey: .microphoneUID) ?? ""
-        speechModel = try container.decodeIfPresent(String.self, forKey: .speechModel) ?? "mlx-community/Qwen3-ASR-0.6B-8bit"
+        let rawSpeech = try container.decodeIfPresent(String.self, forKey: .speechModel) ?? "qwen-asr-0.6b"
+        if rawSpeech.contains("1.7") {
+            speechModel = "qwen-asr-1.7b"
+        } else {
+            speechModel = "qwen-asr-0.6b"
+        }
         textModel = try container.decodeIfPresent(String.self, forKey: .textModel) ?? "qwen35-text-0.8b-int5"
         refinement = try container.decodeIfPresent(Refinement.self, forKey: .refinement) ?? .light
         holdToTalk = try container.decodeIfPresent(Bool.self, forKey: .holdToTalk)
