@@ -511,13 +511,32 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     }
     func copyResult() { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(result, forType: .string); status = label("Copied", "已复制") }
     static let menuBarMascotIcon: NSImage = {
-        let size = NSSize(width: 20, height: 18)
-        if let url = Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png") ?? Bundle.module.url(forResource: "MenuBarIcon@2x", withExtension: "png"),
-           let img = NSImage(contentsOf: url) {
-            img.size = size
+        let size = NSSize(width: 20, height: 20)
+        let img = NSImage(size: size)
+
+        let url1x = Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png") ?? Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png")
+        let url2x = Bundle.module.url(forResource: "MenuBarIcon@2x", withExtension: "png") ?? Bundle.main.url(forResource: "MenuBarIcon@2x", withExtension: "png")
+
+        if let url1x, let data1x = try? Data(contentsOf: url1x), let rep1x = NSBitmapImageRep(data: data1x) {
+            rep1x.size = size
+            img.addRepresentation(rep1x)
+        }
+        if let url2x, let data2x = try? Data(contentsOf: url2x), let rep2x = NSBitmapImageRep(data: data2x) {
+            rep2x.size = size
+            img.addRepresentation(rep2x)
+        }
+
+        if !img.representations.isEmpty {
             img.isTemplate = true
             return img
         }
+
+        if let url = url1x ?? url2x, let raw = NSImage(contentsOf: url) {
+            raw.size = size
+            raw.isTemplate = true
+            return raw
+        }
+
         let fallback = NSImage(systemSymbolName: "figure.wave", accessibilityDescription: "Voice Buddy") ?? NSImage()
         fallback.size = size
         fallback.isTemplate = true
