@@ -62,11 +62,9 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ./build.sh -v 0.1.0 --package
 ```
 
-构建产物将输出至 `dist/` 目录：
-- `dist/Voice Buddy.app`
-- `dist/Voice-Buddy-0.1.0-macOS.dmg`
-- `dist/Voice-Buddy-0.1.0-macOS.zip`
-- `dist/SHA256SUMS.txt`
+构建产物输出至 `dist/` 目录：
+- `dist/Voice Buddy.app`（默认仅生成单一应用 Bundle）
+- 带 `--package` 时额外生成 `.dmg`、`.zip` 与 `SHA256SUMS.txt` 用于发布分发
 
 ---
 

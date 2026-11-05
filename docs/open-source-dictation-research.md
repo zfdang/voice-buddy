@@ -12,7 +12,7 @@
 | [VoxLocal](https://github.com/romarayt/VoxLocal) | macOS，MIT；whisper.cpp + 可选本机 Ollama。 | 设置中的麦克风、识别语言、界面语言、热键冲突、本机服务探测；浮窗覆盖完整状态且不抢焦点；缺权限时有手动粘贴路径。 | **优先对照交互和异常恢复**。它描述的插入顺序为 AX 优先、剪贴板后备；我们需实测插入与 Undo，不预设哪种对所有应用更好。 |
 | [Handy](https://github.com/cjpais/Handy) | MIT，跨 macOS、Windows、Linux；本地 Whisper/Parakeet，Silero VAD。 | 同时提供按住和切换录音；VAD 过滤静音；模型切换和跨平台结构可以作为以后 Windows 工作的参考。 | **优先研究 VAD 边界与平台抽象**；其模型和性能不能直接推断 Qwen 的表现。 |
 | [OpenWhispr](https://github.com/OpenWhispr/openwhispr) | MIT，Electron 跨平台；支持本地与云端。 | 跨平台输入、模型适配和非标准 ASR 接口的 shim；可用于梳理后续 Windows 的接口边界。 | 功能范围较大，适合局部对照；其云端、会议和分享能力不是首期范围。 |
-| [VoiceInk](https://github.com/Beingpax/VoiceInk) | 原生 macOS，GPL-3.0。 | 应用/URL 规则、词典、模式切换及快捷键等用户体验可用于后续产品调研。 | 应用场景适配可借鉴产品思路；屏幕和 URL 上下文不纳入首期默认采集。GPL 代码复用须先评估与项目分发许可的兼容性。 |
+| [VoiceInk](https://github.com/Beingpax/VoiceInk) | 原生 macOS，Swift，GPL-3.0；whisper.cpp + FluidAudio + 可选云端 API。 | 完备的应用场景模式（Context-Aware Modes / Profiles）、专有词典与纠错自学习、历史搜索、听写与 AI 助手双模态。详见 [VoiceInk 技术调研与后续演进方向](voiceink-technical-review.md)。 | **核心进阶功能参考标杆**。其应用级规则、用户词典与本地历史归档为 Voice Buddy P1/P2 阶段的核心规划输入；代码复用须评估 GPL 兼容性。 |
 
 许可证只描述仓库主项目，模型权重、依赖、构建产物和商标需分别核查。MIT 也要求保留适用的版权与许可声明；不要直接复制代码而不检查具体文件和版本。仓库的隐私声明不能替代我们对版本、模型和网络行为的验证。
 

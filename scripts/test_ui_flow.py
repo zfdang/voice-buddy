@@ -247,14 +247,14 @@ def main():
     ''')
     menu_items = [m.strip() for m in menu_items_raw.split(",")]
     print(f"      MenuBarExtra items: {menu_items}")
-    assert "Dictate / 听写" in menu_items and "Quit / 退出" in menu_items
+    assert any("听写" in item or "Dictat" in item for item in menu_items) and any("退出" in item or "Quit" in item for item in menu_items), f"Expected Dictate and Quit items in MenuBarExtra, got {menu_items}"
 
     # Quit app via MenuBarExtra
     run_apple_script('''
     tell application "System Events"
         tell process "VoiceBuddy"
             tell menu bar 2
-                click menu item 3 of menu 1 of menu bar item 1
+                click (last menu item of menu 1 of menu bar item 1)
             end tell
         end tell
     end tell

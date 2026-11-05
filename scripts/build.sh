@@ -146,6 +146,10 @@ BUILD_DIR="${ROOT_DIR}/.build" bash "${ROOT_DIR}/.build/checkouts/speech-swift/s
 # 3. Assemble App Bundle
 echo ""
 echo "==> Step 3/4: Assembling dist/Voice Buddy.app..."
+mkdir -p "${ROOT_DIR}/dist"
+if [ "${DO_PACKAGE}" != "true" ]; then
+    rm -f "${ROOT_DIR}/dist"/*.dmg "${ROOT_DIR}/dist"/*.zip "${ROOT_DIR}/dist"/SHA256SUMS.txt
+fi
 APP_BUNDLE="${ROOT_DIR}/dist/Voice Buddy.app"
 rm -rf "${APP_BUNDLE}"
 mkdir -p "${APP_BUNDLE}/Contents/MacOS" "${APP_BUNDLE}/Contents/Resources"
@@ -153,6 +157,34 @@ mkdir -p "${APP_BUNDLE}/Contents/MacOS" "${APP_BUNDLE}/Contents/Resources"
 cp "${ROOT_DIR}/.build/${BUILD_CONFIG}/VoiceBuddy" "${APP_BUNDLE}/Contents/MacOS/VoiceBuddy"
 cp -R "${ROOT_DIR}/.build/${BUILD_CONFIG}/VoiceBuddy_VoiceBuddyApp.bundle" "${APP_BUNDLE}/Contents/Resources/"
 cp "${ROOT_DIR}/.build/${BUILD_CONFIG}/mlx.metallib" "${APP_BUNDLE}/Contents/MacOS/mlx.metallib"
+
+# Ensure AppIcon.icns exists
+ICON_SRC="${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/AppIcon.icns"
+if [ ! -f "${ICON_SRC}" ] && [ -f "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/mascot.png" ]; then
+    echo "Generating AppIcon.icns from mascot.png..."
+    TMP_ICONSET="$(mktemp -d)/AppIcon.iconset"
+    mkdir -p "${TMP_ICONSET}"
+    PNG_SRC="${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/mascot.png"
+    sips -z 16 16     "${PNG_SRC}" --out "${TMP_ICONSET}/icon_16x16.png" >/dev/null 2>&1 || true
+    sips -z 32 32     "${PNG_SRC}" --out "${TMP_ICONSET}/icon_16x16@2x.png" >/dev/null 2>&1 || true
+    sips -z 32 32     "${PNG_SRC}" --out "${TMP_ICONSET}/icon_32x32.png" >/dev/null 2>&1 || true
+    sips -z 64 64     "${PNG_SRC}" --out "${TMP_ICONSET}/icon_32x32@2x.png" >/dev/null 2>&1 || true
+    sips -z 128 128   "${PNG_SRC}" --out "${TMP_ICONSET}/icon_128x128.png" >/dev/null 2>&1 || true
+    sips -z 256 256   "${PNG_SRC}" --out "${TMP_ICONSET}/icon_128x128@2x.png" >/dev/null 2>&1 || true
+    sips -z 256 256   "${PNG_SRC}" --out "${TMP_ICONSET}/icon_256x256.png" >/dev/null 2>&1 || true
+    sips -z 512 512   "${PNG_SRC}" --out "${TMP_ICONSET}/icon_256x256@2x.png" >/dev/null 2>&1 || true
+    sips -z 512 512   "${PNG_SRC}" --out "${TMP_ICONSET}/icon_512x512.png" >/dev/null 2>&1 || true
+    sips -z 1024 1024 "${PNG_SRC}" --out "${TMP_ICONSET}/icon_512x512@2x.png" >/dev/null 2>&1 || true
+    iconutil -c icns "${TMP_ICONSET}" -o "${ICON_SRC}" 2>/dev/null || true
+    rm -rf "$(dirname "${TMP_ICONSET}")"
+fi
+
+if [ -f "${ICON_SRC}" ]; then
+    cp "${ICON_SRC}" "${APP_BUNDLE}/Contents/Resources/AppIcon.icns"
+fi
+if [ -f "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/MenuBarIcon.png" ]; then
+    cp "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/MenuBarIcon"*.png "${APP_BUNDLE}/Contents/Resources/" 2>/dev/null || true
+fi
 
 cat > "${APP_BUNDLE}/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -169,6 +201,10 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<PLIST
     <string>Voice Buddy</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
     <string>${BUNDLE_VERSION}</string>
     <key>CFBundleVersion</key>
@@ -182,6 +218,8 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+
+touch "${APP_BUNDLE}"
 
 # 4. Code Signing
 echo ""

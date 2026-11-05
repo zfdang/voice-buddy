@@ -19,6 +19,7 @@ Voice Buddy 是一个离线优先的跨应用语音输入工具：用户在目�
 | [Typeless](https://www.typeless.com/help/quickstart/dictate) | 快捷键触发，允许自然表达和自我纠正，整理后写入目标应用；[数据说明](https://www.typeless.com/data-controls)称处理音频及有限上下文。 | 借鉴低摩擦流程，但不要将远程上下文处理等同于本地隐私。 |
 | [Wispr Flow](https://docs.wisprflow.ai/articles/3467817258-security-and-compliance-faq) | 跨应用听写；官方说明语音听写使用云处理，macOS 安装需要麦克风与辅助功能权限。 | 这是体验基准，离线运行是差异之一；权限引导必须清楚。 |
 | [Superwhisper](https://superwhisper.com/blog/s1) | 有本地语音识别与本地文本整理组合，也有云模式；[更新记录](https://superwhisper.com/changelog)提及模式、语气和剪贴板保留。 | 本地并非空白市场；需重点比较中文、模型切换和插入稳定性。 |
+| [VoiceInk](https://github.com/Beingpax/VoiceInk) | 开源原生 macOS，Swift；支持上下文感知场景规则（App Modes）、专有词典自学习、历史归档与听写/助手双模态。 | **关键开源对标标杆**。其应用级场景规则（IDE/Mail/Chat 自动适配）与专有词汇表为 Voice Buddy 提供了极好的演进参考，详见 [VoiceInk 技术调研](voiceink-technical-review.md)。 |
 
 以上依据官方公开材料，未实测各产品，功能、定价和隐私设置可能变化。“Superwhisper”是应用产品，不是可直接选用的单一识别模型；可评估 Whisper 系列等具体开放权重和运行时，不能假定其专有模型可再分发。
 

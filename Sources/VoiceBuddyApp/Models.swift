@@ -13,6 +13,21 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     private func directory(_ name: String) -> URL { root.appendingPathComponent(name, isDirectory: true) }
     private func speechDirectory(_ id: String) -> URL { directory(id.contains("1.7B") ? "qwen-asr-1.7b" : "qwen-asr-0.6b") }
 
+    func isSpeechModelCached(id: String) -> Bool {
+        let dir = speechDirectory(id)
+        let vadDir = directory("silero-vad")
+        var isDir: ObjCBool = false
+        let hasAsr = FileManager.default.fileExists(atPath: dir.path, isDirectory: &isDir) && isDir.boolValue
+        let hasVad = FileManager.default.fileExists(atPath: vadDir.path, isDirectory: &isDir) && isDir.boolValue
+        return hasAsr && hasVad
+    }
+
+    func isEditorModelCached() -> Bool {
+        let dir = directory("qwen35-text-0.8b")
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: dir.path, isDirectory: &isDir) && isDir.boolValue
+    }
+
     func prepareSpeech(id: String, progress: @escaping @Sendable (Double, String) -> Void) async throws {
         if asr == nil || selectedID != id {
             asr = try await Qwen3ASRModel.fromPretrained(modelId: id, cacheDir: speechDirectory(id), progressHandler: { value, message in progress(value * 0.9, message) })
