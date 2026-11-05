@@ -17,21 +17,18 @@ jobs:
             exit 1
           fi
 
-          echo "=== 1. Checking repository accessibility & permissions ==="
-          gh api repos/zfdang/voice-buddy --jq '{
-            repo: .full_name,
-            private: .private,
-            permissions: .permissions
-          }'
+          echo "=== 1. Inspecting Token Headers & Scopes ==="
+          curl -sI -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/user | grep -iE 'x-oauth-scopes|x-accepted-oauth-scopes|x-github-token-type|status'
 
-          echo "=== 2. Checking Release API permissions ==="
-          gh release list --repo zfdang/voice-buddy
+          echo "=== 2. Inspecting Voice-Buddy Repo Permissions ==="
+          curl -s -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/zfdang/voice-buddy | jq '{full_name: .full_name, private: .private, permissions: .permissions}'
 
-          echo "=== 3. Checking Git Push Access (dry-run) ==="
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/zfdang/voice-buddy.git" test-clone
+          echo "=== 3. Testing Git Push with explicit credential override ==="
+          rm -rf test-clone
+          # Test with git -c credential.helper= so runner's default credential helper cannot intercept
+          git -c credential.helper= clone "https://${GH_TOKEN}@github.com/zfdang/voice-buddy.git" test-clone
           cd test-clone
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git push --dry-run origin main
-
-          echo "=== All checks passed! Token has full required permissions. ==="
+          git -c credential.helper= push --dry-run origin main
+          echo "=== Success: Token has full git push access to zfdang/voice-buddy ==="
