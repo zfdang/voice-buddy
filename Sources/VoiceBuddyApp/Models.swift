@@ -9,9 +9,11 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     private var vad: SileroVADModel?
     private var editor: Qwen35MLXChat?
     private var selectedID = ""
+    private var selectedEditorID = ""
     private let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("VoiceBuddy/Models", isDirectory: true)
     private func directory(_ name: String) -> URL { root.appendingPathComponent(name, isDirectory: true) }
     private func speechDirectory(_ id: String) -> URL { directory(id.contains("1.7B") ? "qwen-asr-1.7b" : "qwen-asr-0.6b") }
+    private func textDirectory(_ id: String) -> URL { directory(id) }
 
     func isSpeechModelCached(id: String) -> Bool {
         let dir = speechDirectory(id)
@@ -22,10 +24,18 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         return hasAsr && hasVad
     }
 
-    func isEditorModelCached() -> Bool {
-        let dir = directory("qwen35-text-0.8b")
+    func isEditorModelCached(id: String? = nil) -> Bool {
+        let targetId = id ?? "qwen35-text-0.8b-int5"
+        let dir = textDirectory(targetId)
         var isDir: ObjCBool = false
-        return FileManager.default.fileExists(atPath: dir.path, isDirectory: &isDir) && isDir.boolValue
+        if FileManager.default.fileExists(atPath: dir.path, isDirectory: &isDir) && isDir.boolValue {
+            return true
+        }
+        if targetId == "qwen35-text-0.8b-int5" {
+            let legacy = directory("qwen35-text-0.8b")
+            return FileManager.default.fileExists(atPath: legacy.path, isDirectory: &isDir) && isDir.boolValue
+        }
+        return false
     }
 
     func prepareSpeech(id: String, progress: @escaping @Sendable (Double, String) -> Void) async throws {
@@ -35,16 +45,44 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
         if vad == nil { vad = try await SileroVADModel.fromPretrained(cacheDir: directory("silero-vad"), progressHandler: { value, message in progress(0.9 + value * 0.1, message) }) }
     }
-    func prepareEditor(progress: @escaping @Sendable (Double, String) -> Void) async throws {
-        if editor == nil { editor = try await Qwen35MLXChat.fromPretrained(cacheDir: directory("qwen35-text-0.8b"), progressHandler: progress) }
+
+    func prepareEditor(id: String? = nil, progress: @escaping @Sendable (Double, String) -> Void) async throws {
+        let targetId = id ?? "qwen35-text-0.8b-int5"
+        let q: Qwen35MLXChat.Quantization = targetId.contains("int8") ? .int8 : .int5
+        var dir = textDirectory(targetId)
+        if targetId == "qwen35-text-0.8b-int5" && !FileManager.default.fileExists(atPath: dir.path) {
+            let legacy = directory("qwen35-text-0.8b")
+            if FileManager.default.fileExists(atPath: legacy.path) {
+                dir = legacy
+            }
+        }
+        if editor == nil || selectedEditorID != targetId {
+            editor = try await Qwen35MLXChat.fromPretrained(quantization: q, cacheDir: dir, progressHandler: progress)
+            selectedEditorID = targetId
+        }
     }
+
     func removeSpeech(id: String) throws {
         if selectedID == id { asr = nil; selectedID = "" }
         let path = speechDirectory(id); if FileManager.default.fileExists(atPath: path.path) { try FileManager.default.removeItem(at: path) }
     }
-    func removeEditor() throws {
-        editor = nil
-        let path = directory("qwen35-text-0.8b"); if FileManager.default.fileExists(atPath: path.path) { try FileManager.default.removeItem(at: path) }
+
+    func removeEditor(id: String? = nil) throws {
+        let targetId = id ?? selectedEditorID
+        if selectedEditorID == targetId {
+            editor = nil
+            selectedEditorID = ""
+        }
+        let path = textDirectory(targetId)
+        if FileManager.default.fileExists(atPath: path.path) {
+            try FileManager.default.removeItem(at: path)
+        }
+        if targetId == "qwen35-text-0.8b-int5" {
+            let legacy = directory("qwen35-text-0.8b")
+            if FileManager.default.fileExists(atPath: legacy.path) {
+                try FileManager.default.removeItem(at: legacy)
+            }
+        }
     }
     func containsSpeech(_ samples: [Float]) async throws -> Bool {
         guard let vad else { throw VoiceBuddyError.modelUnavailable("VAD") }

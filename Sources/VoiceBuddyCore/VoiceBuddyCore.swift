@@ -11,13 +11,31 @@ public struct Preferences: Codable, Equatable {
     public var speechLanguage = "auto"
     public var microphoneUID = ""
     public var speechModel = "mlx-community/Qwen3-ASR-0.6B-8bit"
+    public var textModel = "qwen35-text-0.8b-int5"
     public var refinement: Refinement = .light
     public var holdToTalk: Bool? = nil // nil preserves older settings and defaults to hold
     public var sounds = true
     public var autoInsert = true
+    public var pauseMediaDuringRecording = true
     public var shortcutKeyCode: UInt32 = 49
     public var shortcutModifiers: UInt32 = 6144 // Carbon controlKey + optionKey
     public init() {}
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        interfaceLanguage = try container.decodeIfPresent(String.self, forKey: .interfaceLanguage) ?? "system"
+        speechLanguage = try container.decodeIfPresent(String.self, forKey: .speechLanguage) ?? "auto"
+        microphoneUID = try container.decodeIfPresent(String.self, forKey: .microphoneUID) ?? ""
+        speechModel = try container.decodeIfPresent(String.self, forKey: .speechModel) ?? "mlx-community/Qwen3-ASR-0.6B-8bit"
+        textModel = try container.decodeIfPresent(String.self, forKey: .textModel) ?? "qwen35-text-0.8b-int5"
+        refinement = try container.decodeIfPresent(Refinement.self, forKey: .refinement) ?? .light
+        holdToTalk = try container.decodeIfPresent(Bool.self, forKey: .holdToTalk)
+        sounds = try container.decodeIfPresent(Bool.self, forKey: .sounds) ?? true
+        autoInsert = try container.decodeIfPresent(Bool.self, forKey: .autoInsert) ?? true
+        pauseMediaDuringRecording = try container.decodeIfPresent(Bool.self, forKey: .pauseMediaDuringRecording) ?? true
+        shortcutKeyCode = try container.decodeIfPresent(UInt32.self, forKey: .shortcutKeyCode) ?? 49
+        shortcutModifiers = try container.decodeIfPresent(UInt32.self, forKey: .shortcutModifiers) ?? 6144
+    }
 }
 
 public enum VoiceBuddyError: LocalizedError, Equatable {

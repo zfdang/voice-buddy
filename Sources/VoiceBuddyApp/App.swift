@@ -4,6 +4,10 @@ import Carbon
 import ApplicationServices
 import AVFoundation
 import VoiceBuddyCore
+import KeyboardShortcuts
+import Sparkle
+import LaunchAtLogin
+import MediaRemoteAdapter
 
 public enum AppTab: Int, CaseIterable, Identifiable {
     case general = 0
@@ -11,6 +15,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     case speech = 2
     case editor = 3
     case recovery = 4
+    case about = 5
     public var id: Int { rawValue }
 }
 
@@ -25,6 +30,14 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     @Published var recording = false
     @Published var ready = false
     @Published var editorReady = false
+    @Published var isSpeechDownloaded = false
+    @Published var isEditorDownloaded = false
+    @Published var speechPreparing = false
+    @Published var speechProgress: Double = 0
+    @Published var speechProgressMessage = ""
+    @Published var editorPreparing = false
+    @Published var editorProgress: Double = 0
+    @Published var editorProgressMessage = ""
     @Published var busy = false
     @Published var modelProgress: Double = 0
     @Published var modelPreparing = false
@@ -34,6 +47,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     @Published var axAuthorized = false
     @Published var micStatus: AVAuthorizationStatus = .notDetermined
     let models = LocalModels()
+    let updater = UpdaterViewModel()
+    private let mediaPlayback = MediaPlaybackController()
     private let recorder = Recorder()
     private let overlay = Overlay()
     private var insertFailure = ""
@@ -55,18 +70,48 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         preferences = UserDefaults.standard.data(forKey: defaultsKey).flatMap { try? JSONDecoder().decode(Preferences.self, from: $0) } ?? Preferences()
         refreshPermissions()
         registerHotkey()
+        setupKeyboardShortcuts()
+        checkModelCacheStatus()
         autoPreloadModels()
+    }
+    private func setupKeyboardShortcuts() {
+        KeyboardShortcuts.onKeyDown(for: .toggleDictation) { [weak self] in
+            Task { @MainActor in self?.hotkeyDown() }
+        }
+        KeyboardShortcuts.onKeyUp(for: .toggleDictation) { [weak self] in
+            Task { @MainActor in self?.hotkeyUp() }
+        }
+    }
+    func checkForUpdates() {
+        updater.checkForUpdates()
+    }
+    func checkModelCacheStatus() {
+        let speechId = preferences.speechModel
+        let textId = preferences.textModel
+        Task {
+            let sDownloaded = await models.isSpeechModelCached(id: speechId)
+            let eDownloaded = await models.isEditorModelCached(id: textId)
+            await MainActor.run {
+                self.isSpeechDownloaded = sDownloaded
+                self.isEditorDownloaded = eDownloaded
+            }
+        }
     }
     func autoPreloadModels() {
         let speechId = preferences.speechModel
+        let textId = preferences.textModel
         Task {
-            if await models.isSpeechModelCached(id: speechId) {
+            let sDownloaded = await models.isSpeechModelCached(id: speechId)
+            let eDownloaded = await models.isEditorModelCached(id: textId)
+            await MainActor.run {
+                self.isSpeechDownloaded = sDownloaded
+                self.isEditorDownloaded = eDownloaded
+            }
+            if sDownloaded {
                 prepareSpeech()
             }
-            if preferences.refinement.needsModel {
-                if await models.isEditorModelCached() {
-                    prepareEditor()
-                }
+            if preferences.refinement.needsModel && eDownloaded {
+                prepareEditor()
             }
         }
     }
@@ -124,17 +169,35 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     }
     func prepareSpeech(completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
         guard !busy else { completion?(false); return }
-        busy = true; modelPreparing = true; modelProgress = 0; ready = false; status = label("Preparing speech model…", "正在准备语音模型…")
-        let id = preferences.speechModel, operation = UUID(); generation = operation
+        busy = true
+        speechPreparing = true
+        modelPreparing = true
+        speechProgress = 0
+        speechProgressMessage = label("Preparing speech model…", "正在准备语音识别模型…")
+        status = label("Preparing speech model…", "正在准备语音识别模型…")
+        let id = preferences.speechModel
+        let operation = UUID()
+        generation = operation
         task = Task {
             do {
-                try await models.prepareSpeech(id: id) { [weak self] value, _ in Task { @MainActor in guard self?.generation == operation else { return }; self?.modelProgress = value } }
+                try await models.prepareSpeech(id: id) { [weak self] value, msg in
+                    Task { @MainActor in
+                        guard self?.generation == operation else { return }
+                        self?.speechProgress = value
+                        self?.modelProgress = value
+                        self?.speechProgressMessage = msg
+                    }
+                }
                 guard generation == operation else {
                     await MainActor.run { completion?(false) }
                     return
                 }
-                ready = true; status = label("Speech model ready", "语音模型已就绪")
-                modelPreparing = false; busy = false
+                ready = true
+                isSpeechDownloaded = true
+                speechPreparing = false
+                modelPreparing = false
+                busy = false
+                checkModelCacheStatus()
                 await MainActor.run { completion?(true) }
             } catch {
                 guard generation == operation else {
@@ -142,29 +205,90 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     return
                 }
                 status = error.localizedDescription
-                modelPreparing = false; busy = false
+                speechProgressMessage = error.localizedDescription
+                speechPreparing = false
+                modelPreparing = false
+                busy = false
+                checkModelCacheStatus()
                 await MainActor.run { completion?(false) }
             }
         }
     }
+
     func prepareEditor() {
-        guard !busy else { return }; busy = true; modelPreparing = true; modelProgress = 0; editorReady = false; status = label("Preparing text model…", "正在准备文本模型…")
-        let operation = UUID(); generation = operation
+        guard !busy else { return }
+        busy = true
+        editorPreparing = true
+        modelPreparing = true
+        editorProgress = 0
+        editorProgressMessage = label("Preparing text model…", "正在准备文本模型…")
+        status = label("Preparing text model…", "正在准备文本模型…")
+        let targetId = preferences.textModel
+        let operation = UUID()
+        generation = operation
         task = Task {
             do {
-                try await models.prepareEditor { [weak self] value, _ in Task { @MainActor in guard self?.generation == operation else { return }; self?.modelProgress = value } }
-                guard generation == operation else { return }; editorReady = true; status = label("Text model ready", "文本模型已就绪")
-            } catch { guard generation == operation else { return }; status = error.localizedDescription }
-            modelPreparing = false; busy = false
+                try await models.prepareEditor(id: targetId) { [weak self] value, msg in
+                    Task { @MainActor in
+                        guard self?.generation == operation else { return }
+                        self?.editorProgress = value
+                        self?.modelProgress = value
+                        self?.editorProgressMessage = msg
+                    }
+                }
+                guard generation == operation else { return }
+                editorReady = true
+                isEditorDownloaded = true
+                editorPreparing = false
+                modelPreparing = false
+                busy = false
+                checkModelCacheStatus()
+            } catch {
+                guard generation == operation else { return }
+                status = error.localizedDescription
+                editorProgressMessage = error.localizedDescription
+                editorPreparing = false
+                modelPreparing = false
+                busy = false
+                checkModelCacheStatus()
+            }
         }
     }
+
     func removeSpeechModel() {
-        guard !busy && !recording else { return }; let id = preferences.speechModel; busy = true
-        Task { do { try await models.removeSpeech(id: id); ready = false; status = label("Speech model removed", "语音模型已删除") } catch { status = error.localizedDescription }; busy = false }
+        guard !busy && !recording else { return }
+        let id = preferences.speechModel
+        busy = true
+        Task {
+            do {
+                try await models.removeSpeech(id: id)
+                ready = false
+                isSpeechDownloaded = false
+                status = label("Speech model removed", "语音模型已删除")
+            } catch {
+                status = error.localizedDescription
+            }
+            busy = false
+            checkModelCacheStatus()
+        }
     }
+
     func removeTextModel() {
-        guard !busy && !recording else { return }; busy = true
-        Task { do { try await models.removeEditor(); editorReady = false; status = label("Text model removed", "文本模型已删除") } catch { status = error.localizedDescription }; busy = false }
+        guard !busy && !recording else { return }
+        let targetId = preferences.textModel
+        busy = true
+        Task {
+            do {
+                try await models.removeEditor(id: targetId)
+                editorReady = false
+                isEditorDownloaded = false
+                status = label("Text model removed", "文本模型已删除")
+            } catch {
+                status = error.localizedDescription
+            }
+            busy = false
+            checkModelCacheStatus()
+        }
     }
     func hotkeyDown() {
         switch gesture.press(hold: preferences.holdToTalk ?? true) {
@@ -232,6 +356,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         do {
             try recorder.start(deviceUID: preferences.microphoneUID)
             recording = true
+            if preferences.pauseMediaDuringRecording {
+                mediaPlayback.pauseIfPlaying()
+            }
             status = label("Listening…", "正在听你说…")
             startLiveStreaming()
             overlay.show(state: self)
@@ -281,6 +408,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
     }
     func cancel() {
+        if preferences.pauseMediaDuringRecording {
+            mediaPlayback.resumeIfPaused()
+        }
         liveTask?.cancel(); liveTask = nil; liveTranscript = ""; liveTranscriptState.clear(); tracker.reset()
         if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
         generation = UUID(); gesture.reset(); task?.cancel(); task = nil
@@ -344,6 +474,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         return nil
     }
     private func finish() {
+        if preferences.pauseMediaDuringRecording {
+            mediaPlayback.resumeIfPaused()
+        }
         liveTask?.cancel(); liveTask = nil
         if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
         let audio = recorder.stop(); recording = false; meter?.invalidate(); level = 0; busy = true
@@ -542,6 +675,37 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         fallback.isTemplate = true
         return fallback
     }()
+    static let menuBarActiveIcon: NSImage = {
+        let size = NSSize(width: 20, height: 20)
+        let img = NSImage(size: size)
+
+        let url1x = Bundle.module.url(forResource: "MenuBarIconColor", withExtension: "png") ?? Bundle.main.url(forResource: "MenuBarIconColor", withExtension: "png")
+        let url2x = Bundle.module.url(forResource: "MenuBarIconColor@2x", withExtension: "png") ?? Bundle.main.url(forResource: "MenuBarIconColor@2x", withExtension: "png")
+
+        if let url1x, let data1x = try? Data(contentsOf: url1x), let rep1x = NSBitmapImageRep(data: data1x) {
+            rep1x.size = size
+            img.addRepresentation(rep1x)
+        }
+        if let url2x, let data2x = try? Data(contentsOf: url2x), let rep2x = NSBitmapImageRep(data: data2x) {
+            rep2x.size = size
+            img.addRepresentation(rep2x)
+        }
+
+        if !img.representations.isEmpty {
+            img.isTemplate = false
+            return img
+        }
+
+        if let url = url1x ?? url2x, let raw = NSImage(contentsOf: url) {
+            raw.size = size
+            raw.isTemplate = false
+            return raw
+        }
+
+        let fallback = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Recording") ?? NSImage()
+        fallback.size = size
+        return fallback
+    }()
     func showWindow(tab: AppTab? = nil) {
         if let tab { selectedTab = tab }
         refreshPermissions()
@@ -570,10 +734,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         MenuBarExtra {
             Text("Voice Buddy: \(state.status)")
             Divider()
-            Button(state.recording ? state.label("Stop Dictation", "结束听写") : state.label("Start Dictation", "开始听写")) {
-                state.toggle()
-            }.keyboardShortcut("d")
-            Divider()
             Button(state.label("Settings…", "设置…")) {
                 state.showWindow(tab: .general)
             }
@@ -584,12 +744,19 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 state.showWindow(tab: .recovery)
             }
             Divider()
+            Button(state.label("About Voice Buddy…", "关于 Voice Buddy…")) {
+                state.showWindow(tab: .about)
+            }
+            Button(state.label("Check for Updates…", "检查更新…")) {
+                state.checkForUpdates()
+            }
+            Divider()
             Button(state.label("Quit Voice Buddy", "退出 Voice Buddy")) {
                 NSApp.terminate(nil)
             }.keyboardShortcut("q")
         } label: {
             if state.recording {
-                Image(systemName: "waveform")
+                Image(nsImage: AppState.menuBarActiveIcon)
             } else {
                 Image(nsImage: AppState.menuBarMascotIcon)
             }
