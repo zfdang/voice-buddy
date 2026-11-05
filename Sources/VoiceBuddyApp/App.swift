@@ -75,7 +75,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         refreshPermissions()
         registerHotkey()
         setupKeyboardShortcuts()
-        checkModelCacheStatus()
         autoPreloadModels()
     }
     private func setupKeyboardShortcuts() {
@@ -89,7 +88,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     func checkForUpdates() {
         updater.checkForUpdates()
     }
-    func checkModelCacheStatus() {
+    func checkModelCacheStatus(completion: (@MainActor @Sendable () -> Void)? = nil) {
         Task {
             var cachedSpeeches = Set<String>()
             for spec in SpeechModelSpec.allModels {
@@ -110,30 +109,27 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 if !cachedSpeeches.contains(self.preferences.speechModel), let first = SpeechModelSpec.allModels.first(where: { cachedSpeeches.contains($0.id) }) {
                     self.preferences.speechModel = first.id
                 }
-
-                let speechCached = self.cachedSpeechModelIDs.contains(self.preferences.speechModel)
-                self.isSpeechDownloaded = speechCached
+                self.isSpeechDownloaded = self.cachedSpeechModelIDs.contains(self.preferences.speechModel)
 
                 if !cachedTexts.contains(self.preferences.textModel), let first = TextModelSpec.allModels.first(where: { cachedTexts.contains($0.id) }) {
                     self.preferences.textModel = first.id
                 }
+                self.isEditorDownloaded = self.cachedTextModelIDs.contains(self.preferences.textModel)
 
-                let editorCached = self.cachedTextModelIDs.contains(self.preferences.textModel)
-                self.isEditorDownloaded = editorCached
-
-                // Auto-load text model into memory if cached on disk
-                if editorCached && !self.editorReady && !self.editorPreparing && !self.busy {
-                    self.loadActiveEditorModel()
-                }
-                // Auto-load speech model into memory if cached on disk
-                if speechCached && !self.ready && !self.speechPreparing && !self.busy {
-                    self.loadActiveSpeechModel()
-                }
+                completion?()
             }
         }
     }
     func autoPreloadModels() {
-        checkModelCacheStatus()
+        checkModelCacheStatus { [weak self] in
+            guard let self else { return }
+            if self.isSpeechDownloaded && !self.ready && !self.speechPreparing {
+                self.loadActiveSpeechModel()
+            }
+            if self.isEditorDownloaded && !self.editorReady && !self.editorPreparing {
+                self.loadActiveEditorModel()
+            }
+        }
     }
     func refreshPermissions() {
         micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -214,8 +210,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     }
 
     func prepareSpeech(id: String? = nil, completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
-        guard !busy else { completion?(false); return }
-        busy = true
+        guard !speechPreparing && !recording else { completion?(false); return }
         speechPreparing = true
         let targetId = id ?? preferences.speechModel
         let isSelectedModel = (targetId == preferences.speechModel)
@@ -254,9 +249,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     self.speechPreparing = false
                     if isSelectedModel {
                         self.modelPreparing = false
+                        self.status = self.label("Speech model ready", "语音识别已就绪")
                     }
                     self.activeDownloadingSpeechModelID = nil
-                    self.busy = false
                     completion?(true)
                 }
             } catch {
@@ -274,8 +269,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self.modelPreparing = false
                     }
                     self.activeDownloadingSpeechModelID = nil
-                    self.busy = false
-                    self.checkModelCacheStatus()
                     completion?(false)
                 }
             }
@@ -309,8 +302,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     }
 
     func prepareEditor(id: String? = nil, completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
-        guard !busy else { completion?(false); return }
-        busy = true
+        guard !editorPreparing && !recording else { completion?(false); return }
         editorPreparing = true
         let targetId = id ?? preferences.textModel
         let isSelectedModel = (targetId == preferences.textModel)
@@ -349,9 +341,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     self.editorPreparing = false
                     if isSelectedModel {
                         self.modelPreparing = false
+                        self.status = self.label("Text model ready", "文本模型已就绪")
                     }
                     self.activeDownloadingTextModelID = nil
-                    self.busy = false
                     completion?(true)
                 }
             } catch {
@@ -369,8 +361,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self.modelPreparing = false
                     }
                     self.activeDownloadingTextModelID = nil
-                    self.busy = false
-                    self.checkModelCacheStatus()
                     completion?(false)
                 }
             }
@@ -455,12 +445,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         guard ready else {
             status = label("Loading speech model…", "正在加载语音模型…")
             overlay.show(state: self)
-            if !modelPreparing {
+            if !speechPreparing {
                 prepareSpeech { [weak self] success in
                     guard let self else { return }
                     if success {
                         self.status = self.label("Speech model ready. Press hotkey to talk.", "语音模型已就绪，请按快捷键说话。")
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                             if !self.recording { self.overlay.hide() }
                         }
                     } else {
@@ -473,8 +463,18 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         if preferences.refinement.needsModel && !editorReady {
             status = label("Loading text model…", "正在加载文本模型…")
             overlay.show(state: self)
-            if !modelPreparing {
-                prepareEditor()
+            if !editorPreparing {
+                prepareEditor { [weak self] success in
+                    guard let self else { return }
+                    if success {
+                        self.status = self.label("Text model ready. Press hotkey to talk.", "文本模型已就绪，请按快捷键说话。")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            if !self.recording { self.overlay.hide() }
+                        }
+                    } else {
+                        self.overlay.hide()
+                    }
+                }
             }
             return
         }
@@ -572,7 +572,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         activeDownloadingTextModelID = nil
         meter?.invalidate()
         level = 0
-        checkModelCacheStatus()
         overlay.hide(); if preferences.sounds { NSSound(named: "Basso")?.play() }
         status = label("Cancelled", "已取消")
     }

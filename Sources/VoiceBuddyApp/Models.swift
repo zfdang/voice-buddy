@@ -16,8 +16,8 @@ public struct SpeechModelSpec: Identifiable, Hashable, Sendable {
         SpeechModelSpec(
             id: "qwen-asr-0.6b",
             name: "Qwen 3 ASR 0.6B",
-            size: "480 MB",
-            quantization: "4-bit",
+            size: "960 MB",
+            quantization: "8-bit",
             description: "极速轻量 · 推荐日常快速听写与中英混说，显存占用极低",
             descriptionEn: "Ultra-fast & lightweight · Recommended for daily dictation, minimal memory footprint"
         ),
@@ -106,12 +106,25 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     }
 
     func prepareSpeech(id: String, progress: @escaping @Sendable (Double, String) -> Void) async throws {
-        let hfModelId = (id.contains("1.7") || id.contains("large")) ? Qwen3ASRModel.largeModelId : Qwen3ASRModel.defaultModelId
+        let isCached = isSpeechModelCached(id: id)
+        let hfModelId = (id.contains("1.7") || id.contains("large")) ? "mlx-community/Qwen3-ASR-1.7B-8bit" : "mlx-community/Qwen3-ASR-0.6B-8bit"
         if asr == nil || selectedID != id {
-            asr = try await Qwen3ASRModel.fromPretrained(modelId: hfModelId, cacheDir: speechDirectory(id), progressHandler: { value, message in progress(value * 0.9, message) })
+            asr = try await Qwen3ASRModel.fromPretrained(
+                modelId: hfModelId,
+                cacheDir: speechDirectory(id),
+                offlineMode: isCached,
+                progressHandler: { value, message in progress(value * 0.9, message) }
+            )
             selectedID = id
         }
-        if vad == nil { vad = try await SileroVADModel.fromPretrained(cacheDir: directory("silero-vad"), progressHandler: { value, message in progress(0.9 + value * 0.1, message) }) }
+        if vad == nil {
+            let vadCached = hasSafetensors(in: directory("silero-vad"))
+            vad = try await SileroVADModel.fromPretrained(
+                cacheDir: directory("silero-vad"),
+                offlineMode: vadCached,
+                progressHandler: { value, message in progress(0.9 + value * 0.1, message) }
+            )
+        }
     }
 
     func prepareEditor(id: String? = nil, progress: @escaping @Sendable (Double, String) -> Void) async throws {
@@ -125,7 +138,11 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
             }
         }
         if editor == nil || selectedEditorID != targetId {
-            editor = try await Qwen35MLXChat.fromPretrained(quantization: q, cacheDir: dir, progressHandler: progress)
+            editor = try await Qwen35MLXChat.fromPretrained(
+                quantization: q,
+                cacheDir: dir,
+                progressHandler: progress
+            )
             selectedEditorID = targetId
         }
     }
