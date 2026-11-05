@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+#
+# Voice Buddy - Local Build and Signing Script
+# Builds Voice Buddy into `dist/Voice Buddy.app` and automatically signs it with
+# the local private development certificate ("Voice Buddy Local Development").
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "${ROOT_DIR}"
+
+# Ensure Xcode tools are selected if CommandLineTools lacks XCTest/Metal
+if [ -z "${DEVELOPER_DIR:-}" ] && [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
+    export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+fi
+
+# Default configuration
+BUILD_CONFIG="release"
+DO_PACKAGE="false"
+DO_OPEN="false"
+CUSTOM_VERSION=""
+CUSTOM_IDENTITY="${VOICE_BUDDY_SIGN_IDENTITY:-}"
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [options] [debug|release]
+
+Build Voice Buddy macOS application into dist/Voice Buddy.app and sign with private certificate.
+
+Options:
+  debug, --debug        Build in debug configuration (faster compilation)
+  release, --release    Build in release configuration (optimized, default)
+  -p, --package         Create distribution DMG, ZIP, and SHA256SUMS.txt in dist/
+  -o, --open            Launch dist/Voice Buddy.app after successful build
+  -v, --version <ver>   Specify application bundle version (e.g. 0.1.0)
+  -s, --sign <id>       Override codesigning identity
+  -h, --help            Show this help message
+
+Output:
+  dist/Voice Buddy.app
+EOF
+    exit 0
+}
+
+# Parse command line options
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        debug|--debug)
+            BUILD_CONFIG="debug"
+            shift
+            ;;
+        release|--release)
+            BUILD_CONFIG="release"
+            shift
+            ;;
+        -p|--package|package)
+            DO_PACKAGE="true"
+            shift
+            ;;
+        -o|--open)
+            DO_OPEN="true"
+            shift
+            ;;
+        -v|--version)
+            CUSTOM_VERSION="$2"
+            shift 2
+            ;;
+        -s|--sign)
+            CUSTOM_IDENTITY="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            if [[ "$1" =~ ^v?[0-9]+(\.[0-9]+)* ]]; then
+                CUSTOM_VERSION="$1"
+                shift
+            else
+                echo "Unknown argument: $1" >&2
+                echo "Run '$0 --help' for usage." >&2
+                exit 2
+            fi
+            ;;
+    esac
+done
+
+# Resolve version
+if [ -n "${CUSTOM_VERSION}" ]; then
+    RAW_VERSION="${CUSTOM_VERSION}"
+else
+    # Try git tag, fallback to 0.1.0
+    GIT_TAG="$(git describe --tags --exact-match 2>/dev/null || true)"
+    if [ -n "${GIT_TAG}" ]; then
+        RAW_VERSION="${GIT_TAG}"
+    else
+        RAW_VERSION="0.1.0"
+    fi
+fi
+BUNDLE_VERSION="${RAW_VERSION#v}"
+
+# Determine codesigning identity
+# Priority:
+# 1. Explicit argument / VOICE_BUDDY_SIGN_IDENTITY
+# 2. "Voice Buddy Local Development" in Keychain
+# 3. Any valid codesigning identity in Keychain
+# 4. Ad-hoc fallback (-)
+if [ -n "${CUSTOM_IDENTITY}" ]; then
+    SIGN_IDENTITY="${CUSTOM_IDENTITY}"
+    SIGN_REASON="explicitly specified"
+elif security find-identity -v -p codesigning 2>/dev/null | grep -q '"Voice Buddy Local Development"'; then
+    SIGN_IDENTITY="Voice Buddy Local Development"
+    SIGN_REASON="automatically detected private development certificate"
+else
+    DISCOVERED_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk -F '"' '/"/ {print $2; exit}' || true)"
+    if [ -n "${DISCOVERED_IDENTITY}" ]; then
+        SIGN_IDENTITY="${DISCOVERED_IDENTITY}"
+        SIGN_REASON="detected codesigning certificate in keychain"
+    else
+        SIGN_IDENTITY="-"
+        SIGN_REASON="ad-hoc signing (no keychain certificate found)"
+    fi
+fi
+
+echo "=========================================================="
+echo " Voice Buddy - Local Build"
+echo "=========================================================="
+echo " Configuration : ${BUILD_CONFIG}"
+echo " Bundle Version: ${BUNDLE_VERSION}"
+echo " Signing ID    : ${SIGN_IDENTITY} (${SIGN_REASON})"
+echo " Output Target : dist/Voice Buddy.app"
+echo " Developer Dir : ${DEVELOPER_DIR:-$(xcode-select -p 2>/dev/null || echo 'default')}"
+echo "=========================================================="
+
+# 1. Build Swift Package
+echo ""
+echo "==> Step 1/4: Compiling Swift Package (${BUILD_CONFIG})..."
+swift build -c "${BUILD_CONFIG}" -j 4
+
+# 2. Build MLX Metal Library
+echo ""
+echo "==> Step 2/4: Building Metal Library (mlx.metallib)..."
+BUILD_DIR="${ROOT_DIR}/.build" bash "${ROOT_DIR}/.build/checkouts/speech-swift/scripts/build_mlx_metallib.sh" "${BUILD_CONFIG}"
+
+# 3. Assemble App Bundle
+echo ""
+echo "==> Step 3/4: Assembling dist/Voice Buddy.app..."
+APP_BUNDLE="${ROOT_DIR}/dist/Voice Buddy.app"
+rm -rf "${APP_BUNDLE}"
+mkdir -p "${APP_BUNDLE}/Contents/MacOS" "${APP_BUNDLE}/Contents/Resources"
+
+cp "${ROOT_DIR}/.build/${BUILD_CONFIG}/VoiceBuddy" "${APP_BUNDLE}/Contents/MacOS/VoiceBuddy"
+cp -R "${ROOT_DIR}/.build/${BUILD_CONFIG}/VoiceBuddy_VoiceBuddyApp.bundle" "${APP_BUNDLE}/Contents/Resources/"
+cp "${ROOT_DIR}/.build/${BUILD_CONFIG}/mlx.metallib" "${APP_BUNDLE}/Contents/MacOS/mlx.metallib"
+
+cat > "${APP_BUNDLE}/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.voicebuddy.app</string>
+    <key>CFBundleExecutable</key>
+    <string>VoiceBuddy</string>
+    <key>CFBundleName</key>
+    <string>Voice Buddy</string>
+    <key>CFBundleDisplayName</key>
+    <string>Voice Buddy</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>${BUNDLE_VERSION}</string>
+    <key>CFBundleVersion</key>
+    <string>${BUNDLE_VERSION}</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>15.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Voice Buddy uses the microphone to transcribe your speech locally with on-device AI.</string>
+</dict>
+</plist>
+PLIST
+
+# 4. Code Signing
+echo ""
+echo "==> Step 4/4: Signing ${APP_BUNDLE} with '${SIGN_IDENTITY}'..."
+if [ "${SIGN_IDENTITY}" = "-" ]; then
+    codesign --force --deep --sign - "${APP_BUNDLE}"
+else
+    codesign --force --deep --timestamp=none --sign "${SIGN_IDENTITY}" "${APP_BUNDLE}"
+fi
+
+echo "Verifying code signature..."
+codesign --verify --deep --strict "${APP_BUNDLE}"
+codesign -dvvv "${APP_BUNDLE}" 2>&1 | grep -E "(Identifier|Format|Authority|TeamIdentifier|Signature)" || true
+
+# Optional: Packaging
+if [ "${DO_PACKAGE}" = "true" ]; then
+    echo ""
+    echo "==> Packaging distribution artifacts in dist/..."
+    ZIP_NAME="Voice-Buddy-${RAW_VERSION}-macOS.zip"
+    DMG_NAME="Voice-Buddy-${RAW_VERSION}-macOS.dmg"
+    rm -f "${ROOT_DIR}/dist/${ZIP_NAME}" "${ROOT_DIR}/dist/${DMG_NAME}" "${ROOT_DIR}/dist/SHA256SUMS.txt"
+
+    echo "Creating ${ZIP_NAME}..."
+    ditto -c -k --keepParent "${APP_BUNDLE}" "${ROOT_DIR}/dist/${ZIP_NAME}"
+
+    echo "Creating ${DMG_NAME}..."
+    hdiutil create -volname "Voice Buddy" -srcfolder "${APP_BUNDLE}" -ov -format UDZO "${ROOT_DIR}/dist/${DMG_NAME}"
+
+    echo "Generating checksums..."
+    (cd "${ROOT_DIR}/dist" && shasum -a 256 "${ZIP_NAME}" "${DMG_NAME}" > SHA256SUMS.txt)
+    cat "${ROOT_DIR}/dist/SHA256SUMS.txt"
+fi
+
+echo ""
+echo "=========================================================="
+echo " Build Succeeded!"
+echo " App Bundle: ${APP_BUNDLE}"
+echo " Signed As : ${SIGN_IDENTITY}"
+echo "=========================================================="
+
+if [ "${DO_OPEN}" = "true" ]; then
+    echo "Launching Voice Buddy..."
+    open "${APP_BUNDLE}"
+fi

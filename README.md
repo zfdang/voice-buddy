@@ -43,18 +43,29 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 
 ### 本地编译与打包
 
-```bash
-# 调试版本构建
-scripts/build-app.sh debug
+提供开箱即用的一键构建脚本 `./build.sh`（或 `scripts/build.sh`），会自动检查 Xcode 依赖环境、自动从本地钥匙串匹配私有签名证书（优先自动使用 `"Voice Buddy Local Development"` 证书），并将打包结果输出至 `dist/` 目录：
 
-# 发布版本构建并生成 .dmg 和 .zip 安装包
-scripts/build-app.sh release v0.1.0 --package
+```bash
+# 一键编译 Release 版本并完成私有签名（产物输出至 dist/Voice Buddy.app）
+./build.sh
+
+# 编译完成后直接在 macOS 中启动运行
+./build.sh --open
+
+# 调试版本快速构建
+./build.sh --debug
+
+# 编译 Release 版本并打包 .dmg、.zip 及 SHA256 校验文件
+./build.sh --package
+
+# 指定自定义版本号并打包
+./build.sh -v 0.1.0 --package
 ```
 
 构建产物将输出至 `dist/` 目录：
 - `dist/Voice Buddy.app`
-- `dist/Voice-Buddy-v0.1.0-macOS.dmg`
-- `dist/Voice-Buddy-v0.1.0-macOS.zip`
+- `dist/Voice-Buddy-0.1.0-macOS.dmg`
+- `dist/Voice-Buddy-0.1.0-macOS.zip`
 - `dist/SHA256SUMS.txt`
 
 ---
