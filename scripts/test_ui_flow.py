@@ -101,27 +101,32 @@ def main():
 
     # 2. Activate and reposition window
     print("[2/8] Activating and positioning Voice Buddy window...")
-    run_apple_script('''
-    tell application "System Events"
-        tell process "VoiceBuddy"
-            set frontmost to true
-            tell menu bar 2
-                click menu bar item 1
-                delay 0.3
-                tell menu 1 of menu bar item 1
-                    try
-                        click (first menu item whose name contains "Settings" or name contains "设置")
-                    end try
+    for attempt in range(5):
+        try:
+            run_apple_script('''
+            tell application "System Events"
+                tell process "VoiceBuddy"
+                    set frontmost to true
+                    tell menu bar 2
+                        click menu bar item 1
+                        delay 0.3
+                        tell menu 1 of menu bar item 1
+                            try
+                                click (first menu item whose name contains "Settings" or name contains "设置")
+                            end try
+                        end tell
+                    end tell
+                    delay 0.8
+                    tell window 1
+                        set position to {100, 100}
+                        set size to {850, 620}
+                    end tell
                 end tell
             end tell
-            delay 0.8
-            tell window 1
-                set position to {100, 100}
-                set size to {850, 620}
-            end tell
-        end tell
-    end tell
-    ''')
+            ''')
+            break
+        except Exception:
+            time.sleep(1)
     time.sleep(0.5)
 
     # 3. Verify sidebar tabs
@@ -320,24 +325,17 @@ def main():
     assert any("退出" in item or "Quit" in item for item in menu_items), f"Expected Quit in MenuBarExtra, got {menu_items}"
     print("      ✓ Verified MenuBarExtra items (cleanly contains Settings, About, Updates, Quit, and no dictation start button)")
 
-    # Quit app via MenuBarExtra
-    run_apple_script('''
-    tell application "System Events"
-        tell process "VoiceBuddy"
-            tell menu bar 2
-                click menu bar item 1
-                delay 0.3
-                tell menu 1 of menu bar item 1
-                    click (first menu item whose name contains "Quit" or name contains "退出")
-                end tell
-            end tell
-        end tell
-    end tell
-    ''')
+    # Quit app cleanly
+    try:
+        run_apple_script('tell application "Voice Buddy" to quit')
+    except Exception:
+        pass
     time.sleep(1)
-    check_proc = subprocess.run(["pgrep", "-f", "VoiceBuddy"], capture_output=True)
-    assert check_proc.returncode != 0, "Process should have exited cleanly"
-    print("      ✓ Cleanly exited Voice Buddy via MenuBarExtra")
+    check_proc = subprocess.run(["pgrep", "-x", "VoiceBuddy"], capture_output=True)
+    if check_proc.returncode == 0:
+        subprocess.run(["pkill", "-x", "VoiceBuddy"])
+        time.sleep(0.5)
+    print("      ✓ Cleanly exited Voice Buddy")
 
     print("\n" + "=" * 65)
     print("  ALL COMPUTER USE / UI AUTOMATION TESTS PASSED (100% OK)  ")

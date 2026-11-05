@@ -181,7 +181,7 @@ install_name_tool -add_rpath "@executable_path/../Frameworks" "${APP_BUNDLE}/Con
 
 # Ensure AppIcon.icns exists
 ICON_SRC="${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/AppIcon.icns"
-if [ ! -f "${ICON_SRC}" ] && [ -f "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/mascot.png" ]; then
+if [ ! -f "${ICON_SRC}" ] || [ "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/mascot.png" -nt "${ICON_SRC}" ]; then
     echo "Generating AppIcon.icns from mascot.png..."
     TMP_ICONSET="$(mktemp -d)/AppIcon.iconset"
     mkdir -p "${TMP_ICONSET}"
@@ -236,6 +236,10 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<PLIST
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Voice Buddy uses the microphone to transcribe your speech locally with on-device AI.</string>
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/zfdang/voice-buddy/main/appcast.xml</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
 </dict>
 </plist>
 PLIST

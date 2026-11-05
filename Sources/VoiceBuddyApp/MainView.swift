@@ -777,19 +777,19 @@ struct MainView: View {
                         HStack {
                             Label("GitHub Repository", systemImage: "link")
                             Spacer()
-                            Link("github.com/zfdang/voice-buddy-private", destination: URL(string: "https://github.com/zfdang/voice-buddy-private")!)
+                            Link("github.com/zfdang/voice-buddy", destination: URL(string: "https://github.com/zfdang/voice-buddy")!)
                         }
                         Divider()
                         HStack {
                             Label(t("Releases & Downloads", "版本发布与下载"), systemImage: "shippingbox")
                             Spacer()
-                            Link(t("View Releases", "查看发布页"), destination: URL(string: "https://github.com/zfdang/voice-buddy-private/releases")!)
+                            Link(t("View Releases", "查看发布页"), destination: URL(string: "https://github.com/zfdang/voice-buddy/releases")!)
                         }
                         Divider()
                         HStack {
                             Label(t("Issues & Feedback", "问题反馈与建议"), systemImage: "bubble.left.and.exclamationmark.bubble.right")
                             Spacer()
-                            Link(t("Submit Issue", "提交反馈"), destination: URL(string: "https://github.com/zfdang/voice-buddy-private/issues")!)
+                            Link(t("Submit Issue", "提交反馈"), destination: URL(string: "https://github.com/zfdang/voice-buddy/issues")!)
                         }
                     }
 

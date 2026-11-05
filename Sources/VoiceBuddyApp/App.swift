@@ -675,6 +675,37 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         fallback.isTemplate = true
         return fallback
     }()
+    static let menuBarActiveIcon: NSImage = {
+        let size = NSSize(width: 20, height: 20)
+        let img = NSImage(size: size)
+
+        let url1x = Bundle.module.url(forResource: "MenuBarIconColor", withExtension: "png") ?? Bundle.main.url(forResource: "MenuBarIconColor", withExtension: "png")
+        let url2x = Bundle.module.url(forResource: "MenuBarIconColor@2x", withExtension: "png") ?? Bundle.main.url(forResource: "MenuBarIconColor@2x", withExtension: "png")
+
+        if let url1x, let data1x = try? Data(contentsOf: url1x), let rep1x = NSBitmapImageRep(data: data1x) {
+            rep1x.size = size
+            img.addRepresentation(rep1x)
+        }
+        if let url2x, let data2x = try? Data(contentsOf: url2x), let rep2x = NSBitmapImageRep(data: data2x) {
+            rep2x.size = size
+            img.addRepresentation(rep2x)
+        }
+
+        if !img.representations.isEmpty {
+            img.isTemplate = false
+            return img
+        }
+
+        if let url = url1x ?? url2x, let raw = NSImage(contentsOf: url) {
+            raw.size = size
+            raw.isTemplate = false
+            return raw
+        }
+
+        let fallback = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Recording") ?? NSImage()
+        fallback.size = size
+        return fallback
+    }()
     func showWindow(tab: AppTab? = nil) {
         if let tab { selectedTab = tab }
         refreshPermissions()
@@ -725,7 +756,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             }.keyboardShortcut("q")
         } label: {
             if state.recording {
-                Image(systemName: "waveform")
+                Image(nsImage: AppState.menuBarActiveIcon)
             } else {
                 Image(nsImage: AppState.menuBarMascotIcon)
             }
