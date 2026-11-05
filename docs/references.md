@@ -68,6 +68,7 @@ graph TD
 | **[VoiceKey](https://github.com/J3n5en/voicekey)** | Swift + Tauri (macOS/多端) | 接入豆包/微信输入法等云端 ASR | 极佳（专为中文输入调优） | **长按/点按手势防误触、修饰键（CapsLock/Fn）监听、中文口语停顿容错** | Voice Buddy 坚持本地离线运行，无需配置第三方 API 密钥或逆向云端接口，数据不离机。 |
 | **[VoxLocal](https://github.com/romarayt/VoxLocal)** | 原生 Swift + AppKit (macOS) | `whisper.cpp` + 本机 Ollama | 一般（依赖 Whisper） | **不抢焦点浮窗、录音/处理/失败完整状态机、AX 注入失败时的安全剪贴板回退** | Voice Buddy 在插入失败时提供专用结果编辑器并标记剪贴板防追踪，保护用户隐私。 |
 | **[Handy](https://github.com/cjpais/Handy)** | 跨平台 (Swift/Go/Python) | 本地 Whisper/Parakeet + Silero VAD | 一般 | **同时提供按住/切换模式、严格静音切片过滤、跨平台架构解耦** | 为 Voice Buddy 提供了低延迟释放检测与长录音音频切片算法参考。 |
+| **[OpenWhispr](https://github.com/OpenWhispr/openwhispr)** | Electron 跨平台 (TS/Rust) | 本地 + 云端多模型适配 | 一般 | **非标准 ASR 接口的 Shim 封装、模型适配层抽象** | 为后续 Windows 跨平台版本的接口适配与跨端架构提供参考。 |
 | **[Buzz](https://github.com/chidiwilliams/buzz)** | Python + Qt (跨平台) | 本地 Whisper / HuggingFace 模型 | 良好 | **长音频/视频批量转写、多格式导出（SRT/VTT/TXT）、实时听写** | Voice Buddy 计划在 P2 阶段引入轻量化本地文件拖拽转文字能力，复用 MLX 流水线。 |
 | **[WhisperKit](https://github.com/argmaxinc/argmax-oss-swift)** | 纯 Swift (Core ML / ANE) | Core ML 优化版 Whisper | 一般 | **深度榨干 Apple Neural Engine (ANE)、极低功耗与推测解码 (Speculative Decoding)** | 极佳的 Core ML 架构范式，未来可作为低功耗备选后端。 |
 | **[SenseVoice](https://github.com/FunAudioLLM/SenseVoice)** | 阿里通义实验室开源 | 234M 非自回归端到端模型 | **行业天花板** (中/粤/英/日/韩) | **比 Whisper 快 15 倍（70ms 推理 10s）、富文本 ASR（情感识别与声音事件检测）** | 极具价值的轻量级极速 ASR 备选候选，未来可引入作为毫秒级瞬时听写引擎。 |
@@ -87,6 +88,7 @@ graph TD
   2. **本地 AI Agent API**：开放本地轻量 IPC / Socket 接口，允许 Cursor、Claude Code、终端脚本直接调用语音转录能力，让 AI 编程助手拥有“原生耳朵”；
   3. **音视频长文件本地拖拽转写**：支持批量拖入会议录音（MP3/WAV/M4A/MP4）离线生成文字稿；
   4. **Vibe Coding 规则**：在代码编辑器中输入时，智能保留驼峰命名（`getUserData`）、下划线（`db_conn`）、命令行参数（`--flag`）与代码反引号（`` `code` ``）。
+- **深度技术评测**：详见 [Voicetypr 技术调研与功能借鉴分析](research/voicetypr.md)。
 
 #### ② [VoiceInk](https://github.com/Beingpax/VoiceInk)
 - **核心定位**：macOS 原生开源听写软件标杆。
@@ -94,12 +96,14 @@ graph TD
   1. **上下文感知应用模式（Context-Aware App Modes）**：根据前台应用类型自动切换针对 IDE、邮件文档、即时通讯的 Prompt 润色倾向；
   2. **自定义专有词库（Custom Vocabulary）**：支持添加自定义人名、业务缩写，作为 Initial Prompt 偏置词杜绝同音错字；
   3. **可检索的本地历史看板**：本地持久化历史听写，支持全文检索与一键重新复制，配备自动清理周期。
+- **深度技术评测**：详见 [VoiceInk 技术调研与后续演进方向](research/voiceink.md)。
 
 #### ③ [MacWispr](https://github.com/vasanthsreeram/macwispr)
 - **核心定位**：首个探索在 Swift 中通过 MLX 运行 Qwen3-ASR 的开源原型。
 - **重点借鉴**：
   1. **MLX 与 Metal 着色器打包**：随 Bundle 一同分发 `mlx.metallib`，确保 Metal GPU/Neural Engine 加速平稳运行；
   2. **Silero VAD 静音切片**：过滤空白噪音，并采用短句预热防止模型首字丢音。
+- **深度技术评测**：详见 [MacWispr 技术调研与架构分析](research/macwispr.md)。
 
 #### ④ Superwhisper & Wispr Flow
 - **核心定位**：商业化体验基准。
@@ -182,3 +186,22 @@ graph TD
 - [ ] **双模热键 AI 助手 (Dictate vs. Assistant Mode)**（源自 VoiceInk）：
   - 独立助手快捷键：读取选中文本 + 口述指令 → 本地 Qwen 翻译、总结或润色后替换。
 - [ ] **Windows 跨平台版本探索**（源自 Voicetypr / sherpa-onnx 跨平台经验）。
+
+---
+
+## 5. 开源方案验证原则与启发 (Implementation Insights & Verification Guidelines)
+
+1. **原生 MLX 接入与资源打包**：
+   - 参考 MacWispr 的 Swift/MLX 内存模型加载与 `mlx.metallib` 编译分发方案，与已有 Python sidecar 对照冷启动延迟、内存占用与故障恢复机制。
+2. **完整状态机与安全回退**：
+   - 参考 VoxLocal 的不抢焦点浮窗、录音/识别/整理/插入/失败完整状态流转。
+   - 插入失败时保留识别原文并提供手动复制，对安全输入框（SecureField）不自动粘贴。
+3. **VAD 静音截断与端点检测**：
+   - 采用 Silero VAD 进行端点检测，针对中文口语停顿与中英混说留出合理的首尾余量，避免过激截断导致丢字。
+4. **剪贴板兼容性与隐私防护**：
+   - 优先通过 Accessibility API (AX) 直接插入，失败时安全降级为剪贴板模拟粘贴，并在剪贴板写入时标记专用忽略标签（如 `org.nspasteboard.TransientType`），防止第三方剪贴板工具持久化用户听写。
+5. **深入研究项目导航**：
+   - 具体的第三方开源项目深度源码评测与架构细节，已归档至 [`docs/research/`](research/README.md) 专属目录：
+     - [`MacWispr 深度技术调研`](research/macwispr.md)
+     - [`VoiceInk 深度技术调研`](research/voiceink.md)
+     - [`Voicetypr 深度技术调研`](research/voicetypr.md)
