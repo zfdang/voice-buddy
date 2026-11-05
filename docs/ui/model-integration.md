@@ -4,6 +4,17 @@
 
 状态：设计参考，尚未移植或验证。参考仓库位于 `/Users/zfdang/workspaces/video-auto-translate`，以当前代码为依据；其架构文档中的规划不能当作已实现能力。
 
+## 两种实现方式与首期选择
+
+ASR 和文本整理各自通过独立接口接入；两种实现方式是架构选项，并非首期同时提供两套用户设置。首期先实现 **Swift 应用内运行**，不要求用户启动外部服务。外部本地服务保留为后续可评估方案，是否上线取决于实际需求与验证。
+
+| 能力 | 首期：Swift 应用内运行 | 后续备选：外部本地服务 |
+| --- | --- | --- |
+| 语音识别 | 评估 `speech-swift` / MLX 加载 Qwen3-ASR 1.7B 8-bit；应用负责模型发现、下载、校验、加载与释放。 | 参考 video-auto-translate 的 Python `mlx-audio` sidecar，在本机提供转录接口；需要单独处理依赖、进程、健康检查、协议及模型管理。 |
+| 文本整理 | 评估 Swift/MLX 运行小型 Qwen 文本模型，例如 Qwen3.5 0.8B；应用自行管理模型。原文和轻微整理不加载文本模型。 | 通过 Ollama、LM Studio 或经验证的本机兼容服务运行用户选择的模型；服务发现、模型列表和可用性由对应适配器处理。 |
+
+Swift 模型可用性、现有权重格式、最低系统要求、性能和许可均须实测。Ollama / LM Studio 的文本接口不能默认视为 Qwen ASR 接口。两条能力可各自扩展，不假定模型文件、缓存或 API 在运行时之间通用；不得自动切换外部服务或云端。外部服务若将来实现，需要明确告知数据去向、限制本机地址并验证服务行为。首期设置展示模型准备状态，不展示尚未实现的服务选项。
+
 ## 参考项目的原有组合（历史对照）
 
 - **语音识别**：`mlx-community/Qwen3-ASR-1.7B-8bit`，由 Apple Silicon 上的 `mlx-audio` 加载；参考项目通过本机 Python sidecar 的 `/v1/audio/transcriptions` 提供服务。模型选择与语言独立，默认自动检测。源码：`scripts/asr_server.py`、`Sources/VideoAutoTranslateCore/ASR/LocalASRService.swift`、`Models/ASRConfiguration.swift`。

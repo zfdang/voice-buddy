@@ -68,7 +68,7 @@ Voice Buddy 是一个离线优先的跨应用语音输入工具：用户在目�
 
 ### 本地模型集成
 
-首期优先通过 Swift/MLX 在应用内加载模型，无需用户安装 Ollama、LM Studio 或 Python 服务。先验证 [speech-swift](https://github.com/soniqo/speech-swift) 的 Qwen3-ASR 1.7B 支持及现有权重兼容性；文本整理评估小型 Qwen 与 Swift/MLX 运行时。模型下载需明确告知，应用和依赖的签名、公证、Metal 资源、离线启动与低内存行为须在干净机器验证；详见[模型集成参考](ui/model-integration.md)。
+ASR 与文本整理各保留两种架构：应用内 Swift/MLX 运行，或通过独立适配器连接外部本地服务。首期先实现 Swift/MLX，无需用户安装 Ollama、LM Studio 或 Python 服务；外部服务为后续备选，不自动切换。先验证 [speech-swift](https://github.com/soniqo/speech-swift) 的 Qwen3-ASR 1.7B 支持及现有权重兼容性；文本整理评估小型 Qwen 与 Swift/MLX 运行时。模型下载需明确告知，应用和依赖的签名、公证、Metal 资源、离线启动与低内存行为须在干净机器验证；两种路线的细节见[模型集成参考](ui/model-integration.md)。
 ## 6. 验证计划与发布门槛
 
 先做两项短原型：A. 在备忘录、浏览器网页输入框、聊天客户端、Office 类应用、终端和密码字段测试焦点、中文、换行、剪贴板竞争、权限撤销与恢复；B. 对比 Whisper 与 Qwen 候选，以及至少两个本地整理模型。收集用户授权的中文、英文、混说、口音、专有名词、噪声、静音及自我纠正样本，按说话人划分测试集；所有数据本地保存且可删除。
