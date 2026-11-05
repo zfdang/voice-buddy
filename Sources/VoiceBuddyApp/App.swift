@@ -267,12 +267,16 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         guard !busy else { completion?(false); return }
         busy = true
         editorPreparing = true
-        modelPreparing = true
-        editorProgress = 0
         let targetId = id ?? preferences.textModel
+        let isSelectedModel = (targetId == preferences.textModel)
+        if isSelectedModel {
+            modelPreparing = true
+            modelProgress = 0
+            status = label("Preparing text model…", "正在准备文本模型…")
+        }
+        editorProgress = 0
         activeDownloadingTextModelID = targetId
         editorProgressMessage = label("Preparing text model…", "正在准备文本模型…")
-        status = label("Preparing text model…", "正在准备文本模型…")
         let operation = UUID()
         generation = operation
         task = Task {
@@ -281,7 +285,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     Task { @MainActor in
                         guard self?.generation == operation else { return }
                         self?.editorProgress = value
-                        self?.modelProgress = value
+                        if isSelectedModel {
+                            self?.modelProgress = value
+                        }
                         self?.editorProgressMessage = msg
                     }
                 }
@@ -291,12 +297,14 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 }
                 await MainActor.run {
                     self.cachedTextModelIDs.insert(targetId)
-                    if self.preferences.textModel == targetId {
+                    if isSelectedModel {
                         self.editorReady = true
                     }
                     self.isEditorDownloaded = self.cachedTextModelIDs.contains(self.preferences.textModel)
                     self.editorPreparing = false
-                    self.modelPreparing = false
+                    if isSelectedModel {
+                        self.modelPreparing = false
+                    }
                     self.activeDownloadingTextModelID = nil
                     self.busy = false
                     completion?(true)
@@ -307,10 +315,14 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     return
                 }
                 await MainActor.run {
-                    self.status = error.localizedDescription
+                    if isSelectedModel {
+                        self.status = error.localizedDescription
+                    }
                     self.editorProgressMessage = error.localizedDescription
                     self.editorPreparing = false
-                    self.modelPreparing = false
+                    if isSelectedModel {
+                        self.modelPreparing = false
+                    }
                     self.activeDownloadingTextModelID = nil
                     self.busy = false
                     self.checkModelCacheStatus()

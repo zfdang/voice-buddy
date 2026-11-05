@@ -46,22 +46,33 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     func isSpeechModelCached(id: String) -> Bool {
         let dir = speechDirectory(id)
         let vadDir = directory("silero-vad")
-        var isDir: ObjCBool = false
-        let hasAsr = FileManager.default.fileExists(atPath: dir.path, isDirectory: &isDir) && isDir.boolValue
-        let hasVad = FileManager.default.fileExists(atPath: vadDir.path, isDirectory: &isDir) && isDir.boolValue
-        return hasAsr && hasVad
+        return hasSafetensors(in: dir) && hasSafetensors(in: vadDir)
     }
 
     func isEditorModelCached(id: String? = nil) -> Bool {
         let targetId = id ?? "qwen35-text-0.8b-int5"
         let dir = textDirectory(targetId)
-        var isDir: ObjCBool = false
-        if FileManager.default.fileExists(atPath: dir.path, isDirectory: &isDir) && isDir.boolValue {
+        if hasSafetensors(in: dir) {
             return true
         }
         if targetId == "qwen35-text-0.8b-int5" {
             let legacy = directory("qwen35-text-0.8b")
-            return FileManager.default.fileExists(atPath: legacy.path, isDirectory: &isDir) && isDir.boolValue
+            return hasSafetensors(in: legacy)
+        }
+        return false
+    }
+
+    private func hasSafetensors(in dir: URL) -> Bool {
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return false }
+        for f in files {
+            if f.hasSuffix(".safetensors") && !f.hasPrefix(".") {
+                return true
+            }
+            var isDir: ObjCBool = false
+            let sub = dir.appendingPathComponent(f)
+            if FileManager.default.fileExists(atPath: sub.path, isDirectory: &isDir), isDir.boolValue, !f.hasPrefix(".") {
+                if hasSafetensors(in: sub) { return true }
+            }
         }
         return false
     }

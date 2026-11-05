@@ -34,25 +34,11 @@ struct MainView: View {
                         }
                         Spacer()
                     }
-                    if state.modelPreparing {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(state.status).font(.caption).foregroundStyle(.secondary)
-                            HStack {
-                                ProgressView(value: state.modelProgress).frame(maxWidth: 300)
-                                Button(t("Cancel", "取消")) { state.cancel() }
-                            }
-                        }
-                    } else if state.recording {
+                    if state.recording {
                         HStack {
                             Image(systemName: "mic.fill").foregroundStyle(.red)
                             Text(t("Listening", "正在听你说"))
                             ProgressView(value: min(Double(state.level) * 12, 1)).frame(width: 100)
-                            Button(t("Cancel", "取消")) { state.cancel() }
-                        }
-                    } else if state.busy {
-                        HStack {
-                            ProgressView().controlSize(.small)
-                            Text(state.status).font(.caption).foregroundStyle(.secondary)
                             Button(t("Cancel", "取消")) { state.cancel() }
                         }
                     }
@@ -741,12 +727,6 @@ struct MainView: View {
                         #else
                         Text("Intel (x86_64)")
                         #endif
-                    }
-                    Divider()
-                    HStack {
-                        Text(t("Update engine", "更新机制")).foregroundStyle(.secondary)
-                        Spacer()
-                        Text("Sparkle Framework")
                     }
                 }
                 .padding(14)
