@@ -1,0 +1,144 @@
+name: Release macOS App
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to build (e.g. v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-app-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      CERTIFICATE_BASE64: ${{ secrets.VOICE_BUDDY_SIGNING_P12_BASE64 }}
+      P12_PASSWORD: ${{ secrets.VOICE_BUDDY_SIGNING_P12_PASSWORD }}
+    steps:
+      - name: Resolve release tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          if ! printf '%s' "$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+            echo '::error::expected v<semver>, e.g. v0.1.0 or v1.0.0-rc1'
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify release commit is on main
+        id: commit
+        run: |
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+            fetch --quiet origin +refs/heads/main:refs/remotes/origin/main
+          sha="$(git rev-parse HEAD)"
+          git merge-base --is-ancestor "$sha" origin/main
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Run test suite
+        run: swift test -j 4
+
+      - name: Setup signing keychain
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$CERTIFICATE_BASE64" || -z "$P12_PASSWORD" ]]; then
+            echo "Signing secrets are missing or incomplete." >&2
+            exit 1
+          fi
+          certificate="$RUNNER_TEMP/voice-buddy-signing.p12"
+          public_certificate="$RUNNER_TEMP/voice-buddy-signing.pem"
+          keychain="$RUNNER_TEMP/voice-buddy-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 32)"
+
+          printf '%s' "$CERTIFICATE_BASE64" | base64 -D > "$certificate"
+          openssl pkcs12 -in "$certificate" -passin env:P12_PASSWORD -clcerts -nokeys -out "$public_certificate"
+
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security import "$certificate" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          security add-trusted-cert -r trustRoot -p codeSign -k "$keychain" "$public_certificate"
+
+      - name: Build and package signed release
+        id: build
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          scripts/build-app.sh release "$tag" --package
+
+      - name: Publish GitHub Release
+        id: publish
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          COMMIT: ${{ steps.commit.outputs.sha }}
+        run: |
+          zip_file="dist/Voice-Buddy-${TAG}-macOS.zip"
+          dmg_file="dist/Voice-Buddy-${TAG}-macOS.dmg"
+          checksum_file="dist/SHA256SUMS.txt"
+
+          if [[ ! -f "$zip_file" || ! -f "$dmg_file" || ! -f "$checksum_file" ]]; then
+            echo "::error::Release assets missing from dist/"
+            exit 1
+          fi
+
+          release_notes="## Voice Buddy ${TAG}
+
+          - **Commit**: \`${COMMIT}\`
+          - **Architecture**: Apple Silicon / macOS 15+
+          - **Offline-first voice typing with local Qwen3-ASR and Qwen LLM**
+
+          ### SHA256 Checksums
+          \`\`\`
+          $(cat "$checksum_file")
+          \`\`\`"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists, uploading assets and updating notes..."
+            gh release upload "$TAG" "$dmg_file" "$zip_file" "$checksum_file" --clobber
+            gh release edit "$TAG" --notes "$release_notes"
+          else
+            echo "Creating new release for $TAG..."
+            gh release create "$TAG" "$dmg_file" "$zip_file" "$checksum_file" \
+              --title "Voice Buddy ${TAG}" \
+              --notes "$release_notes"
+          fi
+
+      - name: Deployment Summary
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          COMMIT: ${{ steps.commit.outputs.sha }}
+        run: |
+          {
+            echo "## Release $TAG published"
+            echo "- **Commit**: $COMMIT"
+            echo "- **Artifacts**:"
+            echo "  - \`dist/Voice-Buddy-${TAG}-macOS.dmg\`"
+            echo "  - \`dist/Voice-Buddy-${TAG}-macOS.zip\`"
+            echo '```'
+            cat dist/SHA256SUMS.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

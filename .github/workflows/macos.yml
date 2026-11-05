@@ -1,0 +1,60 @@
+name: macOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: swift test -j 4
+
+  signed-development-build:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      CERTIFICATE_BASE64: ${{ secrets.VOICE_BUDDY_SIGNING_P12_BASE64 }}
+      P12_PASSWORD: ${{ secrets.VOICE_BUDDY_SIGNING_P12_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import development signing identity and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$CERTIFICATE_BASE64" || -z "$P12_PASSWORD" ]]; then
+            echo "The development signing secrets are not configured." >&2
+            exit 1
+          fi
+          certificate="$RUNNER_TEMP/voice-buddy-development.p12"
+          public_certificate="$RUNNER_TEMP/voice-buddy-development.pem"
+          keychain="$RUNNER_TEMP/voice-buddy-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 32)"
+          printf '%s' "$CERTIFICATE_BASE64" | base64 -D > "$certificate"
+          openssl pkcs12 -in "$certificate" -passin env:P12_PASSWORD -clcerts -nokeys -out "$public_certificate"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security import "$certificate" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          security add-trusted-cert -r trustRoot -p codeSign -k "$keychain" "$public_certificate"
+          scripts/build-app.sh release
+          ditto -c -k --keepParent 'dist/Voice Buddy.app' "$RUNNER_TEMP/Voice-Buddy-development.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Voice-Buddy-development
+          path: ${{ runner.temp }}/Voice-Buddy-development.zip
+          retention-days: 7

@@ -30,7 +30,7 @@ Qwen 的流式路径使用 Silero VAD，1.5 秒以下或 VAD 不可用时走批�
 
 ### 快捷键和提示
 
-[`HotkeyManager.swift`](https://github.com/vasanthsreeram/macwispr/blob/07e514f756202018c83b7f6c487e54755b939b63/Sources/HotkeyManager.swift) 组合事件 tap、Carbon 和全局/本地事件监听，合并重复按下/释放，并处理修饰键提前释放。可借鉴状态去重、权限不可用提示和录制快捷键时暂停触发；这不证明单独 Fn 在所有键盘和 macOS 版本上可捕获。首期默认候选改为 ⌥ Space；仍需真机验证系统和应用冲突并支持改键。
+[`HotkeyManager.swift`](https://github.com/vasanthsreeram/macwispr/blob/07e514f756202018c83b7f6c487e54755b939b63/Sources/HotkeyManager.swift) 组合事件 tap、Carbon 和全局/本地事件监听，合并重复按下/释放，并处理修饰键提前释放。可借鉴状态去重、权限不可用提示和录制快捷键时暂停触发；这不证明单独 Fn 在所有键盘和 macOS 版本上可捕获。首期默认候选改为 ⌃⌥ Space；仍需真机验证系统和应用冲突并支持改键。
 
 ### 文本整理
 
