@@ -112,8 +112,124 @@ struct MainView: View {
         }
     }
 
+    private func statusModule(
+        number: Int,
+        title: String,
+        subtitle: String,
+        isReady: Bool,
+        isPreparing: Bool,
+        targetTab: AppTab
+    ) -> some View {
+        Button {
+            state.selectedTab = targetTab
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("\(number)")
+                        .font(.caption2.bold())
+                        .foregroundStyle(isReady ? Color.green : (isPreparing ? Color.blue : Color.orange))
+                        .frame(width: 18, height: 18)
+                        .background((isReady ? Color.green : (isPreparing ? Color.blue : Color.orange)).opacity(0.15))
+                        .clipShape(Circle())
+
+                    Spacer()
+
+                    if isPreparing {
+                        ProgressView().controlSize(.small)
+                    } else if isReady {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.body)
+                    } else {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(.orange)
+                            .font(.body)
+                    }
+                }
+
+                Text(title)
+                    .font(.subheadline.bold())
+                    .foregroundStyle(Color.primary)
+
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(isReady ? Color.secondary : Color.orange)
+                    .lineLimit(1)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(NSColor.windowBackgroundColor).opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isReady ? Color.green.opacity(0.25) : (isPreparing ? Color.blue.opacity(0.3) : Color.orange.opacity(0.35)), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(number). \(title): \(subtitle)")
+    }
+
     private var general: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        let permReady = state.micAuthorized && state.axAuthorized
+        let speechReady = state.ready || state.isSpeechDownloaded
+        let textReady = state.editorReady || state.isEditorDownloaded
+        let allReady = permReady && speechReady && textReady
+
+        return VStack(alignment: .leading, spacing: 20) {
+            // 0. System Readiness Check
+            settingsCard(title: t("System Readiness Check", "当前就绪状态检查")) {
+                VStack(spacing: 12) {
+                    HStack(spacing: 10) {
+                        statusModule(
+                            number: 1,
+                            title: t("Permissions", "系统权限"),
+                            subtitle: permReady ? t("Authorized", "已授权") : t("Needs grant", "缺少授权"),
+                            isReady: permReady,
+                            isPreparing: false,
+                            targetTab: .permissions
+                        )
+
+                        statusModule(
+                            number: 2,
+                            title: t("Speech Model", "语音识别"),
+                            subtitle: state.speechPreparing ? t("Preparing…", "加载中…") : (speechReady ? t("Ready", "已就绪") : t("Not downloaded", "尚未下载")),
+                            isReady: speechReady,
+                            isPreparing: state.speechPreparing,
+                            targetTab: .speech
+                        )
+
+                        statusModule(
+                            number: 3,
+                            title: t("Text Model", "文本模型"),
+                            subtitle: state.editorPreparing ? t("Preparing…", "加载中…") : (textReady ? t("Ready", "已就绪") : t("Not downloaded", "尚未下载")),
+                            isReady: textReady,
+                            isPreparing: state.editorPreparing,
+                            targetTab: .editor
+                        )
+                    }
+
+                    Divider()
+
+                    HStack(spacing: 8) {
+                        if allReady {
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                            Text(t("All 3 components ready · System is fully operational for dictation.", "核心组件已全部就绪（3/3）· 按下全局快捷键即可随时听写。"))
+                                .font(.caption.bold())
+                                .foregroundStyle(.green)
+                        } else {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text(t("System not fully ready · Please ensure all 3 modules show green checkmarks.", "系统尚未完全就绪：三个模块均需显示绿色对勾方可正常使用，点击未就绪模块可快速配置。"))
+                                .font(.caption.bold())
+                                .foregroundStyle(.orange)
+                        }
+                        Spacer()
+                    }
+                }
+            }
+
             // 1. Shortcut & Dictation Mode
             settingsCard(title: t("Shortcut & Recording", "快捷键与录音方式")) {
                 settingRow(
