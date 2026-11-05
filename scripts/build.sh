@@ -152,11 +152,32 @@ if [ "${DO_PACKAGE}" != "true" ]; then
 fi
 APP_BUNDLE="${ROOT_DIR}/dist/Voice Buddy.app"
 rm -rf "${APP_BUNDLE}"
-mkdir -p "${APP_BUNDLE}/Contents/MacOS" "${APP_BUNDLE}/Contents/Resources"
+mkdir -p "${APP_BUNDLE}/Contents/MacOS" "${APP_BUNDLE}/Contents/Resources" "${APP_BUNDLE}/Contents/Frameworks"
 
-cp "${ROOT_DIR}/.build/${BUILD_CONFIG}/VoiceBuddy" "${APP_BUNDLE}/Contents/MacOS/VoiceBuddy"
-cp -R "${ROOT_DIR}/.build/${BUILD_CONFIG}/VoiceBuddy_VoiceBuddyApp.bundle" "${APP_BUNDLE}/Contents/Resources/"
-cp "${ROOT_DIR}/.build/${BUILD_CONFIG}/mlx.metallib" "${APP_BUNDLE}/Contents/MacOS/mlx.metallib"
+SPM_OUT="${ROOT_DIR}/.build/${BUILD_CONFIG}"
+if [ ! -f "${SPM_OUT}/VoiceBuddy" ] && [ -f "${ROOT_DIR}/.build/arm64-apple-macosx/${BUILD_CONFIG}/VoiceBuddy" ]; then
+    SPM_OUT="${ROOT_DIR}/.build/arm64-apple-macosx/${BUILD_CONFIG}"
+fi
+
+cp "${SPM_OUT}/VoiceBuddy" "${APP_BUNDLE}/Contents/MacOS/VoiceBuddy"
+cp -R "${SPM_OUT}/VoiceBuddy_VoiceBuddyApp.bundle" "${APP_BUNDLE}/Contents/Resources/"
+cp "${SPM_OUT}/mlx.metallib" "${APP_BUNDLE}/Contents/MacOS/mlx.metallib"
+
+# Copy additional resource bundles (LaunchAtLogin, KeyboardShortcuts, MediaRemoteAdapter)
+for b in "${SPM_OUT}"/*.bundle; do
+    if [ -d "${b}" ]; then
+        cp -R "${b}" "${APP_BUNDLE}/Contents/Resources/" 2>/dev/null || true
+    fi
+done
+
+# Copy dynamic frameworks and libraries (Sparkle.framework, libMediaRemoteAdapter.dylib)
+if [ -d "${SPM_OUT}/Sparkle.framework" ]; then
+    cp -R "${SPM_OUT}/Sparkle.framework" "${APP_BUNDLE}/Contents/Frameworks/"
+fi
+if [ -f "${SPM_OUT}/libMediaRemoteAdapter.dylib" ]; then
+    cp "${SPM_OUT}/libMediaRemoteAdapter.dylib" "${APP_BUNDLE}/Contents/Frameworks/"
+fi
+install_name_tool -add_rpath "@executable_path/../Frameworks" "${APP_BUNDLE}/Contents/MacOS/VoiceBuddy" 2>/dev/null || true
 
 # Ensure AppIcon.icns exists
 ICON_SRC="${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/AppIcon.icns"
