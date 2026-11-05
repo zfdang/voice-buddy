@@ -1,0 +1,37 @@
+name: Verify Public Repo Token
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test Token Permissions
+        env:
+          GH_TOKEN: ${{ secrets.VOICE_BUDDY_REPO_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::VOICE_BUDDY_REPO_ACCESS_TOKEN secret is empty!"
+            exit 1
+          fi
+
+          echo "=== 1. Checking repository accessibility & permissions ==="
+          gh api repos/zfdang/voice-buddy --jq '{
+            repo: .full_name,
+            private: .private,
+            permissions: .permissions
+          }'
+
+          echo "=== 2. Checking Release API permissions ==="
+          gh release list --repo zfdang/voice-buddy
+
+          echo "=== 3. Checking Git Push Access (dry-run) ==="
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/zfdang/voice-buddy.git" test-clone
+          cd test-clone
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git push --dry-run origin main
+
+          echo "=== All checks passed! Token has full required permissions. ==="
