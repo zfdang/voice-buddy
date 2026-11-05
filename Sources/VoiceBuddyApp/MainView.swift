@@ -10,6 +10,7 @@ struct MainView: View {
     @EnvironmentObject var state: AppState
     @State private var confirmSpeechDelete = false
     @State private var confirmTextDelete = false
+    @State private var textModelToDelete: String? = nil
     private func t(_ en: String, _ zh: String) -> String { state.label(en, zh) }
 
     var body: some View {
@@ -386,9 +387,8 @@ struct MainView: View {
                     .labelsHidden()
                     .fixedSize()
                     .disabled(state.busy || state.recording)
-                    .onChange(of: state.preferences.speechModel) { _, _ in
-                        state.ready = false
-                        state.checkModelCacheStatus()
+                    .onChange(of: state.preferences.speechModel) { _, newModel in
+                        state.selectSpeechModel(id: newModel)
                     }
                 }
                 Divider()
@@ -421,7 +421,7 @@ struct MainView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                    } else if state.ready {
+                    } else if state.ready || state.isSpeechDownloaded {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.title3)
                             .foregroundStyle(.green)
@@ -429,19 +429,7 @@ struct MainView: View {
                             Text(t("Ready in Memory", "已载入内存 · 随时可用"))
                                 .font(.headline)
                                 .foregroundStyle(.green)
-                            Text(t("Acoustic and VAD models are ready for instant dictation.", "声学识别与语音检测模型已就绪，按下快捷键即可开始听写。"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else if state.isSpeechDownloaded {
-                        Image(systemName: "externaldrive.fill.badge.checkmark")
-                            .font(.title3)
-                            .foregroundStyle(.blue)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(t("Downloaded (Not in Memory)", "已下载至本地 · 未载入内存"))
-                                .font(.headline)
-                                .foregroundStyle(.blue)
-                            Text(t("Model files are saved locally. Click Load or it loads on first shortcut press.", "模型已下载至本机，点击载入或在首次按快捷键时自动加载。"))
+                            Text(t("Acoustic and VAD models are loaded in unified memory for instant dictation.", "声学识别与语音检测模型已载入统一内存，按下快捷键即可开始听写。"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -481,19 +469,7 @@ struct MainView: View {
                 HStack(spacing: 12) {
                     if state.speechPreparing {
                         Button(t("Cancel", "取消")) { state.cancel() }
-                    } else if state.ready {
-                        Button(t("Reload into Memory", "重新加载")) { state.prepareSpeech() }
-                            .disabled(state.busy)
-                        Button(role: .destructive) {
-                            confirmSpeechDelete = true
-                        } label: {
-                            Text(t("Delete Local Cache…", "删除本地缓存…"))
-                        }
-                        .disabled(state.busy || state.recording)
-                    } else if state.isSpeechDownloaded {
-                        Button(t("Load into Memory", "载入内存")) { state.prepareSpeech() }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(state.busy)
+                    } else if state.ready || state.isSpeechDownloaded {
                         Button(role: .destructive) {
                             confirmSpeechDelete = true
                         } label: {
@@ -516,139 +492,184 @@ struct MainView: View {
 
     private var editor: some View {
         VStack(alignment: .leading, spacing: 20) {
-            // 1. Model Selection Card
-            settingsCard(title: t("Text Refinement Model", "文本润色模型选择")) {
-                settingRow(
-                    title: t("Select Model", "选择模型规格"),
-                    subtitle: t("Local LLM used for Moderate editing and Rewrite modes", "用于“适度整理”与“完全重写”模式的端侧大语言模型")
-                ) {
-                    Picker("", selection: $state.preferences.textModel) {
-                        Text("Qwen 3.5 0.8B (INT5 · 494 MB · 极速轻量)").tag("qwen35-text-0.8b-int5")
-                        Text("Qwen 3.5 0.8B (INT8 · 763 MB · 高精润色)").tag("qwen35-text-0.8b-int8")
-                    }
-                    .labelsHidden()
-                    .fixedSize()
-                    .disabled(state.busy || state.recording)
-                    .onChange(of: state.preferences.textModel) { _, _ in
-                        state.editorReady = false
-                        state.checkModelCacheStatus()
+            // 1. Model Library & Local Storage Management
+            settingsCard(title: t("Local Models & Storage", "本地模型列表与存储管理")) {
+                VStack(spacing: 14) {
+                    ForEach(Array(TextModelSpec.allModels.enumerated()), id: \.element.id) { index, spec in
+                        if index > 0 {
+                            Divider()
+                        }
+
+                        let isDownloadingThis = state.editorPreparing && state.activeDownloadingTextModelID == spec.id
+                        let isCached = state.cachedTextModelIDs.contains(spec.id)
+                        let isActive = state.preferences.textModel == spec.id
+                        let isLoaded = isActive && state.editorReady
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .center, spacing: 10) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(spacing: 8) {
+                                        Text(spec.name)
+                                            .font(.headline)
+                                        Text(spec.quantization)
+                                            .font(.caption2.bold())
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.secondary.opacity(0.15))
+                                            .clipShape(Capsule())
+                                        Text(spec.size)
+                                            .font(.caption2.monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text(t(spec.descriptionEn, spec.description))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                // Status indicator
+                                if isDownloadingThis {
+                                    HStack(spacing: 4) {
+                                        ProgressView().controlSize(.small)
+                                        Text("\(Int(state.editorProgress * 100))%")
+                                            .font(.caption.monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                } else if isLoaded {
+                                    HStack(spacing: 4) {
+                                        Circle().fill(Color.green).frame(width: 8, height: 8)
+                                        Text(t("Active · Ready", "生效中 · 已载入内存"))
+                                            .font(.caption.bold())
+                                            .foregroundStyle(.green)
+                                    }
+                                } else if isActive && state.editorPreparing {
+                                    HStack(spacing: 4) {
+                                        ProgressView().controlSize(.small)
+                                        Text(t("Loading…", "载入中…"))
+                                            .font(.caption)
+                                            .foregroundStyle(.blue)
+                                    }
+                                } else if isCached {
+                                    HStack(spacing: 4) {
+                                        Circle().fill(Color.blue).frame(width: 8, height: 8)
+                                        Text(t("Downloaded", "本地已缓存"))
+                                            .font(.caption)
+                                            .foregroundStyle(.blue)
+                                    }
+                                } else {
+                                    HStack(spacing: 4) {
+                                        Circle().stroke(Color.secondary, lineWidth: 1.5).frame(width: 8, height: 8)
+                                        Text(t("Not Downloaded", "尚未下载"))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+
+                                // Action button
+                                if isDownloadingThis {
+                                    Button(t("Cancel", "取消")) {
+                                        state.cancel()
+                                    }
+                                    .controlSize(.small)
+                                } else if isCached {
+                                    Button(role: .destructive) {
+                                        textModelToDelete = spec.id
+                                        confirmTextDelete = true
+                                    } label: {
+                                        Text(t("Delete Cache…", "删除本地缓存…"))
+                                    }
+                                    .controlSize(.small)
+                                    .disabled(state.busy || state.recording)
+                                } else {
+                                    Button {
+                                        state.downloadTextModel(id: spec.id)
+                                    } label: {
+                                        Text(t("Download", "下载"))
+                                    }
+                                    .controlSize(.small)
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(state.busy || state.recording)
+                                }
+                            }
+
+                            if isDownloadingThis {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    ProgressView(value: state.editorProgress)
+                                    if !state.editorProgressMessage.isEmpty {
+                                        Text(state.editorProgressMessage)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.top, 2)
+                            }
+                        }
                     }
                 }
             }
 
-            // 2. Status & Storage Card
-            settingsCard(title: t("Model Status & Storage", "下载与运行状态")) {
-                HStack(alignment: .top, spacing: 12) {
-                    if state.editorPreparing {
-                        ProgressView()
-                            .controlSize(.small)
-                            .frame(width: 22, height: 22)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(t("Downloading / Loading model…", "正在下载 / 加载模型…"))
-                                .font(.headline)
-                            Text(state.editorProgressMessage.isEmpty ? t("Fetching weights from Hugging Face…", "正在从 Hugging Face 获取权重…") : state.editorProgressMessage)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else if state.editorReady {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.green)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(t("Ready in Memory", "已载入内存 · 随时可用"))
-                                .font(.headline)
-                                .foregroundStyle(.green)
-                            Text(t("Model is resident in unified memory for instant zero-latency refinement.", "模型已常驻统一内存，可进行毫秒级零延迟文字润色。"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else if state.isEditorDownloaded {
-                        Image(systemName: "externaldrive.fill.badge.checkmark")
-                            .font(.title3)
-                            .foregroundStyle(.blue)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(t("Downloaded (Not in Memory)", "已下载至本地 · 未载入内存"))
-                                .font(.headline)
-                                .foregroundStyle(.blue)
-                            Text(t("Model files exist on disk. Preload it now or it will load automatically on first dictation.", "模型文件已保存在本机。可立即载入，或在首次听写润色时自动加载。"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else {
-                        Image(systemName: "arrow.down.circle")
+            // 2. Active Model Selection Card
+            settingsCard(title: t("Text Refinement Model", "文本润色模型选择")) {
+                let downloadedSpecs = TextModelSpec.allModels.filter { state.cachedTextModelIDs.contains($0.id) }
+
+                if downloadedSpecs.isEmpty {
+                    HStack(spacing: 12) {
+                        Image(systemName: "info.circle")
                             .font(.title3)
                             .foregroundStyle(.orange)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(t("Not Downloaded", "尚未下载"))
+                            Text(t("No Models Downloaded Locally", "本地尚未下载任何文本模型"))
                                 .font(.headline)
-                                .foregroundStyle(.orange)
-                            Text(t("Model needs to be downloaded once (~500 MB) before moderate or rewrite editing can run.", "首次使用适度整理或完全重写前需下载一次模型文件（约 500 MB）。"))
+                            Text(t("Please click 'Download' on a model in the list above. Once downloaded, you can select it here for instant use.", "请在上方模型列表中点击“下载”获取所需模型。下载完成后即可在此处选择生效。"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
+                        Spacer()
                     }
-                    Spacer()
-                }
+                    .padding(.vertical, 4)
+                } else {
+                    settingRow(
+                        title: t("Active Refinement Model", "当前生效模型"),
+                        subtitle: t("Local LLM used for Moderate editing and Rewrite modes", "用于“适度整理”与“完全重写”模式的端侧大语言模型")
+                    ) {
+                        Picker("", selection: Binding(
+                            get: { state.preferences.textModel },
+                            set: { newModel in state.selectTextModel(id: newModel) }
+                        )) {
+                            ForEach(downloadedSpecs) { spec in
+                                Text("\(spec.name) (\(spec.quantization) · \(spec.size))").tag(spec.id)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .disabled(state.busy || state.recording)
+                    }
 
-                if state.editorPreparing {
                     Divider()
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(t("Download / Load Progress", "下载与加载进度"))
-                                .font(.caption.bold())
-                            Spacer()
-                            Text("\(Int(state.editorProgress * 100))%")
-                                .font(.caption.monospacedDigit())
+
+                    HStack(spacing: 8) {
+                        if state.editorReady {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text(t("Model is loaded in unified memory · Ready for instant zero-latency refinement.", "模型已载入统一内存 · 随时可用 (毫秒级零延迟润色)"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else if state.editorPreparing {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text(t("Loading model into unified memory…", "正在载入统一内存…"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Image(systemName: "clock")
+                                .foregroundStyle(.secondary)
+                            Text(t("Preparing model…", "准备中…"))
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        ProgressView(value: state.editorProgress)
+                        Spacer()
                     }
-                }
-
-                Divider()
-
-                HStack(spacing: 12) {
-                    if state.editorPreparing {
-                        Button(t("Cancel", "取消下载")) {
-                            state.cancel()
-                        }
-                    } else if state.editorReady {
-                        Button(t("Reload into Memory", "重新加载")) {
-                            state.prepareEditor()
-                        }
-                        .disabled(state.busy)
-
-                        Button(role: .destructive) {
-                            confirmTextDelete = true
-                        } label: {
-                            Text(t("Delete Local Cache…", "删除本地缓存…"))
-                        }
-                        .disabled(state.busy || state.recording)
-                    } else if state.isEditorDownloaded {
-                        Button(t("Load into Memory", "载入内存")) {
-                            state.prepareEditor()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(state.busy)
-
-                        Button(role: .destructive) {
-                            confirmTextDelete = true
-                        } label: {
-                            Text(t("Delete Local Cache…", "删除本地缓存…"))
-                        }
-                        .disabled(state.busy || state.recording)
-                    } else {
-                        Button(t("Download Model", "下载文本模型")) {
-                            state.prepareEditor()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(state.busy)
-                    }
-                }
-                .confirmationDialog(t("Delete this text model from disk?", "从本机删除此文本模型？"), isPresented: $confirmTextDelete) {
-                    Button(t("Delete", "删除"), role: .destructive) { state.removeTextModel() }
-                } message: {
-                    Text(t("Model files will be removed from your disk. You can re-download anytime.", "模型文件将从本机存储中移除，后续需要时可随时重新下载。"))
                 }
             }
 
@@ -674,6 +695,18 @@ struct MainView: View {
             }
         }
         .frame(maxWidth: 580)
+        .confirmationDialog(t("Delete this text model from disk?", "从本机删除此文本模型？"), isPresented: $confirmTextDelete) {
+            Button(t("Delete", "删除"), role: .destructive) {
+                if let targetId = textModelToDelete {
+                    state.removeTextModel(id: targetId)
+                    textModelToDelete = nil
+                } else {
+                    state.removeTextModel()
+                }
+            }
+        } message: {
+            Text(t("Model files will be removed from your disk. You can re-download anytime.", "模型文件将从本机存储中移除，后续需要时可随时重新下载。"))
+        }
     }
 
     private var recovery: some View {

@@ -4,6 +4,34 @@ import SpeechVAD
 import Qwen3Chat
 import VoiceBuddyCore
 
+public struct TextModelSpec: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public let size: String
+    public let quantization: String
+    public let description: String
+    public let descriptionEn: String
+
+    public static let allModels: [TextModelSpec] = [
+        TextModelSpec(
+            id: "qwen35-text-0.8b-int5",
+            name: "Qwen 3.5 0.8B",
+            size: "494 MB",
+            quantization: "INT5",
+            description: "极速轻量 · 显存占用极低，推荐日常快速听写与标点整理",
+            descriptionEn: "Ultra-lightweight · Minimal memory footprint, recommended for fast dictation and punctuation"
+        ),
+        TextModelSpec(
+            id: "qwen35-text-0.8b-int8",
+            name: "Qwen 3.5 0.8B",
+            size: "763 MB",
+            quantization: "INT8",
+            description: "高精量化 · 表达更加严谨细腻，推荐正式长文与重写润色",
+            descriptionEn: "Higher precision · Rigorous and nuanced phrasing, recommended for long-form rewrite and polishing"
+        )
+    ]
+}
+
 actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     private var asr: Qwen3ASRModel?
     private var vad: SileroVADModel?

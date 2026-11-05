@@ -32,6 +32,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     @Published var editorReady = false
     @Published var isSpeechDownloaded = false
     @Published var isEditorDownloaded = false
+    @Published var cachedTextModelIDs: Set<String> = []
+    @Published var activeDownloadingTextModelID: String? = nil
     @Published var speechPreparing = false
     @Published var speechProgress: Double = 0
     @Published var speechProgressMessage = ""
@@ -87,33 +89,38 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     }
     func checkModelCacheStatus() {
         let speechId = preferences.speechModel
-        let textId = preferences.textModel
         Task {
             let sDownloaded = await models.isSpeechModelCached(id: speechId)
-            let eDownloaded = await models.isEditorModelCached(id: textId)
+            var cachedTexts = Set<String>()
+            for spec in TextModelSpec.allModels {
+                if await models.isEditorModelCached(id: spec.id) {
+                    cachedTexts.insert(spec.id)
+                }
+            }
             await MainActor.run {
                 self.isSpeechDownloaded = sDownloaded
-                self.isEditorDownloaded = eDownloaded
+                self.cachedTextModelIDs = cachedTexts
+
+                if !cachedTexts.contains(self.preferences.textModel), let first = TextModelSpec.allModels.first(where: { cachedTexts.contains($0.id) }) {
+                    self.preferences.textModel = first.id
+                }
+
+                let editorCached = self.cachedTextModelIDs.contains(self.preferences.textModel)
+                self.isEditorDownloaded = editorCached
+
+                // Auto-load text model into memory if cached on disk
+                if editorCached && !self.editorReady && !self.editorPreparing && !self.busy {
+                    self.loadActiveEditorModel()
+                }
+                // Auto-load speech model into memory if cached on disk
+                if sDownloaded && !self.ready && !self.speechPreparing && !self.busy {
+                    self.prepareSpeech()
+                }
             }
         }
     }
     func autoPreloadModels() {
-        let speechId = preferences.speechModel
-        let textId = preferences.textModel
-        Task {
-            let sDownloaded = await models.isSpeechModelCached(id: speechId)
-            let eDownloaded = await models.isEditorModelCached(id: textId)
-            await MainActor.run {
-                self.isSpeechDownloaded = sDownloaded
-                self.isEditorDownloaded = eDownloaded
-            }
-            if sDownloaded {
-                prepareSpeech()
-            }
-            if preferences.refinement.needsModel && eDownloaded {
-                prepareEditor()
-            }
-        }
+        checkModelCacheStatus()
     }
     func refreshPermissions() {
         micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -215,15 +222,57 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
     }
 
-    func prepareEditor() {
-        guard !busy else { return }
+    func selectSpeechModel(id: String) {
+        guard preferences.speechModel != id else { return }
+        preferences.speechModel = id
+        ready = false
+        Task {
+            let isDownloaded = await models.isSpeechModelCached(id: id)
+            await MainActor.run {
+                self.isSpeechDownloaded = isDownloaded
+                if isDownloaded {
+                    self.prepareSpeech()
+                }
+            }
+        }
+    }
+
+    func loadActiveEditorModel() {
+        prepareEditor(id: preferences.textModel)
+    }
+
+    func selectTextModel(id: String) {
+        guard preferences.textModel != id else { return }
+        preferences.textModel = id
+        editorReady = false
+        if cachedTextModelIDs.contains(id) {
+            prepareEditor(id: id)
+        }
+    }
+
+    func downloadTextModel(id: String) {
+        prepareEditor(id: id) { [weak self] success in
+            guard let self, success else { return }
+            if !self.cachedTextModelIDs.contains(self.preferences.textModel) || self.preferences.textModel == id {
+                self.preferences.textModel = id
+                self.editorReady = true
+            } else {
+                // Restore active model in memory if user was using another model
+                self.loadActiveEditorModel()
+            }
+        }
+    }
+
+    func prepareEditor(id: String? = nil, completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
+        guard !busy else { completion?(false); return }
         busy = true
         editorPreparing = true
         modelPreparing = true
         editorProgress = 0
+        let targetId = id ?? preferences.textModel
+        activeDownloadingTextModelID = targetId
         editorProgressMessage = label("Preparing text model…", "正在准备文本模型…")
         status = label("Preparing text model…", "正在准备文本模型…")
-        let targetId = preferences.textModel
         let operation = UUID()
         generation = operation
         task = Task {
@@ -236,21 +285,37 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self?.editorProgressMessage = msg
                     }
                 }
-                guard generation == operation else { return }
-                editorReady = true
-                isEditorDownloaded = true
-                editorPreparing = false
-                modelPreparing = false
-                busy = false
-                checkModelCacheStatus()
+                guard generation == operation else {
+                    await MainActor.run { completion?(false) }
+                    return
+                }
+                await MainActor.run {
+                    self.cachedTextModelIDs.insert(targetId)
+                    if self.preferences.textModel == targetId {
+                        self.editorReady = true
+                    }
+                    self.isEditorDownloaded = self.cachedTextModelIDs.contains(self.preferences.textModel)
+                    self.editorPreparing = false
+                    self.modelPreparing = false
+                    self.activeDownloadingTextModelID = nil
+                    self.busy = false
+                    completion?(true)
+                }
             } catch {
-                guard generation == operation else { return }
-                status = error.localizedDescription
-                editorProgressMessage = error.localizedDescription
-                editorPreparing = false
-                modelPreparing = false
-                busy = false
-                checkModelCacheStatus()
+                guard generation == operation else {
+                    await MainActor.run { completion?(false) }
+                    return
+                }
+                await MainActor.run {
+                    self.status = error.localizedDescription
+                    self.editorProgressMessage = error.localizedDescription
+                    self.editorPreparing = false
+                    self.modelPreparing = false
+                    self.activeDownloadingTextModelID = nil
+                    self.busy = false
+                    self.checkModelCacheStatus()
+                    completion?(false)
+                }
             }
         }
     }
@@ -273,21 +338,34 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
     }
 
-    func removeTextModel() {
+    func removeTextModel(id: String? = nil) {
         guard !busy && !recording else { return }
-        let targetId = preferences.textModel
+        let targetId = id ?? preferences.textModel
         busy = true
         Task {
             do {
                 try await models.removeEditor(id: targetId)
-                editorReady = false
-                isEditorDownloaded = false
-                status = label("Text model removed", "文本模型已删除")
+                await MainActor.run {
+                    self.cachedTextModelIDs.remove(targetId)
+                    if self.preferences.textModel == targetId {
+                        self.editorReady = false
+                        self.isEditorDownloaded = false
+                        if let next = TextModelSpec.allModels.first(where: { self.cachedTextModelIDs.contains($0.id) }) {
+                            self.preferences.textModel = next.id
+                            self.prepareEditor(id: next.id)
+                        }
+                    }
+                    self.status = self.label("Text model removed", "文本模型已删除")
+                }
             } catch {
-                status = error.localizedDescription
+                await MainActor.run {
+                    self.status = error.localizedDescription
+                }
             }
-            busy = false
-            checkModelCacheStatus()
+            await MainActor.run {
+                self.busy = false
+                self.checkModelCacheStatus()
+            }
         }
     }
     func hotkeyDown() {
