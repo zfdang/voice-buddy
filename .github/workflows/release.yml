@@ -157,17 +157,17 @@ jobs:
 
           release_notes="## Voice Buddy ${TAG}
 
-- **Commit**: \`${COMMIT}\`
-- **Architecture**: Apple Silicon (M1/M2/M3/M4) / macOS 15.0+
-- **Offline-first voice typing with local Qwen3-ASR and Qwen LLM**
+          - **Commit**: \`${COMMIT}\`
+          - **Architecture**: Apple Silicon (M1/M2/M3/M4) / macOS 15.0+
+          - **Offline-first voice typing with local Qwen3-ASR and Qwen LLM**
 
-### Sparkle Update Feed
-- Automated update feed available at: \`https://raw.githubusercontent.com/${PUBLIC_REPO}/main/appcast.xml\`
+          ### Sparkle Update Feed
+          - Automated update feed available at: \`https://raw.githubusercontent.com/${PUBLIC_REPO}/main/appcast.xml\`
 
-### SHA256 Checksums
-\`\`\`
-$(cat "$checksum_file")
-\`\`\`"
+          ### SHA256 Checksums
+          \`\`\`
+          $(cat "$checksum_file")
+          \`\`\`"
 
           echo "Checking if release $TAG exists in $PUBLIC_REPO..."
           if gh release view "$TAG" --repo "$PUBLIC_REPO" >/dev/null 2>&1; then
