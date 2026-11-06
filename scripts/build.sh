@@ -181,19 +181,16 @@ if [ -d "${SPM_OUT}/VoiceBuddy_VoiceBuddyApp.bundle" ]; then
 fi
 cp "${SPM_OUT}/mlx.metallib" "${APP_BUNDLE}/Contents/MacOS/mlx.metallib"
 
-# Copy additional resource bundles (LaunchAtLogin, KeyboardShortcuts, MediaRemoteAdapter)
+# Copy additional resource bundles (LaunchAtLogin, KeyboardShortcuts)
 for b in "${SPM_OUT}"/*.bundle; do
     if [ -d "${b}" ]; then
         cp -R "${b}" "${APP_BUNDLE}/Contents/Resources/" 2>/dev/null || true
     fi
 done
 
-# Copy dynamic frameworks and libraries (Sparkle.framework, libMediaRemoteAdapter.dylib)
+# Copy dynamic frameworks (Sparkle.framework)
 if [ -d "${SPM_OUT}/Sparkle.framework" ]; then
     cp -R "${SPM_OUT}/Sparkle.framework" "${APP_BUNDLE}/Contents/Frameworks/"
-fi
-if [ -f "${SPM_OUT}/libMediaRemoteAdapter.dylib" ]; then
-    cp "${SPM_OUT}/libMediaRemoteAdapter.dylib" "${APP_BUNDLE}/Contents/Frameworks/"
 fi
 install_name_tool -add_rpath "@executable_path/../Frameworks" "${APP_BUNDLE}/Contents/MacOS/VoiceBuddy" 2>/dev/null || true
 

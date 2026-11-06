@@ -10,8 +10,7 @@ let package = Package(
         .package(url: "https://github.com/soniqo/speech-swift.git", revision: "a57702e6f523fa36ac5532d2bdc5f35f701a052c"),
         .package(url: "https://github.com/sindresorhus/LaunchAtLogin.git", from: "5.0.0"),
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts.git", from: "1.9.0"),
-        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
-        .package(url: "https://github.com/ejbills/mediaremote-adapter.git", branch: "master")
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0")
     ],
     targets: [
         .target(name: "VoiceBuddyCore"),
@@ -24,8 +23,7 @@ let package = Package(
                 .product(name: "Qwen3Chat", package: "speech-swift"),
                 .product(name: "LaunchAtLogin", package: "LaunchAtLogin"),
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
-                .product(name: "Sparkle", package: "Sparkle"),
-                .product(name: "MediaRemoteAdapter", package: "mediaremote-adapter")
+                .product(name: "Sparkle", package: "Sparkle")
             ],
             exclude: ["Resources"]
         ),

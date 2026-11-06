@@ -7,7 +7,6 @@ import VoiceBuddyCore
 import KeyboardShortcuts
 import Sparkle
 import LaunchAtLogin
-import MediaRemoteAdapter
 
 public enum AppTab: Int, CaseIterable, Identifiable {
     case general = 0
