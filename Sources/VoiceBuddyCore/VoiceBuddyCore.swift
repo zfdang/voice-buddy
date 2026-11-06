@@ -99,29 +99,52 @@ public enum TextCleanup {
     }
 }
 
+public enum PipelineEvent: String, Sendable {
+    case detectionStarted, detectionCompleted, detectionFailed
+    case transcriptionStarted, transcriptionCompleted, transcriptionFailed
+    case refinementStarted, refinementCompleted, refinementFailed
+}
+
 public struct Pipeline: Sendable {
     public let detector: any SpeechDetector
     public let transcription: any TranscriptionEngine
     public let refinement: any TextRefinementEngine
-    public init(detector: any SpeechDetector, transcription: any TranscriptionEngine, refinement: any TextRefinementEngine) {
+    public let onEvent: @Sendable (PipelineEvent) -> Void
+    public init(detector: any SpeechDetector, transcription: any TranscriptionEngine, refinement: any TextRefinementEngine, onEvent: @escaping @Sendable (PipelineEvent) -> Void = { _ in }) {
         self.detector = detector; self.transcription = transcription; self.refinement = refinement
+        self.onEvent = onEvent
     }
     public func run(samples: [Float], language: String, mode: Refinement) async throws -> (original: String, result: String) {
-        guard !samples.isEmpty, try await detector.containsSpeech(samples) else { throw VoiceBuddyError.noSpeech }
+        onEvent(.detectionStarted)
+        do {
+            guard !samples.isEmpty, try await detector.containsSpeech(samples) else { throw VoiceBuddyError.noSpeech }
+            onEvent(.detectionCompleted)
+        } catch { onEvent(.detectionFailed); throw error }
         try Task.checkCancellation()
-        let original = try await transcription.transcribe(samples: samples, language: language).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !original.isEmpty else { throw VoiceBuddyError.emptyTranscript }
+        onEvent(.transcriptionStarted)
+        let original: String
+        do {
+            original = try await transcription.transcribe(samples: samples, language: language).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !original.isEmpty else { throw VoiceBuddyError.emptyTranscript }
+            onEvent(.transcriptionCompleted)
+        } catch { onEvent(.transcriptionFailed); throw error }
         try Task.checkCancellation()
         switch mode {
         case .original: return (original, original)
-        case .light: return (original, TextCleanup.light(original))
+        case .light:
+            onEvent(.refinementStarted)
+            let result = TextCleanup.light(original)
+            onEvent(.refinementCompleted)
+            return (original, result)
         case .moderate, .rewrite:
+            onEvent(.refinementStarted)
             do {
                 let result = try await refinement.refine(original, mode: mode).trimmingCharacters(in: .whitespacesAndNewlines)
                 guard TextCleanup.looksSafe(result, original: original) else { throw VoiceBuddyError.modelUnavailable("Text model returned an unsafe or empty result") }
+                onEvent(.refinementCompleted)
                 return (original, result)
-            } catch is CancellationError { throw CancellationError() }
-            catch { throw RefinementFailure(original: original, reason: error.localizedDescription) }
+            } catch is CancellationError { onEvent(.refinementFailed); throw CancellationError() }
+            catch { onEvent(.refinementFailed); throw RefinementFailure(original: original, reason: error.localizedDescription) }
         }
     }
 }

@@ -19,6 +19,7 @@ final class Recorder {
         } else if !deviceUID.isEmpty { throw NSError(domain: "VoiceBuddy", code: 1, userInfo: [NSLocalizedDescriptionKey: "Selected microphone is unavailable."]) }
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
+        DiagnosticLog.shared.record("recording.format custom_device=\(!deviceUID.isEmpty) sample_rate=\(format.sampleRate) channels=\(format.channelCount)")
         guard format.sampleRate > 0, format.channelCount > 0,
               let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
               let converter = AVAudioConverter(from: format, to: target) else {
