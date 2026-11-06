@@ -66,7 +66,10 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     private var editor: Qwen35MLXChat?
     private var selectedID = ""
     private var selectedEditorID = ""
-    private let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("VoiceBuddy/Models", isDirectory: true)
+    private let root: URL
+    init(root: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("VoiceBuddy/Models", isDirectory: true)) {
+        self.root = root
+    }
     private func directory(_ name: String) -> URL { root.appendingPathComponent(name, isDirectory: true) }
     private func speechDirectory(_ id: String) -> URL { directory(id.contains("1.7") ? "qwen-asr-1.7b" : "qwen-asr-0.6b") }
     private func textDirectory(_ id: String) -> URL { directory(id) }
@@ -106,6 +109,9 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     }
 
     func prepareSpeech(id: String, progress: @escaping @Sendable (Double, String) -> Void) async throws {
+        guard SpeechModelSpec.allModels.contains(where: { $0.id == id }) else {
+            throw VoiceBuddyError.modelUnavailable("Invalid speech model identifier")
+        }
         let isCached = isSpeechModelCached(id: id)
         let hfModelId = (id.contains("1.7") || id.contains("large")) ? "mlx-community/Qwen3-ASR-1.7B-8bit" : "mlx-community/Qwen3-ASR-0.6B-8bit"
         if asr == nil || selectedID != id {
@@ -129,6 +135,9 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
 
     func prepareEditor(id: String? = nil, progress: @escaping @Sendable (Double, String) -> Void) async throws {
         let targetId = id ?? "qwen35-text-0.8b-int5"
+        guard TextModelSpec.allModels.contains(where: { $0.id == targetId }) else {
+            throw VoiceBuddyError.modelUnavailable("Invalid text model identifier")
+        }
         let q: Qwen35MLXChat.Quantization = targetId.contains("int8") ? .int8 : .int5
         var dir = textDirectory(targetId)
         if targetId == "qwen35-text-0.8b-int5" && !FileManager.default.fileExists(atPath: dir.path) {
@@ -148,12 +157,18 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     }
 
     func removeSpeech(id: String) throws {
+        guard SpeechModelSpec.allModels.contains(where: { $0.id == id }) else {
+            throw VoiceBuddyError.modelUnavailable("Invalid speech model identifier")
+        }
         if selectedID == id { asr = nil; selectedID = "" }
         let path = speechDirectory(id); if FileManager.default.fileExists(atPath: path.path) { try FileManager.default.removeItem(at: path) }
     }
 
     func removeEditor(id: String? = nil) throws {
         let targetId = id ?? selectedEditorID
+        guard TextModelSpec.allModels.contains(where: { $0.id == targetId }) else {
+            throw VoiceBuddyError.modelUnavailable("Invalid text model identifier")
+        }
         if selectedEditorID == targetId {
             editor = nil
             selectedEditorID = ""

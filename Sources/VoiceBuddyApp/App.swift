@@ -54,7 +54,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private let mediaPlayback = MediaPlaybackController()
     private let recorder = Recorder()
     private let overlay = Overlay()
-    private var insertFailure = ""
+    private(set) var insertFailure = ""
     private var targetPID: pid_t = 0
     private var targetAppName = ""
     private var targetElement: AXUIElement?
@@ -469,6 +469,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     func toggle() { if recording { finish() } else { start(whileHeld: false) } }
     private func start(whileHeld: Bool) {
         guard !busy && !recording else { return }
+        // Invalidate any delayed insertion from the previous session.
+        transcriptionGeneration = UUID()
         guard ready else {
             status = label("Loading speech model…", "正在加载语音模型…")
             overlay.show(state: self)
@@ -703,6 +705,14 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 original = output.original
                 result = output.result
                 busy = false
+                if settings.refinement.needsModel {
+                    overlay.hide()
+                    liveTranscriptState.clear()
+                    copyResult()
+                    status = label("Edited text copied. Review it before pasting; open Result to compare the original.", "整理后的文字已复制，请检查后粘贴；可打开结果页查看原文。")
+                    overlay.showStatus(state: self)
+                    return
+                }
                 if settings.autoInsert {
                     let targetPt = targetInsertionPoint()
                     overlay.flyAndDismiss(to: targetPt) { [weak self] in
@@ -710,8 +720,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         guard self.transcriptionGeneration == id, !self.recording else { return }
                         self.liveTranscriptState.clear()
                         if self.insertIfSafe(output.result, targetPID: boundPID, targetAppName: boundAppName, targetElement: boundElement, sessionID: id) {
-                            let appName = boundAppName.isEmpty ? self.label("target application", "目标应用") : boundAppName
-                            self.status = self.label("Inserted into \(appName)", "已插入到 \(appName)")
+                            self.status = self.label("Preparing to paste…", "正在准备粘贴…")
                         } else {
                             self.copyResult()
                             let tip = !self.insertFailure.isEmpty ? self.insertFailure : self.label("Content copied to clipboard. Press ⌘V to paste.", "内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
@@ -772,7 +781,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         let myPID = NSRunningApplication.current.processIdentifier
         if effPID == 0 || effPID == myPID {
             copyResult()
-            return true
+            insertFailure = label("No external target; content copied to clipboard.", "没有外部目标，内容已复制到剪贴板。")
+            return false
         }
         // 3. Ensure target application is still running
         guard let targetApp = NSRunningApplication(processIdentifier: effPID), !targetApp.isTerminated else {
@@ -789,12 +799,10 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             return false
         }
         // 4b. Check if focused element switched within the same application
-        if let initial = initialElement, let current = currentElem {
-            if !CFEqual(initial, current) {
-                insertFailure = label("Focused input changed; content copied to clipboard. Press ⌘V to paste.", "输入框焦点已切换，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
-                copyResult()
-                return false
-            }
+        guard let initial = initialElement, let current = currentElem, CFEqual(initial, current) else {
+            insertFailure = label("Cannot verify the focused input; content copied to clipboard. Press ⌘V to paste.", "无法确认输入框焦点，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
+            copyResult()
+            return false
         }
         // 5. Universal Insertion via Clipboard + Hardware-level Synthesized ⌘V (100% of apps supported)
         guard AXIsProcessTrusted() else {
@@ -834,49 +842,47 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         TargetAccessibility.waitForModifiersReleased(timeout: 0.25) { [weak self] in
             // Give target app's window server activation time to settle before posting ⌘V
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                if let sid = sessionID, let currentGen = self?.transcriptionGeneration, currentGen != sid {
-                    return
-                }
+                guard let self, !self.recording else { return }
+                if let sid = sessionID, self.transcriptionGeneration != sid { return }
                 guard board.changeCount == count, board.string(forType: .string) == text else {
+                    self.status = self.label("Clipboard changed; paste was cancelled.", "剪贴板已改变，已取消粘贴。")
+                    self.overlay.showStatus(state: self)
                     return
                 }
-                guard let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
-                      frontPID == effPID else {
+                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == effPID,
+                      let liveFocus = self.focusedElement(pid: effPID), CFEqual(initial, liveFocus),
+                      !TargetAccessibility.isSensitiveDestination(element: liveFocus) else {
+                    self.status = self.label("Could not verify the target; text remains on the clipboard.", "无法确认目标输入框，文字仍在剪贴板中。")
+                    self.overlay.showStatus(state: self)
                     return
                 }
-                if let liveFocus = self?.focusedElement(pid: effPID), TargetAccessibility.isSensitiveDestination(element: liveFocus) {
+                guard TargetAccessibility.postPasteShortcut() else {
+                    self.status = self.label("Paste could not be sent; text remains on the clipboard.", "无法发送粘贴命令，文字仍在剪贴板中。")
+                    self.overlay.showStatus(state: self)
                     return
                 }
-                TargetAccessibility.postPasteShortcut()
-            }
-        }
-
-        // Restore original clipboard after target app has had time to read it
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            guard board.changeCount == count else { return }
-            board.clearContents()
-            if !savedItems.isEmpty {
-                let restored: [NSPasteboardItem] = savedItems.compactMap { entries in
-                    guard !entries.isEmpty else { return nil }
-                    let item = NSPasteboardItem()
-                    for (type, data) in entries {
-                        item.setData(data, forType: type)
+                self.status = self.label("Paste command sent.", "已发送粘贴命令。")
+                // Restoring on a timer is still best-effort: AppKit does not report
+                // when the receiving app has consumed the clipboard.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    guard board.changeCount == count else { return }
+                    board.clearContents()
+                    if !savedItems.isEmpty {
+                        let restored: [NSPasteboardItem] = savedItems.compactMap { entries in
+                            guard !entries.isEmpty else { return nil }
+                            let item = NSPasteboardItem()
+                            for (type, data) in entries { item.setData(data, forType: type) }
+                            return item
+                        }
+                        if !restored.isEmpty { board.writeObjects(restored) }
                     }
-                    return item
-                }
-                if !restored.isEmpty {
-                    board.writeObjects(restored)
                 }
             }
         }
         return true
     }
     private func focusedElement(pid: pid_t) -> AXUIElement? {
-        guard pid != 0 else { return nil }
-        TargetAccessibility.wakeManualAccessibility(processIdentifier: pid)
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), kAXFocusedUIElementAttribute as CFString, &value) == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
-        return (value as! AXUIElement)
+        TargetAccessibility.focusedElement(processIdentifier: pid)
     }
     func copyResult() { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(result, forType: .string); status = label("Copied", "已复制") }
     static let menuBarMascotIcon: NSImage = {
