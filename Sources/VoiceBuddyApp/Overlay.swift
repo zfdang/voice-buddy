@@ -491,10 +491,11 @@ private struct OverlayView: View {
                                 .stroke(Color.cyan.opacity(0.4), lineWidth: 1)
                         }
 
-                    // Mic Icon
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
+                    // App Mascot Color Icon
+                    Image(nsImage: AppState.appMascotColorIcon)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 28, height: 28)
                 }
                 .frame(width: 58, height: 58)
 
