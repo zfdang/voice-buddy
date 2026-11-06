@@ -66,7 +66,10 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     private var editor: Qwen35MLXChat?
     private var selectedID = ""
     private var selectedEditorID = ""
-    private let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("VoiceBuddy/Models", isDirectory: true)
+    private let root: URL
+    init(root: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("VoiceBuddy/Models", isDirectory: true)) {
+        self.root = root
+    }
     private func directory(_ name: String) -> URL { root.appendingPathComponent(name, isDirectory: true) }
     private func speechDirectory(_ id: String) -> URL { directory(id.contains("1.7") ? "qwen-asr-1.7b" : "qwen-asr-0.6b") }
     private func textDirectory(_ id: String) -> URL { directory(id) }
