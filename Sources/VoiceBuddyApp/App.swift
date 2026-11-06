@@ -506,11 +506,11 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             }
             return
         }
-        // Snapshot the destination before requesting permissions or presenting UI.
-        let frontmost = NSWorkspace.shared.frontmostApplication
-        let pid = frontmost?.processIdentifier ?? 0
-        let name = frontmost?.localizedName ?? ""
-        let element = focusedElement(pid: pid)
+        // Snapshot the destination with system-wide + frontmost fallbacks and wake accessibility
+        let target = TargetAccessibility.captureTargetFocus()
+        let pid = target.pid
+        let name = target.name
+        let element = target.element
 
         refreshPermissions()
         guard micAuthorized else {
@@ -678,13 +678,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             do {
                 let output = try await pipeline.run(samples: audio, language: settings.speechLanguage, mode: settings.refinement)
                 guard transcriptionGeneration == id else { return }; original = output.original; result = output.result; busy = false
-                if settings.refinement.needsModel {
-                    overlay.hide()
-                    liveTranscriptState.clear()
-                    status = label("Review edited text before inserting.", "请先确认整理结果。")
-                    showWindow(tab: .recovery)
-                    return
-                }
                 if settings.autoInsert {
                     let targetPt = targetInsertionPoint()
                     overlay.flyAndDismiss(to: targetPt) { [weak self] in
@@ -694,15 +687,16 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                             let appName = self.targetAppName.isEmpty ? self.label("target application", "目标应用") : self.targetAppName
                             self.status = self.label("Inserted into \(appName)", "已插入到 \(appName)")
                         } else {
-                            self.status = !self.insertFailure.isEmpty ? self.insertFailure : self.label("Result ready to copy.", "文字已准备好，请复制。 ")
-                            self.showWindow(tab: .recovery)
+                            self.copyResult()
+                            let tip = !self.insertFailure.isEmpty ? self.insertFailure : self.label("Content copied to clipboard. Press ⌘V to paste.", "内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
+                            self.status = tip
                         }
                     }
                 } else {
                     overlay.hide()
                     liveTranscriptState.clear()
-                    status = label("Result ready to copy.", "文字已准备好，请复制。 ")
-                    showWindow(tab: .recovery)
+                    copyResult()
+                    status = label("Content copied to clipboard. Press ⌘V to paste.", "内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
                 }
             } catch {
                 guard transcriptionGeneration == id else { return }
@@ -712,10 +706,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 if let failure = error as? RefinementFailure {
                     original = failure.original
                     result = failure.original
-                    selectedTab = .recovery
+                    copyResult()
                 }
                 status = error.localizedDescription
-                showWindow(tab: .recovery)
             }
         }
     }
@@ -726,20 +719,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             insertFailure = label("No text to insert.", "没有可插入的文字。")
             return false
         }
-        // 1. Password & Secure Input Protection
-        if IsSecureEventInputEnabled() {
-            insertFailure = label("Secure input is active; copied to clipboard.", "安全输入模式已启用，已复制到剪贴板。")
+        // 1. Password & Sensitive Field Protection
+        let targetElem = targetElement ?? (targetPID != 0 ? focusedElement(pid: targetPID) : nil)
+        if TargetAccessibility.isSensitiveDestination(element: targetElem) {
+            insertFailure = label("Sensitive field detected; content copied to clipboard. Press ⌘V to paste.", "检测到敏感输入框，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
-        }
-        if let element = targetElement ?? (targetPID != 0 ? focusedElement(pid: targetPID) : nil) {
-            var subrole: CFTypeRef?
-            if AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subrole) == .success,
-               (subrole as? String) == "AXSecureTextField" {
-                insertFailure = label("Password field detected; copied to clipboard.", "检测到密码输入框，已复制到剪贴板。")
-                copyResult()
-                return false
-            }
         }
         // 2. Check if target was Voice Buddy itself (e.g. testing in Editor tab)
         let myPID = NSRunningApplication.current.processIdentifier
@@ -749,23 +734,20 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
         // 3. Ensure target application is still running
         guard let targetApp = NSRunningApplication(processIdentifier: targetPID), !targetApp.isTerminated else {
-            insertFailure = label("Target application is no longer running.", "目标应用已退出，已复制到剪贴板。")
+            insertFailure = label("Target app not running; content copied to clipboard. Press ⌘V to paste.", "目标应用未在运行，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
         }
-        // 4. Try Direct Accessibility Insertion (if supported by standard controls)
-        if AXIsProcessTrusted(), let element = targetElement ?? focusedElement(pid: targetPID) {
-            var isSettable: DarwinBoolean = false
-            if AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &isSettable) == .success,
-               isSettable.boolValue {
-                if AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFTypeRef) == .success {
-                    return true
-                }
-            }
+        // 4. Target Change Protection (prevent pasting into wrong app if user switched windows)
+        if let currentFrontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+           currentFrontPID != targetPID && currentFrontPID != myPID {
+            insertFailure = label("Target application changed; content copied to clipboard. Press ⌘V to paste.", "目标应用已切换，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
+            copyResult()
+            return false
         }
-        // 5. Universal Insertion via Clipboard + Synthesized ⌘V (Sublime Text, Word, Chrome, etc.)
+        // 5. Universal Insertion via Clipboard + Hardware-level Synthesized ⌘V (100% of apps supported)
         guard AXIsProcessTrusted() else {
-            insertFailure = label("Accessibility access needed for auto-paste; copied to clipboard.", "需要辅助功能权限以自动粘贴，文字已复制到剪贴板。")
+            insertFailure = label("Accessibility access needed; content copied to clipboard. Press ⌘V to paste.", "需要辅助功能权限以自动上屏，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
         }
@@ -788,28 +770,25 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         board.clearContents()
         let item = NSPasteboardItem()
         item.setString(text, forType: .string)
-        for marker in ["org.nspasteboard.TransientType", "org.nspasteboard.ConcealedType", "org.nspasteboard.AutoGeneratedType"] {
-            item.setString("", forType: NSPasteboard.PasteboardType(marker))
-        }
+        // Mark as transient & autogenerated so clipboard managers don't permanently archive it
+        item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+        item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.AutoGeneratedType"))
         guard board.writeObjects([item]) else {
             insertFailure = label("Failed to write to clipboard.", "写入剪贴板失败。")
             return false
         }
         let count = board.changeCount
 
-        // Give target app's window server activation a brief moment to settle before posting ⌘V
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
-            guard let source = CGEventSource(stateID: .combinedSessionState) else { return }
-            guard let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
-                  let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else { return }
-            down.flags = .maskCommand
-            up.flags = .maskCommand
-            down.post(tap: .cghidEventTap)
-            up.post(tap: .cghidEventTap)
+        // Avoid hardware modifier collisions (Shift, Ctrl, Alt) before sending ⌘V
+        TargetAccessibility.waitForModifiersReleased(timeout: 0.25) {
+            // Give target app's window server activation time to settle before posting ⌘V
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                TargetAccessibility.postPasteShortcut()
+            }
         }
 
         // Restore original clipboard after target app has had time to read it
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             guard board.changeCount == count else { return }
             if !savedItems.isEmpty {
                 board.clearContents()
@@ -829,7 +808,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         return true
     }
     private func focusedElement(pid: pid_t) -> AXUIElement? {
-        guard pid != 0 else { return nil }; var value: CFTypeRef?
+        guard pid != 0 else { return nil }
+        TargetAccessibility.wakeManualAccessibility(processIdentifier: pid)
+        var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), kAXFocusedUIElementAttribute as CFString, &value) == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
         return (value as! AXUIElement)
     }
@@ -897,6 +878,34 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         fallback.size = size
         return fallback
     }()
+    static let appMascotColorIcon: NSImage = {
+        let size = NSSize(width: 44, height: 44)
+        let img = NSImage(size: size)
+
+        let url1x = Bundle.module.url(forResource: "MenuBarIconColor", withExtension: "png") ?? Bundle.main.url(forResource: "MenuBarIconColor", withExtension: "png")
+        let url2x = Bundle.module.url(forResource: "MenuBarIconColor@2x", withExtension: "png") ?? Bundle.main.url(forResource: "MenuBarIconColor@2x", withExtension: "png")
+
+        if let url2x, let data2x = try? Data(contentsOf: url2x), let rep2x = NSBitmapImageRep(data: data2x) {
+            rep2x.size = size
+            img.addRepresentation(rep2x)
+        } else if let url1x, let data1x = try? Data(contentsOf: url1x), let rep1x = NSBitmapImageRep(data: data1x) {
+            rep1x.size = size
+            img.addRepresentation(rep1x)
+        }
+
+        if !img.representations.isEmpty {
+            img.isTemplate = false
+            return img
+        }
+
+        if let url = url2x ?? url1x, let raw = NSImage(contentsOf: url) {
+            raw.size = size
+            raw.isTemplate = false
+            return raw
+        }
+
+        return menuBarActiveIcon
+    }()
     func showWindow(tab: AppTab? = nil) {
         if let tab { selectedTab = tab }
         refreshPermissions()
@@ -926,6 +935,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             Button(state.label("Settings…", "设置…")) {
                 state.showWindow(tab: .general)
             }.keyboardShortcut(",")
+            Button(state.label("Recognition Result…", "识别结果…")) {
+                state.showWindow(tab: .recovery)
+            }
             Divider()
             Button(state.label("About Voice Buddy…", "关于 Voice Buddy…")) {
                 state.showWindow(tab: .about)
