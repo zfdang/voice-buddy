@@ -15,7 +15,7 @@ public enum TargetAccessibility {
 
     private static let browserAndEditorBundleIDs: Set<String> = [
         "com.google.Chrome", "org.chromium.Chromium", "com.apple.Safari", "org.mozilla.firefox",
-        "com.microsoft.edgemac", "com.brave.Browser", "com.openai.chat", "com.sublimetext.4",
+        "com.microsoft.edgemac", "com.brave.Browser", "com.openai.chat", "com.openai.codex", "com.sublimetext.4",
         "com.microsoft.VSCode", "com.github.GitHubClient", "com.todesktop.230313mzl4w4u92", "abnerworks.Typora"
     ]
 
@@ -39,9 +39,15 @@ public enum TargetAccessibility {
 
     /// Captures the true focused application PID, app name, and AXUIElement using system-wide + frontmost fallbacks.
     public static func captureTargetFocus() -> (pid: pid_t, name: String, element: AXUIElement?) {
+        guard let frontmost = NSWorkspace.shared.frontmostApplication else {
+            return (0, "", nil)
+        }
+        let pid = frontmost.processIdentifier
+        let name = frontmost.localizedName ?? ""
+        wakeManualAccessibility(processIdentifier: pid)
+
         guard AXIsProcessTrusted() else {
-            let frontmost = NSWorkspace.shared.frontmostApplication
-            return (frontmost?.processIdentifier ?? 0, frontmost?.localizedName ?? "", nil)
+            return (pid, name, nil)
         }
 
         // 1. Try system-wide focused UI element first
@@ -50,29 +56,28 @@ public enum TargetAccessibility {
         if AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedElementValue) == .success,
            let focused = focusedElementValue, CFGetTypeID(focused) == AXUIElementGetTypeID() {
             let element = (focused as! AXUIElement)
-            var pid: pid_t = 0
-            if AXUIElementGetPid(element, &pid) == .success, pid != 0 {
-                let app = NSRunningApplication(processIdentifier: pid)
-                wakeManualAccessibility(processIdentifier: pid)
-                return (pid, app?.localizedName ?? "", element)
+            var elemPID: pid_t = 0
+            if AXUIElementGetPid(element, &elemPID) == .success {
+                // If element belongs to frontmost app or an unbundled helper/renderer, always bind to frontmost app
+                if elemPID == pid || NSRunningApplication(processIdentifier: elemPID) == nil {
+                    return (pid, name, element)
+                } else if let elemApp = NSRunningApplication(processIdentifier: elemPID) {
+                    wakeManualAccessibility(processIdentifier: elemPID)
+                    return (elemPID, elemApp.localizedName ?? name, element)
+                }
             }
+            return (pid, name, element)
         }
 
-        // 2. Fallback to frontmost application
-        guard let frontmost = NSWorkspace.shared.frontmostApplication else {
-            return (0, "", nil)
-        }
-        let pid = frontmost.processIdentifier
-        wakeManualAccessibility(processIdentifier: pid)
-
+        // 2. Fallback to app focused UI element
         var appFocusedValue: CFTypeRef?
         let appElement = AXUIElementCreateApplication(pid)
         if AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &appFocusedValue) == .success,
            let val = appFocusedValue, CFGetTypeID(val) == AXUIElementGetTypeID() {
-            return (pid, frontmost.localizedName ?? "", (val as! AXUIElement))
+            return (pid, name, (val as! AXUIElement))
         }
 
-        return (pid, frontmost.localizedName ?? "", nil)
+        return (pid, name, nil)
     }
 
     /// Detects whether an element represents a sensitive / password field.
@@ -134,10 +139,11 @@ public enum TargetAccessibility {
             return true
         }
 
-        // Electron framework detection
+        // Electron & Chromium framework detection (including ChatGPT Codex Framework)
         if let bundleURL = app.bundleURL {
             let electronPath = bundleURL.appendingPathComponent("Contents/Frameworks/Electron Framework.framework").path
-            if FileManager.default.fileExists(atPath: electronPath) {
+            let codexPath = bundleURL.appendingPathComponent("Contents/Frameworks/Codex Framework.framework").path
+            if FileManager.default.fileExists(atPath: electronPath) || FileManager.default.fileExists(atPath: codexPath) {
                 return true
             }
         }

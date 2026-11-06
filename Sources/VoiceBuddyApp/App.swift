@@ -678,13 +678,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             do {
                 let output = try await pipeline.run(samples: audio, language: settings.speechLanguage, mode: settings.refinement)
                 guard transcriptionGeneration == id else { return }; original = output.original; result = output.result; busy = false
-                if settings.refinement.needsModel {
-                    overlay.hide()
-                    liveTranscriptState.clear()
-                    status = label("Review edited text before inserting.", "请先确认整理结果。")
-                    showWindow(tab: .recovery)
-                    return
-                }
                 if settings.autoInsert {
                     let targetPt = targetInsertionPoint()
                     overlay.flyAndDismiss(to: targetPt) { [weak self] in
@@ -694,15 +687,16 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                             let appName = self.targetAppName.isEmpty ? self.label("target application", "目标应用") : self.targetAppName
                             self.status = self.label("Inserted into \(appName)", "已插入到 \(appName)")
                         } else {
-                            self.status = !self.insertFailure.isEmpty ? self.insertFailure : self.label("Result ready to copy.", "文字已准备好，请复制。 ")
-                            self.showWindow(tab: .recovery)
+                            self.copyResult()
+                            let tip = !self.insertFailure.isEmpty ? self.insertFailure : self.label("Content copied to clipboard. Press ⌘V to paste.", "内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
+                            self.status = tip
                         }
                     }
                 } else {
                     overlay.hide()
                     liveTranscriptState.clear()
-                    status = label("Result ready to copy.", "文字已准备好，请复制。 ")
-                    showWindow(tab: .recovery)
+                    copyResult()
+                    status = label("Content copied to clipboard. Press ⌘V to paste.", "内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
                 }
             } catch {
                 guard transcriptionGeneration == id else { return }
@@ -729,7 +723,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         // 1. Password & Sensitive Field Protection
         let targetElem = targetElement ?? (targetPID != 0 ? focusedElement(pid: targetPID) : nil)
         if TargetAccessibility.isSensitiveDestination(element: targetElem) {
-            insertFailure = label("Sensitive or password field detected; copied to clipboard.", "检测到敏感或密码输入框，已复制到剪贴板。")
+            insertFailure = label("Sensitive field detected; content copied to clipboard. Press ⌘V to paste.", "检测到敏感输入框，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
         }
@@ -741,14 +735,14 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
         // 3. Ensure target application is still running
         guard let targetApp = NSRunningApplication(processIdentifier: targetPID), !targetApp.isTerminated else {
-            insertFailure = label("Target application is no longer running.", "目标应用已退出，已复制到剪贴板。")
+            insertFailure = label("Target app not running; content copied to clipboard. Press ⌘V to paste.", "目标应用未在运行，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
         }
         // 4. Target Change Protection (prevent pasting into wrong app if user switched windows)
         if let currentFrontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
            currentFrontPID != targetPID && currentFrontPID != myPID {
-            insertFailure = label("Target application changed; copied to clipboard.", "目标应用已切换，文字已复制到剪贴板。")
+            insertFailure = label("Target application changed; content copied to clipboard. Press ⌘V to paste.", "目标应用已切换，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
         }
@@ -765,7 +759,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
         // 6. Universal Insertion via Clipboard + Synthesized ⌘V (Sublime Text, Word, Chrome, etc.)
         guard AXIsProcessTrusted() else {
-            insertFailure = label("Accessibility access needed for auto-paste; copied to clipboard.", "需要辅助功能权限以自动粘贴，文字已复制到剪贴板。")
+            insertFailure = label("Accessibility access needed; content copied to clipboard. Press ⌘V to paste.", "需要辅助功能权限以自动上屏，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
         }
