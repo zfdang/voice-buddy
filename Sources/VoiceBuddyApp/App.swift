@@ -800,6 +800,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         // 4b. Check if focused element switched within the same application
         guard let initial = initialElement, let current = currentElem, CFEqual(initial, current) else {
             insertFailure = label("Cannot verify the focused input; content copied to clipboard. Press ⌘V to paste.", "无法确认输入框焦点，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
+            copyResult()
             return false
         }
         // 5. Universal Insertion via Clipboard + Hardware-level Synthesized ⌘V (100% of apps supported)
