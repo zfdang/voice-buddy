@@ -541,7 +541,7 @@ private struct OverlayView: View {
         .frame(width: 520, height: 236)
         .background {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(Color(red: 0.22, green: 0.12, blue: 0.31).opacity(0.72))
+                .fill(Color(red: 0.12, green: 0.30, blue: 0.43).opacity(0.72))
                 .overlay {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .stroke(
