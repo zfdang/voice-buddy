@@ -36,6 +36,23 @@ final class PipelineTests: XCTestCase {
         var value = legacy; value.useFnKey = true
         XCTAssertTrue(try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(value)).useFnKey)
     }
+    func testFnFlagsTransitionsDoNotRequireSpecificKeyCode() {
+        var fn = FnKeyGesture()
+        XCTAssertEqual(fn.flagsChanged(fnDown: true, otherModifierChanged: true, otherModifiersHeld: false, holdToTalk: true), .press)
+        XCTAssertEqual(fn.flagsChanged(fnDown: false, otherModifierChanged: true, otherModifiersHeld: false, holdToTalk: true), .release)
+    }
+    func testFnFlagsWithExistingModifierDoNotTrigger() {
+        var fn = FnKeyGesture()
+        XCTAssertEqual(fn.flagsChanged(fnDown: true, otherModifierChanged: true, otherModifiersHeld: true, holdToTalk: true), .none)
+        XCTAssertEqual(fn.flagsChanged(fnDown: false, otherModifierChanged: true, otherModifiersHeld: true, holdToTalk: true), .none)
+    }
+    func testFnRepeatedFlagsAndModifierChord() {
+        var fn = FnKeyGesture()
+        XCTAssertEqual(fn.flagsChanged(fnDown: true, otherModifierChanged: false, otherModifiersHeld: false, holdToTalk: true), .press)
+        XCTAssertEqual(fn.flagsChanged(fnDown: true, otherModifierChanged: false, otherModifiersHeld: false, holdToTalk: true), .none)
+        XCTAssertEqual(fn.flagsChanged(fnDown: true, otherModifierChanged: true, otherModifiersHeld: true, holdToTalk: true), .cancel)
+        XCTAssertEqual(fn.flagsChanged(fnDown: false, otherModifierChanged: false, otherModifiersHeld: false, holdToTalk: true), .none)
+    }
     func testPipelineEmitsStagesAndFailureWithoutContent() async {
         let events = PipelineEvents()
         let pipeline = Pipeline(detector: Detector(value: true), transcription: FailingASR(), refinement: Editor(text: "")) { events.append($0) }
@@ -193,13 +210,5 @@ extension PipelineTests {
         XCTAssertEqual(gesture.press(hold: false), .none)
         XCTAssertEqual(gesture.release(hold: false), .none)
         XCTAssertEqual(gesture.press(hold: false), .toggle)
-    }
-    func testMediaPlaybackControllerPauseAndResume() {
-        let controller = MediaPlaybackController()
-        XCTAssertFalse(controller.didPauseMedia)
-        controller.pauseIfPlaying()
-        XCTAssertTrue(controller.didPauseMedia)
-        controller.resumeIfPaused()
-        XCTAssertFalse(controller.didPauseMedia)
     }
 }

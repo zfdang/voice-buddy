@@ -289,7 +289,7 @@ struct MainView: View {
                 Divider()
                 settingRow(
                     title: t("Pause Media During Dictation", "录音时暂停背景音乐"),
-                    subtitle: t("Pause background music while speaking and resume when done", "开始说话时自动暂停背景音乐或播客，录音结束后自动恢复")
+                    subtitle: t("Pause and resume when the player state can be verified", "可确认播放器状态时，录音期间暂停并在结束后恢复")
                 ) {
                     Toggle("", isOn: $state.preferences.pauseMediaDuringRecording)
                         .labelsHidden()
