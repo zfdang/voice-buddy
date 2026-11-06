@@ -536,7 +536,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             }
             status = label("Listening…", "正在听你说…")
             startLiveStreaming()
-            overlay.show(state: self)
+            overlay.show(state: self, screenPoint: targetInsertionPoint() ?? NSEvent.mouseLocation)
             if preferences.sounds { NSSound(named: "Tink")?.play() }
             meter = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
                 Task { @MainActor in self?.level = self?.recorder.currentLevel ?? 0 }
@@ -657,11 +657,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
 
         // 3. Fallback: mouse pointer location
         let mouse = NSEvent.mouseLocation
-        if mouse.x > 0 && mouse.y > 0 {
-            return mouse
-        }
-
-        return nil
+        return mouse
     }
     private func finish() {
         if preferences.pauseMediaDuringRecording {

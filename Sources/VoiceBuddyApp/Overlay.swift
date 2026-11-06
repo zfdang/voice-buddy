@@ -238,9 +238,15 @@ final class Overlay {
     private var panel: NSPanel?
     private let animModel = OverlayAnimationModel()
     private var presentationID = UUID()
+    private var targetScreen: NSScreen?
 
-    func show(state: AppState) {
+    func show(state: AppState, screenPoint: CGPoint? = nil) {
         presentationID = UUID()
+        if let screenPoint {
+            targetScreen = NSScreen.screens.first { $0.frame.contains(screenPoint) }
+                ?? NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
+                ?? NSScreen.main
+        }
         if panel == nil {
             let panel = NSPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 520, height: 236),
@@ -264,7 +270,7 @@ final class Overlay {
     }
 
     func reposition() {
-        if let screen = NSScreen.main, let panel {
+        if let panel, let screen = targetScreen.flatMap({ target in NSScreen.screens.first { $0 == target } }) ?? NSScreen.main {
             let frame = screen.visibleFrame
             panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.minY + 24))
         }
