@@ -26,6 +26,10 @@
    - 绝不允许将公开仓库添加为私有仓库代码分支的直接 push target。
 3. **公开仓库发版的唯一合法产物**：
    - 只有经过本地或内部流水线编译、签名、打包生成的 **二进制交付物**（`dist/Voice-Buddy-*.dmg`、`dist/Voice-Buddy-*.zip`、`appcast.xml`）以及公开文档，才允许上传至公开仓库的 Release / 页面。
+4. **严格禁止开启 CI 自动触发 (Actions 运行额度保护)**：
+   - 私有仓库包含运行时间长达 45 分钟的 macOS 15 虚拟机测试和打包任务。
+   - **严禁**为 `.github/workflows/macos.yml` 添加 `push` 或 `pull_request` 自动触发器！该工作流**仅允许保留 `workflow_dispatch` 手动触发**。
+   - 严禁任何自作主张恢复 CI 自动触发的行为。发布工作流 `.github/workflows/release.yml` 仅在打版本标签（`v*`）或手动分发时运行。
 
 ---
 
