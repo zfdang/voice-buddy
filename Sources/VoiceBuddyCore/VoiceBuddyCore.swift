@@ -14,6 +14,7 @@ public struct Preferences: Codable, Equatable {
     public var textModel = "qwen35-text-0.8b-int5"
     public var refinement: Refinement = .light
     public var holdToTalk: Bool? = nil // nil preserves older settings and defaults to hold
+    public var useFnKey = false
     public var sounds = true
     public var autoInsert = true
     public var pauseMediaDuringRecording = true
@@ -35,6 +36,7 @@ public struct Preferences: Codable, Equatable {
         textModel = try container.decodeIfPresent(String.self, forKey: .textModel) ?? "qwen35-text-0.8b-int5"
         refinement = try container.decodeIfPresent(Refinement.self, forKey: .refinement) ?? .light
         holdToTalk = try container.decodeIfPresent(Bool.self, forKey: .holdToTalk)
+        useFnKey = try container.decodeIfPresent(Bool.self, forKey: .useFnKey) ?? false
         sounds = try container.decodeIfPresent(Bool.self, forKey: .sounds) ?? true
         autoInsert = try container.decodeIfPresent(Bool.self, forKey: .autoInsert) ?? true
         pauseMediaDuringRecording = try container.decodeIfPresent(Bool.self, forKey: .pauseMediaDuringRecording) ?? true
@@ -164,4 +166,30 @@ public struct HotkeyGesture {
         return hold ? .stopHold : .none
     }
     public mutating func reset() { isDown = false }
+}
+
+/// Fn can be used as a modifier, so a chord must not be treated as a dictation tap.
+public struct FnKeyGesture {
+    public enum Action: Equatable { case none, press, release, cancel, tap }
+    private var isDown = false
+    private var chord = false
+    private var hold = false
+    public init() {}
+    public mutating func fnChanged(down: Bool, holdToTalk: Bool) -> Action {
+        if down {
+            guard !isDown else { return .none }
+            isDown = true; chord = false; hold = holdToTalk
+            return hold ? .press : .none
+        }
+        guard isDown else { return .none }
+        isDown = false
+        guard !chord else { return .none }
+        return hold ? .release : .tap
+    }
+    public mutating func otherKeyPressed() -> Action {
+        guard isDown, !chord else { return .none }
+        chord = true
+        return hold ? .cancel : .none
+    }
+    public mutating func reset() { isDown = false; chord = false; hold = false }
 }

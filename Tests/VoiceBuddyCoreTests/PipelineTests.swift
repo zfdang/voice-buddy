@@ -13,6 +13,29 @@ private final class PipelineEvents: @unchecked Sendable {
 }
 
 final class PipelineTests: XCTestCase {
+    func testFnHoldAndChord() {
+        var fn = FnKeyGesture()
+        XCTAssertEqual(fn.fnChanged(down: true, holdToTalk: true), .press)
+        XCTAssertEqual(fn.fnChanged(down: true, holdToTalk: true), .none)
+        XCTAssertEqual(fn.fnChanged(down: false, holdToTalk: true), .release)
+        XCTAssertEqual(fn.fnChanged(down: true, holdToTalk: true), .press)
+        XCTAssertEqual(fn.otherKeyPressed(), .cancel)
+        XCTAssertEqual(fn.fnChanged(down: false, holdToTalk: true), .none)
+    }
+    func testFnToggleAndChord() {
+        var fn = FnKeyGesture()
+        XCTAssertEqual(fn.fnChanged(down: true, holdToTalk: false), .none)
+        XCTAssertEqual(fn.fnChanged(down: false, holdToTalk: false), .tap)
+        XCTAssertEqual(fn.fnChanged(down: true, holdToTalk: false), .none)
+        XCTAssertEqual(fn.otherKeyPressed(), .none)
+        XCTAssertEqual(fn.fnChanged(down: false, holdToTalk: false), .none)
+    }
+    func testFnPreferenceCompatibility() throws {
+        let legacy = try JSONDecoder().decode(Preferences.self, from: Data("{}".utf8))
+        XCTAssertFalse(legacy.useFnKey)
+        var value = legacy; value.useFnKey = true
+        XCTAssertTrue(try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(value)).useFnKey)
+    }
     func testPipelineEmitsStagesAndFailureWithoutContent() async {
         let events = PipelineEvents()
         let pipeline = Pipeline(detector: Detector(value: true), transcription: FailingASR(), refinement: Editor(text: "")) { events.append($0) }
