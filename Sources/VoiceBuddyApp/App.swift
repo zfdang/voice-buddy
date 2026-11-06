@@ -781,7 +781,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         let myPID = NSRunningApplication.current.processIdentifier
         if effPID == 0 || effPID == myPID {
             copyResult()
-            return true
+            insertFailure = label("No external target; content copied to clipboard.", "没有外部目标，内容已复制到剪贴板。")
+            return false
         }
         // 3. Ensure target application is still running
         guard let targetApp = NSRunningApplication(processIdentifier: effPID), !targetApp.isTerminated else {

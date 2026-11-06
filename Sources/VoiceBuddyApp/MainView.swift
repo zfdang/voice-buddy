@@ -927,7 +927,7 @@ struct MainView: View {
                 Button(t("Show original", "查看原文")) { state.result = state.original }.accessibilityLabel(t("Show original", "查看原文"))
                 Button(t("Insert", "插入")) {
                     if !state.insertIfSafe(state.result) {
-                        state.status = t("Return to the original field and copy manually.", "请回到原输入框并手动粘贴。")
+                        state.status = state.insertFailure
                     }
                 }.accessibilityLabel(t("Insert", "插入"))
                 if !state.status.isEmpty {
