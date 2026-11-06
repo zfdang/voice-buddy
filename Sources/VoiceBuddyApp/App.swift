@@ -798,12 +798,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             return false
         }
         // 4b. Check if focused element switched within the same application
-        if let initial = initialElement, let current = currentElem {
-            if !CFEqual(initial, current) {
-                insertFailure = label("Focused input changed; content copied to clipboard. Press ⌘V to paste.", "输入框焦点已切换，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
-                copyResult()
-                return false
-            }
+        guard let initial = initialElement, let current = currentElem, CFEqual(initial, current) else {
+            insertFailure = label("Cannot verify the focused input; content copied to clipboard. Press ⌘V to paste.", "无法确认输入框焦点，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
+            return false
         }
         // 5. Universal Insertion via Clipboard + Hardware-level Synthesized ⌘V (100% of apps supported)
         guard AXIsProcessTrusted() else {
@@ -852,9 +849,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                       frontPID == effPID else {
                     return
                 }
-                if let liveFocus = self.focusedElement(pid: effPID), TargetAccessibility.isSensitiveDestination(element: liveFocus) {
-                    return
-                }
+                guard let liveFocus = self.focusedElement(pid: effPID), CFEqual(initial, liveFocus),
+                      !TargetAccessibility.isSensitiveDestination(element: liveFocus) else { return }
                 TargetAccessibility.postPasteShortcut()
             }
         }
@@ -884,7 +880,10 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         TargetAccessibility.wakeManualAccessibility(processIdentifier: pid)
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), kAXFocusedUIElementAttribute as CFString, &value) == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
-        return (value as! AXUIElement)
+        let element = value as! AXUIElement
+        var elementPID: pid_t = 0
+        guard AXUIElementGetPid(element, &elementPID) == .success, elementPID == pid else { return nil }
+        return element
     }
     func copyResult() { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(result, forType: .string); status = label("Copied", "已复制") }
     static let menuBarMascotIcon: NSImage = {

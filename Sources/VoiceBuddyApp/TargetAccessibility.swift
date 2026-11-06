@@ -47,7 +47,10 @@ public enum TargetAccessibility {
         if AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedElementValue) == .success,
            let focused = focusedElementValue, CFGetTypeID(focused) == AXUIElementGetTypeID() {
             let element = (focused as! AXUIElement)
-            return (pid, name, element)
+            var elementPID: pid_t = 0
+            if AXUIElementGetPid(element, &elementPID) == .success && elementPID == pid {
+                return (pid, name, element)
+            }
         }
 
         // 2. Fallback to application-level focused UI element
@@ -55,7 +58,11 @@ public enum TargetAccessibility {
         let appElement = AXUIElementCreateApplication(pid)
         if AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &appFocusedValue) == .success,
            let val = appFocusedValue, CFGetTypeID(val) == AXUIElementGetTypeID() {
-            return (pid, name, (val as! AXUIElement))
+            let element = val as! AXUIElement
+            var elementPID: pid_t = 0
+            if AXUIElementGetPid(element, &elementPID) == .success && elementPID == pid {
+                return (pid, name, element)
+            }
         }
 
         return (pid, name, nil)
