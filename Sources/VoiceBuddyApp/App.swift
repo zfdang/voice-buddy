@@ -719,8 +719,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         guard self.transcriptionGeneration == id, !self.recording else { return }
                         self.liveTranscriptState.clear()
                         if self.insertIfSafe(output.result, targetPID: boundPID, targetAppName: boundAppName, targetElement: boundElement, sessionID: id) {
-                            let appName = boundAppName.isEmpty ? self.label("target application", "目标应用") : boundAppName
-                            self.status = self.label("Inserted into \(appName)", "已插入到 \(appName)")
+                            self.status = self.label("Preparing to paste…", "正在准备粘贴…")
                         } else {
                             self.copyResult()
                             let tip = !self.insertFailure.isEmpty ? self.insertFailure : self.label("Content copied to clipboard. Press ⌘V to paste.", "内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
@@ -844,33 +843,37 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 guard let self, !self.recording else { return }
                 if let sid = sessionID, self.transcriptionGeneration != sid { return }
                 guard board.changeCount == count, board.string(forType: .string) == text else {
+                    self.status = self.label("Clipboard changed; paste was cancelled.", "剪贴板已改变，已取消粘贴。")
+                    self.overlay.showStatus(state: self)
                     return
                 }
-                guard let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
-                      frontPID == effPID else {
+                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == effPID,
+                      let liveFocus = self.focusedElement(pid: effPID), CFEqual(initial, liveFocus),
+                      !TargetAccessibility.isSensitiveDestination(element: liveFocus) else {
+                    self.status = self.label("Could not verify the target; text remains on the clipboard.", "无法确认目标输入框，文字仍在剪贴板中。")
+                    self.overlay.showStatus(state: self)
                     return
                 }
-                guard let liveFocus = self.focusedElement(pid: effPID), CFEqual(initial, liveFocus),
-                      !TargetAccessibility.isSensitiveDestination(element: liveFocus) else { return }
-                TargetAccessibility.postPasteShortcut()
-            }
-        }
-
-        // Restore original clipboard after target app has had time to read it
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            guard board.changeCount == count else { return }
-            board.clearContents()
-            if !savedItems.isEmpty {
-                let restored: [NSPasteboardItem] = savedItems.compactMap { entries in
-                    guard !entries.isEmpty else { return nil }
-                    let item = NSPasteboardItem()
-                    for (type, data) in entries {
-                        item.setData(data, forType: type)
+                guard TargetAccessibility.postPasteShortcut() else {
+                    self.status = self.label("Paste could not be sent; text remains on the clipboard.", "无法发送粘贴命令，文字仍在剪贴板中。")
+                    self.overlay.showStatus(state: self)
+                    return
+                }
+                self.status = self.label("Paste command sent.", "已发送粘贴命令。")
+                // Restoring on a timer is still best-effort: AppKit does not report
+                // when the receiving app has consumed the clipboard.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    guard board.changeCount == count else { return }
+                    board.clearContents()
+                    if !savedItems.isEmpty {
+                        let restored: [NSPasteboardItem] = savedItems.compactMap { entries in
+                            guard !entries.isEmpty else { return nil }
+                            let item = NSPasteboardItem()
+                            for (type, data) in entries { item.setData(data, forType: type) }
+                            return item
+                        }
+                        if !restored.isEmpty { board.writeObjects(restored) }
                     }
-                    return item
-                }
-                if !restored.isEmpty {
-                    board.writeObjects(restored)
                 }
             }
         }
