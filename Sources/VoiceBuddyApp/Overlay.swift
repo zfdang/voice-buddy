@@ -260,7 +260,13 @@ final class Overlay {
             panel.backgroundColor = .clear
             panel.hasShadow = false
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            panel.contentView = NSHostingView(rootView: OverlayView(state: state, animModel: animModel))
+            let hostingView = NSHostingView(rootView: OverlayView(state: state, animModel: animModel))
+            hostingView.wantsLayer = true
+            hostingView.layer?.isOpaque = false
+            hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+            hostingView.layer?.cornerRadius = 26
+            hostingView.layer?.masksToBounds = true
+            panel.contentView = hostingView
             self.panel = panel
         }
         reposition()
@@ -570,7 +576,6 @@ private struct OverlayView: View {
                             lineWidth: 1
                         )
                 }
-                .shadow(color: Color.black.opacity(0.40), radius: 26, x: 0, y: 12)
         }
         // Micro-interaction: Fly and shrink into target document cursor
         .scaleEffect(animModel.flyScale)
