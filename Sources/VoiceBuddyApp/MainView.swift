@@ -12,6 +12,7 @@ struct MainView: View {
     @State private var speechModelToDelete: String? = nil
     @State private var confirmTextDelete = false
     @State private var textModelToDelete: String? = nil
+    @State private var diagnosticsError = false
     private func t(_ en: String, _ zh: String) -> String { state.label(en, zh) }
 
     var body: some View {
@@ -995,6 +996,24 @@ struct MainView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
 
+            VStack(alignment: .leading, spacing: 10) {
+                Text(t("Diagnostics", "诊断日志")).font(.headline)
+                Text(t("Stored only on this Mac. Logs include app identifiers and diagnostic status, but not audio, dictated text, or clipboard contents. Seven files of up to about 1 MB each are retained.", "日志仅保存在本机，包含应用标识和诊断状态，不包含录音、听写文字或剪贴板内容。最多保留 7 个文件，每个约 1 MB。"))
+                    .font(.caption).foregroundStyle(.secondary)
+                Button(t("Show Logs in Finder", "在 Finder 中显示日志")) {
+                    do {
+                        let url = try DiagnosticLog.shared.readyFile()
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    } catch {
+                        diagnosticsError = true
+                    }
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(NSColor.controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
             // 3. Project Intro & Links Card
             VStack(alignment: .leading, spacing: 10) {
                 Text(t("Introduction & Links", "项目介绍与链接")).font(.headline)
@@ -1041,5 +1060,10 @@ struct MainView: View {
             }
         }
         .frame(maxWidth: 560)
+        .alert(t("Could not read diagnostic logs", "无法读取诊断日志"), isPresented: $diagnosticsError) {
+            Button(t("OK", "好"), role: .cancel) { }
+        } message: {
+            Text(t("Check that Voice Buddy can write to its local Logs folder.", "请检查 Voice Buddy 是否有权限写入本机日志文件夹。"))
+        }
     }
 }

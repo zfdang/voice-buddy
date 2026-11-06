@@ -60,6 +60,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private var targetElement: AXUIElement?
     private var transcriptionTask: Task<Void, Never>?
     private var transcriptionGeneration = UUID()
+    private var diagnosticSession = UUID()
     private var speechTask: Task<Void, Never>?
     private var speechGeneration = UUID()
     private var editorTask: Task<Void, Never>?
@@ -75,6 +76,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
 
     init() {
         preferences = UserDefaults.standard.data(forKey: defaultsKey).flatMap { try? JSONDecoder().decode(Preferences.self, from: $0) } ?? Preferences()
+        DiagnosticLog.shared.record("app.start version=\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown")")
         refreshPermissions()
         registerHotkey()
         setupKeyboardShortcuts()
@@ -181,6 +183,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         let id = EventHotKeyID(signature: 0x56425544, id: hotKeyID)
         var replacement: EventHotKeyRef?
         let code = RegisterEventHotKey(key, mods, id, GetApplicationEventTarget(), 0, &replacement)
+        DiagnosticLog.shared.record("shortcut.register result=\(code) keycode=\(key) modifiers=\(mods)")
         guard code == noErr, let replacement else { status = label("Shortcut unavailable; previous shortcut retained.", "快捷键不可用，已保留原快捷键。 "); return false }
         if let hotKey { UnregisterEventHotKey(hotKey) }; hotKey = replacement
         preferences.shortcutKeyCode = key; preferences.shortcutModifiers = mods
@@ -226,6 +229,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         activeDownloadingSpeechModelID = targetId
         speechProgressMessage = label("Preparing speech model…", "正在准备语音识别模型…")
         let operation = UUID()
+        DiagnosticLog.shared.record("model.speech.prepare id=\(operation) known_model=\(SpeechModelSpec.allModels.contains { $0.id == targetId })")
         speechGeneration = operation
         speechTask = Task {
             do {
@@ -239,6 +243,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self?.speechProgressMessage = msg
                     }
                 }
+                DiagnosticLog.shared.record("model.speech.prepared id=\(operation)")
                 guard speechGeneration == operation else {
                     await MainActor.run {
                         if self.speechGeneration == operation {
@@ -264,6 +269,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     completion?(true)
                 }
             } catch {
+                DiagnosticLog.shared.record("model.speech.failed id=\(operation) error_type=\(String(describing: type(of: error))) code=\((error as NSError).code)")
                 guard speechGeneration == operation else {
                     await MainActor.run {
                         if self.speechGeneration == operation {
@@ -330,6 +336,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         activeDownloadingTextModelID = targetId
         editorProgressMessage = label("Preparing text model…", "正在准备文本模型…")
         let operation = UUID()
+        DiagnosticLog.shared.record("model.text.prepare id=\(operation) known_model=\(TextModelSpec.allModels.contains { $0.id == targetId })")
         editorGeneration = operation
         editorTask = Task {
             do {
@@ -343,6 +350,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self?.editorProgressMessage = msg
                     }
                 }
+                DiagnosticLog.shared.record("model.text.prepared id=\(operation)")
                 guard editorGeneration == operation else {
                     await MainActor.run {
                         if self.editorGeneration == operation {
@@ -368,6 +376,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     completion?(true)
                 }
             } catch {
+                DiagnosticLog.shared.record("model.text.failed id=\(operation) error_type=\(String(describing: type(of: error))) code=\((error as NSError).code)")
                 guard editorGeneration == operation else {
                     await MainActor.run {
                         if self.editorGeneration == operation {
@@ -468,10 +477,13 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     // The window button remains a toggle for accessibility and manual use.
     func toggle() { if recording { finish() } else { start(whileHeld: false) } }
     private func start(whileHeld: Bool) {
-        guard !busy && !recording else { return }
+        guard !busy && !recording else { DiagnosticLog.shared.record("session.start_ignored busy=\(busy) recording=\(recording)"); return }
+        diagnosticSession = UUID()
+        DiagnosticLog.shared.record("session.start id=\(diagnosticSession) speech_ready=\(ready) editor_ready=\(editorReady) mode=\(preferences.refinement.rawValue) auto_insert=\(preferences.autoInsert)")
         // Invalidate any delayed insertion from the previous session.
         transcriptionGeneration = UUID()
         guard ready else {
+            DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=speech_model_not_ready")
             status = label("Loading speech model…", "正在加载语音模型…")
             overlay.show(state: self)
             if !speechPreparing {
@@ -490,6 +502,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             return
         }
         if preferences.refinement.needsModel && !editorReady {
+            DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=text_model_not_ready")
             status = label("Loading text model…", "正在加载文本模型…")
             overlay.show(state: self)
             if !editorPreparing {
@@ -512,9 +525,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         let pid = target.pid
         let name = target.name
         let element = target.element
+        DiagnosticLog.shared.record("session.target id=\(diagnosticSession) pid=\(pid) focus_present=\(element != nil)")
 
         refreshPermissions()
+        DiagnosticLog.shared.record("permissions id=\(diagnosticSession) microphone=\(micAuthorized) accessibility=\(axAuthorized)")
         guard micAuthorized else {
+            DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=microphone_permission")
             status = label("Microphone permission required.", "需要麦克风权限。")
             requestMicrophoneAccess()
             overlay.show(state: self)
@@ -522,6 +538,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
 
         guard !whileHeld || gesture.isDown else {
+            DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=hotkey_released")
             status = label("Press and hold to dictate.", "请按住快捷键说话。")
             return
         }
@@ -533,6 +550,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         do {
             try recorder.start(deviceUID: preferences.microphoneUID)
             recording = true
+            DiagnosticLog.shared.record("recording.started id=\(diagnosticSession)")
             if preferences.pauseMediaDuringRecording {
                 mediaPlayback.pauseIfPlaying()
             }
@@ -547,6 +565,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 if event.keyCode == 53 { Task { @MainActor in self?.cancel() } }
             }
         } catch {
+            DiagnosticLog.shared.record("recording.failed id=\(diagnosticSession) error_type=\(String(describing: type(of: error))) code=\((error as NSError).code)")
             status = error.localizedDescription
             overlay.show(state: self)
         }
@@ -560,8 +579,11 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         liveTranscriptState.clear()
         liveTranscript = ""
         let lang = preferences.speechLanguage
+        let logSession = diagnosticSession
+        DiagnosticLog.shared.record("stream.started id=\(logSession)")
         liveTask = Task.detached(priority: .userInitiated) { [weak self] in
             var lastCount = 0
+            var failureLogged = false
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 280_000_000)
                 guard let self else { break }
@@ -570,7 +592,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 let samples = await self.recorder.currentSamples
                 guard samples.count >= 5600, samples.count >= lastCount + 3200 else { continue }
                 lastCount = samples.count
-                if let text = try? await self.models.transcribe(samples: samples, language: lang) {
+                do {
+                    let text = try await self.models.transcribe(samples: samples, language: lang)
                     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty {
                         await MainActor.run {
@@ -580,11 +603,18 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                             }
                         }
                     }
+                } catch {
+                    if !failureLogged && !Task.isCancelled {
+                        DiagnosticLog.shared.record("stream.failed id=\(logSession) error_type=\(String(describing: type(of: error))) code=\((error as NSError).code)")
+                        failureLogged = true
+                    }
                 }
             }
+            DiagnosticLog.shared.record("stream.stopped id=\(logSession)")
         }
     }
     func cancel() {
+        DiagnosticLog.shared.record("session.cancel id=\(diagnosticSession)")
         if preferences.pauseMediaDuringRecording {
             mediaPlayback.resumeIfPaused()
         }
@@ -689,6 +719,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         liveTask?.cancel(); liveTask = nil
         if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
         let audio = recorder.stop(); recording = false; meter?.invalidate(); level = 0; busy = true
+        let logSession = diagnosticSession
+        DiagnosticLog.shared.record("recording.finished id=\(logSession) sample_count=\(audio.count)")
         if preferences.sounds { NSSound(named: "Pop")?.play() }
         status = label("Transcribing…", "正在识别…"); overlay.show(state: self)
         let id = UUID()
@@ -697,15 +729,22 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         let boundAppName = targetAppName
         let boundElement = targetElement
         let settings = preferences
-        let pipeline = Pipeline(detector: models, transcription: models, refinement: models)
+        let pipeline = Pipeline(detector: models, transcription: models, refinement: models) { event in
+            DiagnosticLog.shared.record("pipeline.\(event.rawValue) id=\(logSession)")
+        }
         transcriptionTask = Task {
             do {
                 let output = try await pipeline.run(samples: audio, language: settings.speechLanguage, mode: settings.refinement)
-                guard transcriptionGeneration == id else { return }
+                guard transcriptionGeneration == id else {
+                    DiagnosticLog.shared.record("transcription.discarded id=\(logSession) reason=session_changed")
+                    return
+                }
+                DiagnosticLog.shared.record("transcription.completed id=\(logSession) mode=\(settings.refinement.rawValue)")
                 original = output.original
                 result = output.result
                 busy = false
                 if settings.refinement.needsModel {
+                    DiagnosticLog.shared.record("result.review_mode id=\(logSession)")
                     overlay.hide()
                     liveTranscriptState.clear()
                     copyResult()
@@ -729,6 +768,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         }
                     }
                 } else {
+                    DiagnosticLog.shared.record("result.copy_only id=\(logSession)")
                     guard transcriptionGeneration == id, !recording else { return }
                     overlay.hide()
                     liveTranscriptState.clear()
@@ -737,6 +777,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     overlay.showStatus(state: self)
                 }
             } catch {
+                DiagnosticLog.shared.record("transcription.failed id=\(logSession) error_type=\(String(describing: type(of: error))) code=\((error as NSError).code)")
                 guard transcriptionGeneration == id else { return }
                 if !recording {
                     overlay.hide()
@@ -761,18 +802,24 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     ) -> Bool {
         let effPID = targetPID ?? self.targetPID
         let initialElement = targetElement ?? self.targetElement
+        let logSession = diagnosticSession
+        DiagnosticLog.shared.record("insert.begin id=\(logSession) target_pid=\(effPID) initial_focus=\(initialElement != nil) trusted=\(AXIsProcessTrusted())")
 
         insertFailure = ""
         refreshPermissions()
         guard !text.isEmpty else {
+            DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=empty_text")
             insertFailure = label("No text to insert.", "没有可插入的文字。")
             return false
         }
         // 1. Password & Sensitive Field Protection (Check BOTH current actual focus and initial focus)
         let currentFocus = TargetAccessibility.captureTargetFocus()
         let currentElem: AXUIElement? = (effPID != 0 ? focusedElement(pid: effPID) : nil) ?? (currentFocus.pid == effPID ? currentFocus.element : nil)
+        let focusMatches = initialElement.flatMap { initial in currentElem.map { CFEqual(initial, $0) } } ?? false
+        DiagnosticLog.shared.record("insert.focus id=\(logSession) current_pid=\(currentFocus.pid) current_present=\(currentElem != nil) matches_initial=\(focusMatches)")
 
         if TargetAccessibility.isSensitiveDestination(element: currentElem) || TargetAccessibility.isSensitiveDestination(element: initialElement) {
+            DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=sensitive_destination")
             insertFailure = label("Sensitive field detected; content copied to clipboard. Press ⌘V to paste.", "检测到敏感输入框，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
@@ -780,12 +827,14 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         // 2. Check if target was Voice Buddy itself (e.g. testing in Editor tab)
         let myPID = NSRunningApplication.current.processIdentifier
         if effPID == 0 || effPID == myPID {
+            DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=no_external_target")
             copyResult()
             insertFailure = label("No external target; content copied to clipboard.", "没有外部目标，内容已复制到剪贴板。")
             return false
         }
         // 3. Ensure target application is still running
         guard let targetApp = NSRunningApplication(processIdentifier: effPID), !targetApp.isTerminated else {
+            DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=target_not_running")
             insertFailure = label("Target app not running; content copied to clipboard. Press ⌘V to paste.", "目标应用未在运行，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
@@ -794,18 +843,21 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         // 4a. Check if frontmost application switched
         if let currentFrontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
            currentFrontPID != effPID && currentFrontPID != myPID {
+            DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=frontmost_changed front_pid=\(currentFrontPID)")
             insertFailure = label("Target application changed; content copied to clipboard. Press ⌘V to paste.", "目标应用已切换，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
         }
         // 4b. Check if focused element switched within the same application
         guard let initial = initialElement, let current = currentElem, CFEqual(initial, current) else {
+            DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=focus_unverified")
             insertFailure = label("Cannot verify the focused input; content copied to clipboard. Press ⌘V to paste.", "无法确认输入框焦点，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
         }
         // 5. Universal Insertion via Clipboard + Hardware-level Synthesized ⌘V (100% of apps supported)
         guard AXIsProcessTrusted() else {
+            DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=accessibility_permission")
             insertFailure = label("Accessibility access needed; content copied to clipboard. Press ⌘V to paste.", "需要辅助功能权限以自动上屏，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
@@ -833,39 +885,48 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
         item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.AutoGeneratedType"))
         guard board.writeObjects([item]) else {
+            DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=clipboard_write_failed")
             insertFailure = label("Failed to write to clipboard.", "写入剪贴板失败。")
             return false
         }
         let count = board.changeCount
+        DiagnosticLog.shared.record("insert.queued id=\(logSession)")
 
         // Avoid hardware modifier collisions (Shift, Ctrl, Alt) before sending ⌘V
         TargetAccessibility.waitForModifiersReleased(timeout: 0.25) { [weak self] in
             // Give target app's window server activation time to settle before posting ⌘V
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                guard let self, !self.recording else { return }
-                if let sid = sessionID, self.transcriptionGeneration != sid { return }
+                guard let self, !self.recording else { DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=recording_or_shutdown"); return }
+                if let sid = sessionID, self.transcriptionGeneration != sid { DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=session_changed"); return }
                 guard board.changeCount == count, board.string(forType: .string) == text else {
+                    DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=clipboard_changed")
                     self.status = self.label("Clipboard changed; paste was cancelled.", "剪贴板已改变，已取消粘贴。")
                     self.overlay.showStatus(state: self)
                     return
                 }
-                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == effPID,
-                      let liveFocus = self.focusedElement(pid: effPID), CFEqual(initial, liveFocus),
-                      !TargetAccessibility.isSensitiveDestination(element: liveFocus) else {
+                let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+                let liveFocus = self.focusedElement(pid: effPID)
+                let focusMatches = liveFocus.map { CFEqual(initial, $0) } ?? false
+                let sensitive = TargetAccessibility.isSensitiveDestination(element: liveFocus)
+                DiagnosticLog.shared.record("insert.final_check id=\(logSession) front_pid=\(frontPID) focus_present=\(liveFocus != nil) focus_matches=\(focusMatches) sensitive=\(sensitive)")
+                guard frontPID == effPID, focusMatches, !sensitive else {
+                    DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=final_focus_unverified")
                     self.status = self.label("Could not verify the target; text remains on the clipboard.", "无法确认目标输入框，文字仍在剪贴板中。")
                     self.overlay.showStatus(state: self)
                     return
                 }
                 guard TargetAccessibility.postPasteShortcut() else {
+                    DiagnosticLog.shared.record("insert.failed id=\(logSession) reason=event_creation")
                     self.status = self.label("Paste could not be sent; text remains on the clipboard.", "无法发送粘贴命令，文字仍在剪贴板中。")
                     self.overlay.showStatus(state: self)
                     return
                 }
                 self.status = self.label("Paste command sent.", "已发送粘贴命令。")
+                DiagnosticLog.shared.record("insert.paste_posted id=\(logSession)")
                 // Restoring on a timer is still best-effort: AppKit does not report
                 // when the receiving app has consumed the clipboard.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                    guard board.changeCount == count else { return }
+                    guard board.changeCount == count else { DiagnosticLog.shared.record("clipboard.restore_skipped id=\(logSession) reason=ownership_changed"); return }
                     board.clearContents()
                     if !savedItems.isEmpty {
                         let restored: [NSPasteboardItem] = savedItems.compactMap { entries in
@@ -876,6 +937,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         }
                         if !restored.isEmpty { board.writeObjects(restored) }
                     }
+                    DiagnosticLog.shared.record("clipboard.restore_attempted id=\(logSession)")
                 }
             }
         }
@@ -884,7 +946,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private func focusedElement(pid: pid_t) -> AXUIElement? {
         TargetAccessibility.focusedElement(processIdentifier: pid)
     }
-    func copyResult() { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(result, forType: .string); status = label("Copied", "已复制") }
+    func copyResult() {
+        NSPasteboard.general.clearContents()
+        let success = NSPasteboard.general.setString(result, forType: .string)
+        DiagnosticLog.shared.record("clipboard.copy id=\(diagnosticSession) success=\(success)")
+        status = success ? label("Copied", "已复制") : label("Copy failed", "复制失败")
+    }
     static let menuBarMascotIcon: NSImage = {
         let size = NSSize(width: 20, height: 20)
         let img = NSImage(size: size)

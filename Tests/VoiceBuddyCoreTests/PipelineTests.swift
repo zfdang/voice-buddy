@@ -5,7 +5,21 @@ private struct Detector: SpeechDetector { let value: Bool; func containsSpeech(_
 private struct ASR: TranscriptionEngine { let text: String; func transcribe(samples: [Float], language: String) async throws -> String { text } }
 private struct Editor: TextRefinementEngine { let text: String; func refine(_ text: String, mode: Refinement) async throws -> String { self.text } }
 
+private final class PipelineEvents: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [PipelineEvent] = []
+    func append(_ event: PipelineEvent) { lock.lock(); defer { lock.unlock() }; storage.append(event) }
+    var events: [PipelineEvent] { lock.lock(); defer { lock.unlock() }; return storage }
+}
+
 final class PipelineTests: XCTestCase {
+    func testPipelineEmitsStagesAndFailureWithoutContent() async {
+        let events = PipelineEvents()
+        let pipeline = Pipeline(detector: Detector(value: true), transcription: FailingASR(), refinement: Editor(text: "")) { events.append($0) }
+        do { _ = try await pipeline.run(samples: [1], language: "auto", mode: .light); XCTFail("Expected failure") }
+        catch { }
+        XCTAssertEqual(events.events, [.detectionStarted, .detectionCompleted, .transcriptionStarted, .transcriptionFailed])
+    }
     func testSilenceRejected() async throws {
         let pipeline = Pipeline(detector: Detector(value: false), transcription: ASR(text: "x"), refinement: Editor(text: "y"))
         do { _ = try await pipeline.run(samples: [0], language: "auto", mode: .light); XCTFail("Expected silence") }

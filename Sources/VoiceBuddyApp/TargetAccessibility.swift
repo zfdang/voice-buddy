@@ -18,12 +18,14 @@ public enum TargetAccessibility {
             "AXManualAccessibility" as CFString,
             kCFBooleanTrue
         )
+        DiagnosticLog.shared.record("ax.wake pid=\(processIdentifier) result=\(primary.rawValue)")
         if primary == .attributeUnsupported {
-            _ = AXUIElementSetAttributeValue(
+            let fallback = AXUIElementSetAttributeValue(
                 applicationElement,
                 "AXEnhancedUserInterface" as CFString,
                 kCFBooleanTrue
             )
+            DiagnosticLog.shared.record("ax.wake_fallback pid=\(processIdentifier) result=\(fallback.rawValue)")
         }
     }
 
@@ -31,10 +33,13 @@ public enum TargetAccessibility {
     /// Always binds to the user-facing frontmost application to avoid getting trapped in child helper/renderers.
     public static func captureTargetFocus() -> (pid: pid_t, name: String, element: AXUIElement?) {
         guard let frontmost = NSWorkspace.shared.frontmostApplication else {
+            DiagnosticLog.shared.record("focus.capture no_frontmost_application")
             return (0, "", nil)
         }
         let pid = frontmost.processIdentifier
         let name = frontmost.localizedName ?? ""
+        let bundle = String((frontmost.bundleIdentifier ?? "unknown").filter { $0.isASCII && ($0.isLetter || $0.isNumber || ".-_".contains($0)) }.prefix(160))
+        DiagnosticLog.shared.record("focus.capture pid=\(pid) bundle=\(bundle) trusted=\(AXIsProcessTrusted())")
         wakeManualAccessibility(processIdentifier: pid)
 
         guard AXIsProcessTrusted() else {
@@ -52,22 +57,29 @@ public enum TargetAccessibility {
         var appFocusedValue: CFTypeRef?
         let appElement = AXUIElementCreateApplication(pid)
         let appFocus: AXUIElement? = {
-            guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &appFocusedValue) == .success,
+            let code = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &appFocusedValue)
+            DiagnosticLog.shared.record("focus.application pid=\(pid) result=\(code.rawValue) value_present=\(appFocusedValue != nil)")
+            guard code == .success,
                   let value = appFocusedValue, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
             return (value as! AXUIElement)
         }()
 
         let systemWide = AXUIElementCreateSystemWide()
         var focusedElementValue: CFTypeRef?
-        if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
-           AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedElementValue) == .success,
-           let focused = focusedElementValue, CFGetTypeID(focused) == AXUIElementGetTypeID() {
+        let isFrontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
+        let systemCode = isFrontmost ? AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedElementValue) : .failure
+        DiagnosticLog.shared.record("focus.system pid=\(pid) frontmost=\(isFrontmost) result=\(systemCode.rawValue) value_present=\(focusedElementValue != nil)")
+        if isFrontmost, systemCode == .success, let focused = focusedElementValue, CFGetTypeID(focused) == AXUIElementGetTypeID() {
             let element = (focused as! AXUIElement)
             var elementPID: pid_t = 0
-            if AXUIElementGetPid(element, &elementPID) == .success && elementPID == pid {
+            let pidCode = AXUIElementGetPid(element, &elementPID)
+            let matchesApp = appFocus.map { CFEqual(element, $0) } ?? false
+            DiagnosticLog.shared.record("focus.system_owner target_pid=\(pid) element_pid=\(elementPID) result=\(pidCode.rawValue) matches_app_focus=\(matchesApp)")
+            if pidCode == .success && elementPID == pid {
                 return element
             }
-            if let appFocus, CFEqual(element, appFocus) { return element }
+            if matchesApp { return element }
+            DiagnosticLog.shared.record("focus.conflict pid=\(pid)")
             return nil
         }
         return appFocus
