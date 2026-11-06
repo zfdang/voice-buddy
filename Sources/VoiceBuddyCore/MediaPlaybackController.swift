@@ -15,9 +15,14 @@ public enum MediaPlaybackEvent: String {
 }
 
 @MainActor public protocol MediaPlaybackBackend {
+    func beginSession()
     func snapshot(completion: @escaping (MediaPlaybackSnapshot?) -> Void)
     func pause() -> Bool
     func play() -> Bool
+}
+
+public extension MediaPlaybackBackend {
+    func beginSession() {}
 }
 
 /// All decisions run on the main actor. Unknown or stale playback state never starts playback.
@@ -63,6 +68,7 @@ public enum MediaPlaybackEvent: String {
         }
         let id = UUID()
         token = id; phase = .checking; ended = false; didPauseMedia = false
+        backend.beginSession()
         onEvent(.checkStarted)
         backend.snapshot { [weak self] snapshot in
             guard let self, self.token == id, !self.ended, case .checking = self.phase else { return }
@@ -136,6 +142,12 @@ public enum MediaPlaybackEvent: String {
     private var generation = 0
     init(primary: any MediaPlaybackBackend, fallback: any MediaPlaybackBackend) {
         self.primary = primary; self.fallback = fallback
+    }
+    func beginSession() {
+        generation += 1
+        active = nil
+        primary.beginSession()
+        fallback.beginSession()
     }
     func snapshot(completion: @escaping (MediaPlaybackSnapshot?) -> Void) {
         generation += 1

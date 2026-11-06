@@ -5,7 +5,9 @@ import XCTest
     var pending: [(MediaPlaybackSnapshot?) -> Void] = []
     var pauseCount = 0
     var playCount = 0
+    var sessionCount = 0
     var pauseSucceeds = true
+    func beginSession() { sessionCount += 1 }
     func snapshot(completion: @escaping (MediaPlaybackSnapshot?) -> Void) { pending.append(completion) }
     func pause() -> Bool { pauseCount += 1; return pauseSucceeds }
     func play() -> Bool { playCount += 1; return true }
@@ -159,11 +161,14 @@ final class MediaPlaybackControllerTests: XCTestCase {
             backend.complete(.init(processID: 10, isPlaying: false))
             controller.resumeIfPaused()
             controller.pauseIfPlaying()
+            XCTAssertEqual(backend.sessionCount, 1)
             backend.complete(.init(processID: 10, isPlaying: false))
             XCTAssertEqual(backend.playCount, 0)
             controller.resumeIfPaused()
             backend.complete(.init(processID: 10, isPlaying: false))
             XCTAssertEqual(backend.playCount, 1)
+            controller.pauseIfPlaying()
+            XCTAssertEqual(backend.sessionCount, 2)
         }
     }
     func testNewRecordingDuringPauseConfirmationDefersPlayback() async {
