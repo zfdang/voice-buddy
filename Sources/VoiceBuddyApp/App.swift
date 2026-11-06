@@ -965,6 +965,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             Button(state.label("Settings…", "设置…")) {
                 state.showWindow(tab: .general)
             }.keyboardShortcut(",")
+            Button(state.label("Recognition Result…", "识别结果…")) {
+                state.showWindow(tab: .recovery)
+            }
             Divider()
             Button(state.label("About Voice Buddy…", "关于 Voice Buddy…")) {
                 state.showWindow(tab: .about)

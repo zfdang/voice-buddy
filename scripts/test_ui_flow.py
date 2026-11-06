@@ -318,12 +318,13 @@ def main():
     print(f"      MenuBarExtra items: {menu_items}")
     # Verify Start Dictation is NOT present
     assert not any("听写" in item or "Dictat" in item for item in menu_items), f"Start/Stop dictation action should NOT be in menu bar, found: {menu_items}"
-    # Verify Settings, About, Check for Updates, and Quit are present
+    # Verify Settings, Recognition Result, About, Check for Updates, and Quit are present
     assert any("设置" in item or "Settings" in item for item in menu_items), f"Expected Settings in MenuBarExtra, got {menu_items}"
+    assert any("识别结果" in item or "Result" in item for item in menu_items), f"Expected Recognition Result in MenuBarExtra, got {menu_items}"
     assert any("关于" in item or "About" in item for item in menu_items), f"Expected About in MenuBarExtra, got {menu_items}"
     assert any("更新" in item or "Updates" in item for item in menu_items), f"Expected Check for Updates in MenuBarExtra, got {menu_items}"
     assert any("退出" in item or "Quit" in item for item in menu_items), f"Expected Quit in MenuBarExtra, got {menu_items}"
-    print("      ✓ Verified MenuBarExtra items (cleanly contains Settings, About, Updates, Quit, and no dictation start button)")
+    print("      ✓ Verified MenuBarExtra items (cleanly contains Settings, Recognition Result, About, Updates, Quit, and no dictation start button)")
 
     # Quit app cleanly
     try:
