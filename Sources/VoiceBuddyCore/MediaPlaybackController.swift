@@ -15,9 +15,14 @@ public enum MediaPlaybackEvent: String {
 }
 
 @MainActor public protocol MediaPlaybackBackend {
+    func beginSession()
     func snapshot(completion: @escaping (MediaPlaybackSnapshot?) -> Void)
     func pause() -> Bool
     func play() -> Bool
+}
+
+public extension MediaPlaybackBackend {
+    func beginSession() {}
 }
 
 /// All decisions run on the main actor. Unknown or stale playback state never starts playback.
@@ -31,8 +36,13 @@ public enum MediaPlaybackEvent: String {
     private var ended = false
     public private(set) var didPauseMedia = false
 
-    public init(onEvent: @escaping (MediaPlaybackEvent) -> Void = { _ in }) {
-        backend = SystemMediaPlaybackBackend(); self.onEvent = onEvent
+    public init(fallbackBackend: (any MediaPlaybackBackend)? = nil, onEvent: @escaping (MediaPlaybackEvent) -> Void = { _ in }) {
+        if let fallbackBackend {
+            backend = FallbackMediaPlaybackBackend(primary: SystemMediaPlaybackBackend(), fallback: fallbackBackend)
+        } else {
+            backend = SystemMediaPlaybackBackend()
+        }
+        self.onEvent = onEvent
         scheduleRetry = { action in DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: action) }
     }
     public init(backend: any MediaPlaybackBackend, onEvent: @escaping (MediaPlaybackEvent) -> Void = { _ in }, scheduleRetry: @escaping @MainActor (@escaping @MainActor @Sendable () -> Void) -> Void = { action in DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: action) }) {
@@ -58,6 +68,7 @@ public enum MediaPlaybackEvent: String {
         }
         let id = UUID()
         token = id; phase = .checking; ended = false; didPauseMedia = false
+        backend.beginSession()
         onEvent(.checkStarted)
         backend.snapshot { [weak self] snapshot in
             guard let self, self.token == id, !self.ended, case .checking = self.phase else { return }
@@ -120,6 +131,44 @@ public enum MediaPlaybackEvent: String {
             self.didPauseMedia = false; self.token = nil; self.phase = .idle
         }
     }
+}
+
+/// Only use the fallback when the system cannot identify a player. Discard stale
+/// queries so a late response cannot change the target of a later command.
+@MainActor final class FallbackMediaPlaybackBackend: MediaPlaybackBackend {
+    private let primary: any MediaPlaybackBackend
+    private let fallback: any MediaPlaybackBackend
+    private var active: (any MediaPlaybackBackend)?
+    private var generation = 0
+    init(primary: any MediaPlaybackBackend, fallback: any MediaPlaybackBackend) {
+        self.primary = primary; self.fallback = fallback
+    }
+    func beginSession() {
+        generation += 1
+        active = nil
+        primary.beginSession()
+        fallback.beginSession()
+    }
+    func snapshot(completion: @escaping (MediaPlaybackSnapshot?) -> Void) {
+        generation += 1
+        let current = generation
+        active = nil
+        primary.snapshot { [weak self] value in
+            guard let self, self.generation == current else { completion(nil); return }
+            if let value, value.processID > 0 {
+                self.active = self.primary
+                completion(value)
+                return
+            }
+            self.fallback.snapshot { [weak self] value in
+                guard let self, self.generation == current else { completion(nil); return }
+                if let value, value.processID > 0 { self.active = self.fallback }
+                completion(value)
+            }
+        }
+    }
+    func pause() -> Bool { active?.pause() ?? false }
+    func play() -> Bool { active?.play() ?? false }
 }
 
 /// MediaRemote is not a public API. If its query is unavailable or times out, no command is sent.

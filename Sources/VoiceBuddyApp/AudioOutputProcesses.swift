@@ -1,0 +1,58 @@
+import AppKit
+import CoreAudio
+import Darwin
+
+/// Detects active output streams only; this is not proof of media playback.
+enum AudioOutputProcesses {
+    static func uniqueApplicationPID() -> pid_t? {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr,
+              size > 0, size % UInt32(MemoryLayout<AudioObjectID>.size) == 0, size <= 65536 else { return nil }
+        var objects = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        let status = objects.withUnsafeMutableBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return OSStatus(-1) }
+            return AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, base)
+        }
+        guard status == noErr else { return nil }
+        let applications = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && !$0.isTerminated }
+        let appIDs = Set(applications.map(\.processIdentifier))
+        var candidates = Set<pid_t>()
+        for object in objects {
+            guard let active = uint32Property(object, kAudioProcessPropertyIsRunningOutput) else { return nil }
+            guard active != 0 else { continue }
+            guard let rawPID = uint32Property(object, kAudioProcessPropertyPID), rawPID > 0, rawPID <= UInt32(Int32.max) else { return nil }
+            let pid = pid_t(rawPID)
+            if pid == getpid() { continue }
+            guard let appPID = owner(of: pid, among: appIDs) else { return nil }
+            candidates.insert(appPID)
+        }
+        return uniqueCandidate(candidates)
+    }
+
+    static func uniqueCandidate(_ candidates: Set<pid_t>) -> pid_t? {
+        guard candidates.count == 1 else { return nil }
+        return candidates.first
+    }
+
+    private static func uint32Property(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> UInt32? {
+        var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var value: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr, size == MemoryLayout<UInt32>.size else { return nil }
+        return value
+    }
+
+    private static func owner(of pid: pid_t, among applicationIDs: Set<pid_t>) -> pid_t? {
+        var current = pid
+        var visited = Set<pid_t>()
+        for _ in 0..<16 {
+            guard current > 1, visited.insert(current).inserted else { return nil }
+            if applicationIDs.contains(current) { return current }
+            var info = proc_bsdinfo()
+            guard proc_pidinfo(current, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size)) == MemoryLayout<proc_bsdinfo>.size else { return nil }
+            current = pid_t(info.pbi_ppid)
+        }
+        return nil
+    }
+}
