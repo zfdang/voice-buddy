@@ -19,7 +19,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
 }
 
 @MainActor final class AppState: ObservableObject {
-    @Published var preferences: Preferences { didSet { save() } }
+    @Published var preferences: Preferences { didSet { save(); if oldValue.useFnKey != preferences.useFnKey { configureShortcutMode() } } }
     @Published var status = "Ready"
     @Published var liveTranscript = ""
     @Published var liveTranscriptState = LiveTranscriptState()
@@ -70,6 +70,10 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private var hotKey: EventHotKeyRef?
     private var hotKeyID: UInt32 = 0
     private var gesture = HotkeyGesture()
+    private var fnGesture = FnKeyGesture()
+    private var fnStartedRecording = false
+    private var fnGlobalMonitor: Any?
+    private var fnLocalMonitor: Any?
     private var eventHandler: EventHandlerRef?
     private var escMonitor: Any?
     private let defaultsKey = "VoiceBuddy.preferences"
@@ -80,6 +84,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         refreshPermissions()
         registerHotkey()
         setupKeyboardShortcuts()
+        configureShortcutMode()
         autoPreloadModels()
     }
     private func setupKeyboardShortcuts() {
@@ -88,6 +93,57 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
         KeyboardShortcuts.onKeyUp(for: .toggleDictation) { [weak self] in
             Task { @MainActor in self?.hotkeyUp() }
+        }
+    }
+    private func configureShortcutMode() {
+        fnGesture.reset()
+        gesture.reset()
+        fnStartedRecording = false
+        if let fnGlobalMonitor { NSEvent.removeMonitor(fnGlobalMonitor); self.fnGlobalMonitor = nil }
+        if let fnLocalMonitor { NSEvent.removeMonitor(fnLocalMonitor); self.fnLocalMonitor = nil }
+        if preferences.useFnKey {
+            if let hotKey { UnregisterEventHotKey(hotKey); self.hotKey = nil }
+            KeyboardShortcuts.disable(.toggleDictation)
+            let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown]
+            fnGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
+                let key = event.keyCode, flags = event.modifierFlags, type = event.type
+                Task { @MainActor in self?.handleFnEvent(key: key, flags: flags, type: type) }
+            }
+            fnLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+                let key = event.keyCode, flags = event.modifierFlags, type = event.type
+                Task { @MainActor in self?.handleFnEvent(key: key, flags: flags, type: type) }
+                return event
+            }
+        } else {
+            registerHotkey()
+            KeyboardShortcuts.enable(.toggleDictation)
+        }
+    }
+    private func handleFnEvent(key: UInt16, flags: NSEvent.ModifierFlags, type: NSEvent.EventType) {
+        guard preferences.useFnKey else { return }
+        let action: FnKeyGesture.Action
+        if type == .flagsChanged && key == UInt16(kVK_Function) {
+            action = fnGesture.fnChanged(down: flags.contains(.function), holdToTalk: preferences.holdToTalk ?? true)
+            if flags.contains(.function) && !flags.intersection([.shift, .control, .option, .command]).isEmpty {
+                _ = fnGesture.otherKeyPressed()
+                return
+            }
+        } else if type == .keyDown || type == .flagsChanged {
+            action = fnGesture.otherKeyPressed()
+        } else { return }
+        switch action {
+        case .press:
+            let wasRecording = recording
+            hotkeyDown()
+            fnStartedRecording = !wasRecording && recording
+        case .release:
+            hotkeyUp(); fnStartedRecording = false
+        case .cancel:
+            if fnStartedRecording && recording { cancel() } else { gesture.reset() }
+            fnStartedRecording = false
+        case .tap:
+            hotkeyDown(); hotkeyUp()
+        case .none: break
         }
     }
     func checkForUpdates() {

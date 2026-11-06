@@ -238,12 +238,27 @@ struct MainView: View {
             // 1. Shortcut & Dictation Mode
             settingsCard(title: t("Shortcut & Recording", "快捷键与录音方式")) {
                 settingRow(
+                    title: t("Trigger key", "触发按键"),
+                    subtitle: t("Fn may also trigger the macOS Globe key action.", "Fn 也可能触发 macOS 的地球键功能。")
+                ) {
+                    Picker("", selection: $state.preferences.useFnKey) {
+                        Text(t("Custom shortcut", "自定义快捷键")).tag(false)
+                        Text("Fn / 🌐").tag(true)
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    .disabled(state.recording || state.busy)
+                }
+                Divider()
+                if !state.preferences.useFnKey {
+                settingRow(
                     title: t("Dictation Shortcut", "全局快捷键"),
                     subtitle: t("Press anywhere to trigger dictation", "在 macOS 任意应用中直接唤醒语音输入")
                 ) {
                     KeyboardShortcuts.Recorder(for: .toggleDictation)
                 }
                 Divider()
+                }
                 settingRow(
                     title: t("Recording Mode", "录音触发模式"),
                     subtitle: t("Hold to talk or press once to toggle recording", "选择长按说话还是单次敲击启停")
