@@ -340,18 +340,6 @@ private struct BreathingCursorView: View {
 
 // MARK: - Overlay Main View
 
-private struct OverlayBlur: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .hudWindow
-        view.blendingMode = .behindWindow
-        view.state = .active
-        return view
-    }
-
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
-}
-
 private struct OverlayView: View {
     @ObservedObject var state: AppState
     @ObservedObject var animModel: OverlayAnimationModel
@@ -546,12 +534,8 @@ private struct OverlayView: View {
         }
         .frame(width: 520, height: 236)
         .background {
-            OverlayBlur()
-                .overlay {
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .fill(Color(red: 0.05, green: 0.08, blue: 0.14).opacity(0.28))
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .fill(Color(red: 0.04, green: 0.06, blue: 0.10).opacity(0.72))
                 .overlay {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .stroke(
