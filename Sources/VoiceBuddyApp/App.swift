@@ -536,7 +536,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             }
             status = label("Listening…", "正在听你说…")
             startLiveStreaming()
-            overlay.show(state: self)
+            overlay.show(state: self, screenPoint: targetWindowCenter() ?? targetInsertionPoint() ?? NSEvent.mouseLocation)
             if preferences.sounds { NSSound(named: "Tink")?.play() }
             meter = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
                 Task { @MainActor in self?.level = self?.recorder.currentLevel ?? 0 }
@@ -608,6 +608,27 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         overlay.hide(); if preferences.sounds { NSSound(named: "Basso")?.play() }
         status = label("Cancelled", "已取消")
     }
+    private func targetWindowCenter() -> CGPoint? {
+        guard targetPID != 0, let primary = NSScreen.screens.first else { return nil }
+        let application = AXUIElementCreateApplication(targetPID)
+        var windowValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(application, kAXFocusedWindowAttribute as CFString, &windowValue) == .success,
+              let value = windowValue, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+        let window = value as! AXUIElement
+        var positionValue: CFTypeRef?
+        var sizeValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionValue) == .success,
+              AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeValue) == .success,
+              let positionValue, let sizeValue,
+              CFGetTypeID(positionValue) == AXValueGetTypeID(), CFGetTypeID(sizeValue) == AXValueGetTypeID() else { return nil }
+        var position = CGPoint.zero
+        var size = CGSize.zero
+        guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &position),
+              AXValueGetValue(sizeValue as! AXValue, .cgSize, &size), size.width > 0, size.height > 0 else { return nil }
+        let center = CGPoint(x: position.x + size.width / 2, y: primary.frame.maxY - position.y - size.height / 2)
+        return NSScreen.screens.contains(where: { $0.frame.contains(center) }) ? center : nil
+    }
+
     func targetInsertionPoint() -> CGPoint? {
         guard let primaryScreen = NSScreen.screens.first else { return nil }
         let primaryHeight = primaryScreen.frame.height
@@ -657,11 +678,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
 
         // 3. Fallback: mouse pointer location
         let mouse = NSEvent.mouseLocation
-        if mouse.x > 0 && mouse.y > 0 {
-            return mouse
-        }
-
-        return nil
+        return mouse
     }
     private func finish() {
         if preferences.pauseMediaDuringRecording {
@@ -699,6 +716,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                             self.copyResult()
                             let tip = !self.insertFailure.isEmpty ? self.insertFailure : self.label("Content copied to clipboard. Press ⌘V to paste.", "内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
                             self.status = tip
+                            self.overlay.showStatus(state: self)
                         }
                     }
                 } else {
@@ -707,6 +725,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     liveTranscriptState.clear()
                     copyResult()
                     status = label("Content copied to clipboard. Press ⌘V to paste.", "内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
+                    overlay.showStatus(state: self)
                 }
             } catch {
                 guard transcriptionGeneration == id else { return }

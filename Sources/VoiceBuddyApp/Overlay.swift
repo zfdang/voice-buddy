@@ -237,8 +237,16 @@ final class OverlayAnimationModel: ObservableObject {
 final class Overlay {
     private var panel: NSPanel?
     private let animModel = OverlayAnimationModel()
+    private var presentationID = UUID()
+    private var targetScreen: NSScreen?
 
-    func show(state: AppState) {
+    func show(state: AppState, screenPoint: CGPoint? = nil) {
+        presentationID = UUID()
+        if let screenPoint {
+            targetScreen = NSScreen.screens.first { $0.frame.contains(screenPoint) }
+                ?? NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
+                ?? NSScreen.main
+        }
         if panel == nil {
             let panel = NSPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 520, height: 236),
@@ -247,12 +255,18 @@ final class Overlay {
                 defer: false
             )
             panel.isFloatingPanel = true
-            panel.level = .floating
+            panel.level = .statusBar
             panel.isOpaque = false
             panel.backgroundColor = .clear
             panel.hasShadow = false
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            panel.contentView = NSHostingView(rootView: OverlayView(state: state, animModel: animModel))
+            let hostingView = NSHostingView(rootView: OverlayView(state: state, animModel: animModel))
+            hostingView.wantsLayer = true
+            hostingView.layer?.isOpaque = false
+            hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+            hostingView.layer?.cornerRadius = 26
+            hostingView.layer?.masksToBounds = true
+            panel.contentView = hostingView
             self.panel = panel
         }
         reposition()
@@ -262,14 +276,23 @@ final class Overlay {
     }
 
     func reposition() {
-        if let screen = NSScreen.main, let panel {
+        if let panel, let screen = targetScreen.flatMap({ target in NSScreen.screens.first { $0 == target } }) ?? NSScreen.main {
             let frame = screen.visibleFrame
-            // Centered horizontally, elevated gracefully in the active working region
-            panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.midY - panel.frame.height / 2 + 40))
+            panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.minY + 24))
+        }
+    }
+
+    func showStatus(state: AppState) {
+        show(state: state)
+        let id = presentationID
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            guard let self, self.presentationID == id else { return }
+            self.hide()
         }
     }
 
     func hide() {
+        presentationID = UUID()
         animModel.reset()
         panel?.orderOut(nil)
     }
@@ -406,23 +429,6 @@ private struct OverlayView: View {
                         .padding(.top, 4)
                     }
 
-                    // Cancel button in top-right
-                    if state.recording {
-                        Button {
-                            state.cancel()
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.white.opacity(0.08))
-                                    .frame(width: 24, height: 24)
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(state.label("Cancel", "取消"))
-                    }
                 }
             }
             .padding(.horizontal, 22)
@@ -520,14 +526,29 @@ private struct OverlayView: View {
             }
             .padding(.horizontal, 20)
             .frame(height: 72)
+            .background(Color(red: 0.01, green: 0.04, blue: 0.11).opacity(0.36))
         }
         .frame(width: 520, height: 236)
         .background {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(.ultraThinMaterial)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.08, green: 0.13, blue: 0.20).opacity(0.82),
+                            Color(red: 0.11, green: 0.15, blue: 0.23).opacity(0.80),
+                            Color(red: 0.16, green: 0.13, blue: 0.24).opacity(0.82)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
                 .overlay {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .fill(Color(red: 0.05, green: 0.08, blue: 0.14).opacity(0.72))
+                        .fill(RadialGradient(colors: [Color.cyan.opacity(0.20), .clear], center: .init(x: 0.22, y: 0.65), startRadius: 0, endRadius: 250))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .fill(RadialGradient(colors: [Color.purple.opacity(0.20), .clear], center: .init(x: 0.85, y: 0.65), startRadius: 0, endRadius: 230))
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
@@ -543,7 +564,6 @@ private struct OverlayView: View {
                             lineWidth: 1
                         )
                 }
-                .shadow(color: Color.black.opacity(0.40), radius: 26, x: 0, y: 12)
         }
         // Micro-interaction: Fly and shrink into target document cursor
         .scaleEffect(animModel.flyScale)
