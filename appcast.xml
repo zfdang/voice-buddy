@@ -1,0 +1,15 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Voice Buddy</title>
+        <item>
+            <title>0.1.5</title>
+            <pubDate>Fri, 06 Nov 2026 06:04:09 +0000</pubDate>
+            <sparkle:version>0.1.5</sparkle:version>
+            <sparkle:shortVersionString>0.1.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/zfdang/voice-buddy/releases/download/v0.1.5/Voice-Buddy-v0.1.5-macOS.zip" length="51944008" type="application/octet-stream" sparkle:edSignature="Ve7bcnfrkVq2inMvh0nBlZPy6KrQsuvTnEqflb9FCUqse9hC+hQRxFqUfdQT0HOFuqo62nKNZGtkLHxXaVCZDw=="/>
+        </item>
+    </channel>
+</rss>
