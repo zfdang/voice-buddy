@@ -64,10 +64,11 @@ public enum TargetAccessibility {
            let focused = focusedElementValue, CFGetTypeID(focused) == AXUIElementGetTypeID() {
             let element = (focused as! AXUIElement)
             var elementPID: pid_t = 0
-            if (AXUIElementGetPid(element, &elementPID) == .success && elementPID == pid) ||
-                (appFocus != nil && CFEqual(element, appFocus!)) {
+            if AXUIElementGetPid(element, &elementPID) == .success && elementPID == pid {
                 return element
             }
+            if let appFocus, CFEqual(element, appFocus) { return element }
+            return nil
         }
         return appFocus
     }
