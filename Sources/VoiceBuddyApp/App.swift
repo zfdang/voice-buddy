@@ -699,6 +699,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                             self.copyResult()
                             let tip = !self.insertFailure.isEmpty ? self.insertFailure : self.label("Content copied to clipboard. Press ⌘V to paste.", "内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
                             self.status = tip
+                            self.overlay.showStatus(state: self)
                         }
                     }
                 } else {
@@ -707,6 +708,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     liveTranscriptState.clear()
                     copyResult()
                     status = label("Content copied to clipboard. Press ⌘V to paste.", "内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
+                    overlay.showStatus(state: self)
                 }
             } catch {
                 guard transcriptionGeneration == id else { return }

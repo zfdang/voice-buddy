@@ -237,8 +237,10 @@ final class OverlayAnimationModel: ObservableObject {
 final class Overlay {
     private var panel: NSPanel?
     private let animModel = OverlayAnimationModel()
+    private var presentationID = UUID()
 
     func show(state: AppState) {
+        presentationID = UUID()
         if panel == nil {
             let panel = NSPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 520, height: 236),
@@ -247,7 +249,7 @@ final class Overlay {
                 defer: false
             )
             panel.isFloatingPanel = true
-            panel.level = .floating
+            panel.level = .statusBar
             panel.isOpaque = false
             panel.backgroundColor = .clear
             panel.hasShadow = false
@@ -264,12 +266,21 @@ final class Overlay {
     func reposition() {
         if let screen = NSScreen.main, let panel {
             let frame = screen.visibleFrame
-            // Centered horizontally, elevated gracefully in the active working region
-            panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.midY - panel.frame.height / 2 + 40))
+            panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.minY + 24))
+        }
+    }
+
+    func showStatus(state: AppState) {
+        show(state: state)
+        let id = presentationID
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            guard let self, self.presentationID == id else { return }
+            self.hide()
         }
     }
 
     func hide() {
+        presentationID = UUID()
         animModel.reset()
         panel?.orderOut(nil)
     }
@@ -328,6 +339,18 @@ private struct BreathingCursorView: View {
 }
 
 // MARK: - Overlay Main View
+
+private struct OverlayBlur: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .hudWindow
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
 
 private struct OverlayView: View {
     @ObservedObject var state: AppState
@@ -523,12 +546,12 @@ private struct OverlayView: View {
         }
         .frame(width: 520, height: 236)
         .background {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(.ultraThinMaterial)
+            OverlayBlur()
                 .overlay {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .fill(Color(red: 0.05, green: 0.08, blue: 0.14).opacity(0.72))
+                        .fill(Color(red: 0.05, green: 0.08, blue: 0.14).opacity(0.28))
                 }
+                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .stroke(
