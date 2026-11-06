@@ -469,6 +469,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     func toggle() { if recording { finish() } else { start(whileHeld: false) } }
     private func start(whileHeld: Bool) {
         guard !busy && !recording else { return }
+        // Invalidate any delayed insertion from the previous session.
+        transcriptionGeneration = UUID()
         guard ready else {
             status = label("Loading speech model…", "正在加载语音模型…")
             overlay.show(state: self)
@@ -834,9 +836,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         TargetAccessibility.waitForModifiersReleased(timeout: 0.25) { [weak self] in
             // Give target app's window server activation time to settle before posting ⌘V
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                if let sid = sessionID, let currentGen = self?.transcriptionGeneration, currentGen != sid {
-                    return
-                }
+                guard let self, !self.recording else { return }
+                if let sid = sessionID, self.transcriptionGeneration != sid { return }
                 guard board.changeCount == count, board.string(forType: .string) == text else {
                     return
                 }
@@ -844,7 +845,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                       frontPID == effPID else {
                     return
                 }
-                if let liveFocus = self?.focusedElement(pid: effPID), TargetAccessibility.isSensitiveDestination(element: liveFocus) {
+                if let liveFocus = self.focusedElement(pid: effPID), TargetAccessibility.isSensitiveDestination(element: liveFocus) {
                     return
                 }
                 TargetAccessibility.postPasteShortcut()
