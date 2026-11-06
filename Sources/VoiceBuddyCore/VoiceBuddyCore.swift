@@ -76,6 +76,7 @@ public enum TextCleanup {
     public static func looksSafe(_ result: String, original: String) -> Bool {
         let text = result.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, text.count <= max(original.count * 4, original.count + 200) else { return false }
+        if original.count >= 40 && text.count < max(12, original.count / 3) { return false }
         let lower = text.lowercased()
         guard !lower.contains("<think>") && !lower.contains("</think>") && !lower.contains("corrected text here") && !lower.contains("i am ready to help") && !lower.contains("as an ai") else { return false }
         let chinese = original.unicodeScalars.filter { (0x4E00...0x9FFF).contains($0.value) }

@@ -181,6 +181,16 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     func refine(_ text: String, mode: Refinement) async throws -> String {
         guard let editor else { throw VoiceBuddyError.modelUnavailable("Text model") }
         let instruction = mode == .rewrite ? "Rewrite the dictated text clearly. Preserve facts. Output only the rewritten text." : "Edit the dictated text lightly for clarity and punctuation. Preserve all facts, language and meaning. Output only the edited text."
-        return try editor.generate(messages: [.init(role: .system, content: instruction), .init(role: .user, content: text)], sampling: .init(temperature: 0, maxTokens: min(max(text.count * 3, 64), 256)))
+        let tokenBudget = max(512, min(text.count * 4 + 128, 2048))
+        let generated = try editor.generate(
+            messages: [.init(role: .system, content: instruction), .init(role: .user, content: text)],
+            sampling: .init(temperature: 0, maxTokens: tokenBudget)
+        )
+        let trimmed = generated.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tokenCount = editor.tokenizer.encode(trimmed).count
+        if tokenCount >= tokenBudget || (text.count >= 40 && trimmed.count < max(12, text.count / 3)) {
+            throw RefinementFailure(original: text, reason: "Refinement output exceeded token budget or was truncated")
+        }
+        return trimmed
     }
 }

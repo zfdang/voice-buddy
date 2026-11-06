@@ -31,6 +31,13 @@ jobs:
       P12_PASSWORD: ${{ secrets.VOICE_BUDDY_SIGNING_P12_PASSWORD }}
       PUBLIC_REPO_TOKEN: ${{ secrets.VOICE_BUDDY_REPO_ACCESS_TOKEN }}
       SPARKLE_ED_KEY: ${{ secrets.SPARKLE_ED_KEY }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
     steps:
       - name: Resolve release tag
         id: tag
@@ -90,7 +97,22 @@ jobs:
         id: build
         run: |
           tag="${{ steps.tag.outputs.tag }}"
-          scripts/build-app.sh release "$tag" --package --strict-signing -s "Voice Buddy Local Development"
+          keychain="$RUNNER_TEMP/voice-buddy-signing.keychain-db"
+
+          # Discover signing identity: Secret -> Keychain -> Fallback
+          signing_id="${APPLE_SIGNING_IDENTITY:-}"
+          if [[ -z "$signing_id" ]]; then
+            dev_id="$(security find-identity -v -p codesigning "$keychain" 2>/dev/null | grep 'Developer ID Application' | head -n 1 | awk -F '"' '{print $2}' || true)"
+            if [[ -n "$dev_id" ]]; then
+              signing_id="$dev_id"
+            else
+              any_id="$(security find-identity -v -p codesigning "$keychain" 2>/dev/null | awk -F '"' '/"/ {print $2; exit}' || true)"
+              signing_id="${any_id:-Voice Buddy Local Development}"
+            fi
+          fi
+          echo "Selected codesigning identity: $signing_id"
+
+          scripts/build-app.sh release "$tag" --package --strict-signing -s "$signing_id"
 
           # Verify the app bundle is strictly signed with valid certificate
           echo "Verifying release app signature..."
@@ -100,6 +122,49 @@ jobs:
           if echo "$sig_info" | grep -q "Signature=adhoc"; then
             echo "::error::Release build was signed with ad-hoc signature! Expected valid certificate."
             exit 1
+          fi
+
+      - name: Apple Notarization and Stapling
+        id: notarize
+        run: |
+          set -euo pipefail
+          tag="${{ steps.tag.outputs.tag }}"
+          raw_tag="${tag#v}"
+          zip_file="dist/Voice-Buddy-${tag}-macOS.zip"
+          [[ -f "$zip_file" ]] || zip_file="dist/Voice-Buddy-${raw_tag}-macOS.zip"
+          dmg_file="dist/Voice-Buddy-${tag}-macOS.dmg"
+          [[ -f "$dmg_file" ]] || dmg_file="dist/Voice-Buddy-${raw_tag}-macOS.dmg"
+
+          if [[ -n "${APPLE_API_KEY_BASE64:-}" && -n "${APPLE_API_KEY_ID:-}" && -n "${APPLE_API_ISSUER:-}" ]]; then
+            echo "Notarizing artifacts via App Store Connect API Key..."
+            api_key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+            printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$api_key_path"
+            xcrun notarytool submit "$zip_file" \
+              --key "$api_key_path" \
+              --key-id "$APPLE_API_KEY_ID" \
+              --issuer "$APPLE_API_ISSUER" \
+              --wait
+            xcrun stapler staple "dist/Voice Buddy.app"
+            xcrun stapler staple "$dmg_file" || true
+            # Recreate zip and checksums with stapled app ticket
+            (cd dist && rm -f "$(basename "$zip_file")" && zip -qry "$(basename "$zip_file")" "Voice Buddy.app")
+            (cd dist && shasum -a 256 "$(basename "$dmg_file")" "$(basename "$zip_file")" > SHA256SUMS.txt)
+            echo "Notarization and stapling succeeded."
+          elif [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
+            echo "Notarizing artifacts via Apple ID..."
+            xcrun notarytool submit "$zip_file" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+            xcrun stapler staple "dist/Voice Buddy.app"
+            xcrun stapler staple "$dmg_file" || true
+            # Recreate zip and checksums with stapled app ticket
+            (cd dist && rm -f "$(basename "$zip_file")" && zip -qry "$(basename "$zip_file")" "Voice Buddy.app")
+            (cd dist && shasum -a 256 "$(basename "$dmg_file")" "$(basename "$zip_file")" > SHA256SUMS.txt)
+            echo "Notarization and stapling succeeded."
+          else
+            echo "::notice::Apple Notarization credentials not configured. Build will proceed with valid codesign certificate, but without Apple Gatekeeper notarization ticket."
           fi
 
       - name: Generate Sparkle Appcast
