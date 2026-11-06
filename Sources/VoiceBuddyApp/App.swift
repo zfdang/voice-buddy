@@ -67,14 +67,11 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private var editorGeneration = UUID()
     private var liveTask: Task<Void, Never>?
     private var meter: Timer?
-    private var hotKey: EventHotKeyRef?
-    private var hotKeyID: UInt32 = 0
     private var gesture = HotkeyGesture()
     private var fnGesture = FnKeyGesture()
     private var fnStartedRecording = false
     private var fnGlobalMonitor: Any?
     private var fnLocalMonitor: Any?
-    private var eventHandler: EventHandlerRef?
     private var escMonitor: Any?
     private let defaultsKey = "VoiceBuddy.preferences"
 
@@ -82,7 +79,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         preferences = UserDefaults.standard.data(forKey: defaultsKey).flatMap { try? JSONDecoder().decode(Preferences.self, from: $0) } ?? Preferences()
         DiagnosticLog.shared.record("app.start version=\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown")")
         refreshPermissions()
-        registerHotkey()
         setupKeyboardShortcuts()
         configureShortcutMode()
         autoPreloadModels()
@@ -102,7 +98,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         if let fnGlobalMonitor { NSEvent.removeMonitor(fnGlobalMonitor); self.fnGlobalMonitor = nil }
         if let fnLocalMonitor { NSEvent.removeMonitor(fnLocalMonitor); self.fnLocalMonitor = nil }
         if preferences.useFnKey {
-            if let hotKey { UnregisterEventHotKey(hotKey); self.hotKey = nil }
             KeyboardShortcuts.disable(.toggleDictation)
             let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown]
             fnGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
@@ -115,7 +110,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 return event
             }
         } else {
-            registerHotkey()
             KeyboardShortcuts.enable(.toggleDictation)
         }
     }
@@ -219,32 +213,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         return chinese ? zh : en
     }
     private func save() { if let data = try? JSONEncoder().encode(preferences) { UserDefaults.standard.set(data, forKey: defaultsKey) } }
-    @discardableResult func registerHotkey(keyCode: UInt32? = nil, modifiers: UInt32? = nil) -> Bool {
-        if eventHandler == nil {
-            var events = [
-                EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
-                EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))
-            ]
-            InstallEventHandler(GetApplicationEventTarget(), { _, event, info in
-                guard let info, let event else { return OSStatus(eventNotHandledErr) }
-                let state = Unmanaged<AppState>.fromOpaque(info).takeUnretainedValue()
-                let pressed = GetEventKind(event) == UInt32(kEventHotKeyPressed)
-                Task { @MainActor in if pressed { state.hotkeyDown() } else { state.hotkeyUp() } }
-                return noErr
-            }, events.count, &events, Unmanaged.passUnretained(self).toOpaque(), &eventHandler)
-        }
-        let key = keyCode ?? preferences.shortcutKeyCode, mods = modifiers ?? preferences.shortcutModifiers
-        if hotKey != nil && key == preferences.shortcutKeyCode && mods == preferences.shortcutModifiers { return true }
-        hotKeyID &+= 1
-        let id = EventHotKeyID(signature: 0x56425544, id: hotKeyID)
-        var replacement: EventHotKeyRef?
-        let code = RegisterEventHotKey(key, mods, id, GetApplicationEventTarget(), 0, &replacement)
-        DiagnosticLog.shared.record("shortcut.register result=\(code) keycode=\(key) modifiers=\(mods)")
-        guard code == noErr, let replacement else { status = label("Shortcut unavailable; previous shortcut retained.", "快捷键不可用，已保留原快捷键。 "); return false }
-        if let hotKey { UnregisterEventHotKey(hotKey) }; hotKey = replacement
-        preferences.shortcutKeyCode = key; preferences.shortcutModifiers = mods
-        return true
-    }
     func loadActiveSpeechModel() {
         prepareSpeech(id: preferences.speechModel)
     }
