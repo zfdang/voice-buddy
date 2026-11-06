@@ -718,10 +718,21 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
         liveTask?.cancel(); liveTask = nil
         if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
-        let audio = recorder.stop(); recording = false; meter?.invalidate(); level = 0; busy = true
+        let capture = recorder.stop(); recording = false; meter?.invalidate(); level = 0; busy = true
+        let audio = capture.samples
         let logSession = diagnosticSession
         DiagnosticLog.shared.record("recording.finished id=\(logSession) sample_count=\(audio.count)")
+        let stats = capture.diagnostics
+        DiagnosticLog.shared.record("recording.capture id=\(logSession) callbacks=\(stats.callbacks) input_frames=\(stats.inputFrames) output_frames=\(stats.outputFrames) allocation_failures=\(stats.allocationFailures) conversion_failures=\(stats.conversionFailures) empty_outputs=\(stats.emptyOutputBuffers) last_conversion_error=\(stats.lastConversionErrorCode.map(String.init) ?? "none")")
         if preferences.sounds { NSSound(named: "Pop")?.play() }
+        guard !audio.isEmpty else {
+            busy = false
+            liveTranscriptState.clear()
+            status = label("No audio was captured. Check your microphone and try again.", "没有采集到音频，请检查麦克风后重试。")
+            DiagnosticLog.shared.record("recording.empty id=\(logSession)")
+            overlay.showStatus(state: self)
+            return
+        }
         status = label("Transcribing…", "正在识别…"); overlay.show(state: self)
         let id = UUID()
         transcriptionGeneration = id
@@ -780,7 +791,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 DiagnosticLog.shared.record("transcription.failed id=\(logSession) error_type=\(String(describing: type(of: error))) code=\((error as NSError).code)")
                 guard transcriptionGeneration == id else { return }
                 if !recording {
-                    overlay.hide()
                     liveTranscriptState.clear()
                 }
                 busy = false
@@ -789,7 +799,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     result = failure.original
                     copyResult()
                 }
-                status = error.localizedDescription
+                if let voiceError = error as? VoiceBuddyError, voiceError == .noSpeech {
+                    status = label("No speech detected. Please try again.", "没有检测到语音，请重试。")
+                } else {
+                    status = error.localizedDescription
+                }
+                if !recording { overlay.showStatus(state: self) }
             }
         }
     }

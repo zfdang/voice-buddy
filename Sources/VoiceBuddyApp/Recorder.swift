@@ -2,11 +2,31 @@ import AVFoundation
 import Accelerate
 import CoreAudio
 
+struct CaptureDiagnostics {
+    var callbacks = 0
+    var inputFrames = 0
+    var outputFrames = 0
+    var allocationFailures = 0
+    var conversionFailures = 0
+    var emptyOutputBuffers = 0
+    var lastConversionErrorCode: Int?
+
+    mutating func record(inputFrames: Int, outputFrames: Int, allocated: Bool, conversionFailed: Bool, errorCode: Int?) {
+        callbacks += 1
+        self.inputFrames += inputFrames
+        self.outputFrames += outputFrames
+        if !allocated { allocationFailures += 1 }
+        if conversionFailed { conversionFailures += 1; lastConversionErrorCode = errorCode }
+        if allocated && !conversionFailed && outputFrames == 0 { emptyOutputBuffers += 1 }
+    }
+}
+
 final class Recorder {
     private var engine: AVAudioEngine?
     private let lock = NSLock()
     private var samples: [Float] = []
     private var level: Float = 0
+    private var diagnostics = CaptureDiagnostics()
     var currentLevel: Float { lock.lock(); defer { lock.unlock() }; return level }
     var currentSamples: [Float] { lock.lock(); defer { lock.unlock() }; return samples }
 
@@ -25,26 +45,44 @@ final class Recorder {
               let converter = AVAudioConverter(from: format, to: target) else {
             throw NSError(domain: "VoiceBuddy", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to configure microphone."])
         }
-        lock.lock(); samples = []; level = 0; lock.unlock()
+        lock.lock(); samples = []; level = 0; diagnostics = CaptureDiagnostics(); lock.unlock()
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             guard let self else { return }
+            var allocated = false
+            var conversionFailed = false
+            var conversionErrorCode: Int?
+            var outputFrames = 0
+            defer {
+                self.lock.lock()
+                self.diagnostics.record(inputFrames: Int(buffer.frameLength), outputFrames: outputFrames, allocated: allocated, conversionFailed: conversionFailed, errorCode: conversionErrorCode)
+                self.lock.unlock()
+            }
             let count = AVAudioFrameCount(ceil(Double(buffer.frameLength) * 16000 / format.sampleRate) + 64)
             guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: count) else { return }
+            allocated = true
             var consumed = false; var error: NSError?
             let status = converter.convert(to: out, error: &error) { _, flag in
                 if consumed { flag.pointee = .noDataNow; return nil }
                 consumed = true; flag.pointee = .haveData; return buffer
             }
-            guard status != .error, let data = out.floatChannelData?[0] else { return }
+            guard status != .error, let data = out.floatChannelData?[0] else {
+                conversionFailed = true
+                conversionErrorCode = error?.code
+                return
+            }
             let n = Int(out.frameLength); var rms: Float = 0
+            outputFrames = n
             if n > 0 { vDSP_rmsqv(data, 1, &rms, vDSP_Length(n)) }
             self.lock.lock(); self.samples.append(contentsOf: UnsafeBufferPointer(start: data, count: n)); self.level = rms; self.lock.unlock()
         }
         do { try engine.start(); self.engine = engine } catch { input.removeTap(onBus: 0); throw error }
     }
-    func stop() -> [Float] {
+    func stop() -> (samples: [Float], diagnostics: CaptureDiagnostics) {
         engine?.inputNode.removeTap(onBus: 0); engine?.stop(); engine = nil
-        lock.lock(); defer { lock.unlock() }; let result = samples; samples = []; level = 0; return result
+        lock.lock(); defer { lock.unlock() }
+        let result = (samples, diagnostics)
+        samples = []; level = 0
+        return result
     }
 }
 
