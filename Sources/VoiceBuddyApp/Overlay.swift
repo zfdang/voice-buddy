@@ -543,6 +543,7 @@ private struct OverlayView: View {
             }
             .padding(.horizontal, 20)
             .frame(height: 72)
+            .background(Color(red: 0.01, green: 0.04, blue: 0.11).opacity(0.36))
         }
         .frame(width: 520, height: 236)
         .background {
@@ -550,9 +551,9 @@ private struct OverlayView: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.07, green: 0.24, blue: 0.30).opacity(0.78),
-                            Color(red: 0.15, green: 0.21, blue: 0.33).opacity(0.76),
-                            Color(red: 0.24, green: 0.16, blue: 0.34).opacity(0.78)
+                            Color(red: 0.08, green: 0.13, blue: 0.20).opacity(0.82),
+                            Color(red: 0.11, green: 0.15, blue: 0.23).opacity(0.80),
+                            Color(red: 0.16, green: 0.13, blue: 0.24).opacity(0.82)
                         ],
                         startPoint: .leading,
                         endPoint: .trailing
@@ -560,7 +561,11 @@ private struct OverlayView: View {
                 )
                 .overlay {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .fill(LinearGradient(colors: [.clear, Color(red: 0.02, green: 0.04, blue: 0.13).opacity(0.42)], startPoint: .center, endPoint: .bottom))
+                        .fill(RadialGradient(colors: [Color.cyan.opacity(0.20), .clear], center: .init(x: 0.22, y: 0.65), startRadius: 0, endRadius: 250))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .fill(RadialGradient(colors: [Color.purple.opacity(0.20), .clear], center: .init(x: 0.85, y: 0.65), startRadius: 0, endRadius: 230))
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
