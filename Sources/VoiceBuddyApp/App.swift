@@ -50,7 +50,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     @Published var micStatus: AVAuthorizationStatus = .notDetermined
     let models = LocalModels()
     let updater = UpdaterViewModel()
-    private let mediaPlayback = MediaPlaybackController()
+    private let mediaPlayback = MediaPlaybackController { event in
+        DiagnosticLog.shared.record("media.\(event.rawValue)")
+    }
     private let recorder = Recorder()
     private let overlay = Overlay()
     private(set) var insertFailure = ""
@@ -645,9 +647,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     }
     func cancel() {
         DiagnosticLog.shared.record("session.cancel id=\(diagnosticSession)")
-        if preferences.pauseMediaDuringRecording {
-            mediaPlayback.resumeIfPaused()
-        }
+        mediaPlayback.resumeIfPaused()
         liveTask?.cancel(); liveTask = nil; liveTranscript = ""; liveTranscriptState.clear(); tracker.reset()
         if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
         transcriptionGeneration = UUID()
@@ -743,9 +743,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         return mouse
     }
     private func finish() {
-        if preferences.pauseMediaDuringRecording {
-            mediaPlayback.resumeIfPaused()
-        }
+        mediaPlayback.resumeIfPaused()
         liveTask?.cancel(); liveTask = nil
         if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
         let capture = recorder.stop(); recording = false; meter?.invalidate(); level = 0; busy = true
