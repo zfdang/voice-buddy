@@ -157,4 +157,12 @@ extension PipelineTests {
         XCTAssertEqual(gesture.release(hold: false), .none)
         XCTAssertEqual(gesture.press(hold: false), .toggle)
     }
+    func testMediaPlaybackControllerPauseAndResume() {
+        let controller = MediaPlaybackController()
+        XCTAssertFalse(controller.didPauseMedia)
+        controller.pauseIfPlaying()
+        XCTAssertTrue(controller.didPauseMedia)
+        controller.resumeIfPaused()
+        XCTAssertFalse(controller.didPauseMedia)
+    }
 }

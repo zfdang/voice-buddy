@@ -72,7 +72,7 @@ struct MainView: View {
     }
 
     private var mascot: NSImage {
-        if let url = Bundle.module.url(forResource: "mascot", withExtension: "png"), let image = NSImage(contentsOf: url) {
+        if let url = Bundle.main.url(forResource: "mascot", withExtension: "png"), let image = NSImage(contentsOf: url) {
             return image
         }
         return NSImage()
@@ -1031,7 +1031,7 @@ struct MainView: View {
 
                     Divider()
 
-                    Text(t("Built with Sparkle, KeyboardShortcuts, LaunchAtLogin, MediaRemoteAdapter, Whisper.cpp, and MLX.", "基于 Sparkle、KeyboardShortcuts、LaunchAtLogin、MediaRemoteAdapter、Whisper.cpp 与 MLX 开源生态构建。"))
+                    Text(t("Built with Sparkle, KeyboardShortcuts, LaunchAtLogin, Whisper.cpp, and MLX.", "基于 Sparkle、KeyboardShortcuts、LaunchAtLogin、Whisper.cpp 与 MLX 开源生态构建。"))
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }

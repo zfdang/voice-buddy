@@ -7,7 +7,6 @@ import VoiceBuddyCore
 import KeyboardShortcuts
 import Sparkle
 import LaunchAtLogin
-import MediaRemoteAdapter
 
 public enum AppTab: Int, CaseIterable, Identifiable {
     case general = 0
@@ -865,8 +864,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         let size = NSSize(width: 20, height: 20)
         let img = NSImage(size: size)
 
-        let url1x = Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png") ?? Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png")
-        let url2x = Bundle.module.url(forResource: "MenuBarIcon@2x", withExtension: "png") ?? Bundle.main.url(forResource: "MenuBarIcon@2x", withExtension: "png")
+        let url1x = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png")
+        let url2x = Bundle.main.url(forResource: "MenuBarIcon@2x", withExtension: "png")
 
         if let url1x, let data1x = try? Data(contentsOf: url1x), let rep1x = NSBitmapImageRep(data: data1x) {
             rep1x.size = size
@@ -897,8 +896,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         let size = NSSize(width: 20, height: 20)
         let img = NSImage(size: size)
 
-        let url1x = Bundle.module.url(forResource: "MenuBarIconColor", withExtension: "png") ?? Bundle.main.url(forResource: "MenuBarIconColor", withExtension: "png")
-        let url2x = Bundle.module.url(forResource: "MenuBarIconColor@2x", withExtension: "png") ?? Bundle.main.url(forResource: "MenuBarIconColor@2x", withExtension: "png")
+        let url1x = Bundle.main.url(forResource: "MenuBarIconColor", withExtension: "png")
+        let url2x = Bundle.main.url(forResource: "MenuBarIconColor@2x", withExtension: "png")
 
         if let url1x, let data1x = try? Data(contentsOf: url1x), let rep1x = NSBitmapImageRep(data: data1x) {
             rep1x.size = size
@@ -928,8 +927,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         let size = NSSize(width: 44, height: 44)
         let img = NSImage(size: size)
 
-        let url1x = Bundle.module.url(forResource: "MenuBarIconColor", withExtension: "png") ?? Bundle.main.url(forResource: "MenuBarIconColor", withExtension: "png")
-        let url2x = Bundle.module.url(forResource: "MenuBarIconColor@2x", withExtension: "png") ?? Bundle.main.url(forResource: "MenuBarIconColor@2x", withExtension: "png")
+        let url1x = Bundle.main.url(forResource: "MenuBarIconColor", withExtension: "png")
+        let url2x = Bundle.main.url(forResource: "MenuBarIconColor@2x", withExtension: "png")
 
         if let url2x, let data2x = try? Data(contentsOf: url2x), let rep2x = NSBitmapImageRep(data: data2x) {
             rep2x.size = size
