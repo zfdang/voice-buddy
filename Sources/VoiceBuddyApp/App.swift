@@ -54,7 +54,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private let mediaPlayback = MediaPlaybackController()
     private let recorder = Recorder()
     private let overlay = Overlay()
-    private var insertFailure = ""
+    private(set) var insertFailure = ""
     private var targetPID: pid_t = 0
     private var targetAppName = ""
     private var targetElement: AXUIElement?
