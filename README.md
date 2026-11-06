@@ -45,7 +45,7 @@ Voice Buddy 是一个专为 macOS 设计的**离线优先、跨应用语音输�
 ### 系统要求
 
 - macOS 15.0 (Sequoia) 或更高版本
-- Apple Silicon (M1 / M2 / M3 / M4)
+- Apple Silicon（arm64，M1 及后续全系芯片）
 - Xcode 16+（安装命令行工具）
 
 ### 运行测试

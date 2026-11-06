@@ -206,7 +206,7 @@ jobs:
           release_notes="## Voice Buddy ${TAG}
 
           - **Commit**: \`${COMMIT}\`
-          - **Architecture**: Apple Silicon (M1/M2/M3/M4) / macOS 15.0+
+          - **Architecture**: Apple Silicon (arm64, M-Series M1+) / macOS 15.0+
           - **Offline-first voice typing with local Qwen3-ASR and Qwen LLM**
 
           ### Sparkle Update Feed
