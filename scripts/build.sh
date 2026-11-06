@@ -176,7 +176,9 @@ if [ ! -f "${SPM_OUT}/VoiceBuddy" ] && [ -f "${ROOT_DIR}/.build/arm64-apple-maco
 fi
 
 cp "${SPM_OUT}/VoiceBuddy" "${APP_BUNDLE}/Contents/MacOS/VoiceBuddy"
-cp -R "${SPM_OUT}/VoiceBuddy_VoiceBuddyApp.bundle" "${APP_BUNDLE}/Contents/Resources/"
+if [ -d "${SPM_OUT}/VoiceBuddy_VoiceBuddyApp.bundle" ]; then
+    cp -R "${SPM_OUT}/VoiceBuddy_VoiceBuddyApp.bundle" "${APP_BUNDLE}/Contents/Resources/" 2>/dev/null || true
+fi
 cp "${SPM_OUT}/mlx.metallib" "${APP_BUNDLE}/Contents/MacOS/mlx.metallib"
 
 # Copy additional resource bundles (LaunchAtLogin, KeyboardShortcuts, MediaRemoteAdapter)
@@ -219,8 +221,8 @@ fi
 if [ -f "${ICON_SRC}" ]; then
     cp "${ICON_SRC}" "${APP_BUNDLE}/Contents/Resources/AppIcon.icns"
 fi
-if [ -f "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/MenuBarIcon.png" ]; then
-    cp "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/MenuBarIcon"*.png "${APP_BUNDLE}/Contents/Resources/" 2>/dev/null || true
+if [ -d "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources" ]; then
+    cp -R "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/"* "${APP_BUNDLE}/Contents/Resources/" 2>/dev/null || true
 fi
 
 cat > "${APP_BUNDLE}/Contents/Info.plist" <<PLIST
@@ -283,6 +285,25 @@ fi
 echo "Verifying code signature..."
 codesign --verify --deep --strict "${APP_BUNDLE}"
 codesign -dvvv "${APP_BUNDLE}" 2>&1 | grep -E "(Identifier|Format|Authority|TeamIdentifier|Signature)" || true
+
+echo "Smoke testing application binary startup..."
+python3 -c "
+import subprocess, sys
+
+proc = subprocess.Popen(['${APP_BUNDLE}/Contents/MacOS/VoiceBuddy'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+try:
+    stdout, stderr = proc.communicate(timeout=1.5)
+    if proc.returncode != 0:
+        sys.stderr.write(f'Smoke test failed with returncode {proc.returncode}:\n{stderr.decode()}\n')
+        sys.exit(1)
+except subprocess.TimeoutExpired:
+    proc.terminate()
+    try:
+        proc.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    print('Smoke test passed: binary launched cleanly without crash.')
+"
 
 if [ "${STRICT_SIGNING:-false}" = "true" ] && [ "${ALLOW_ADHOC:-false}" != "true" ]; then
     if codesign -dvvv "${APP_BUNDLE}" 2>&1 | grep -q "Signature=adhoc"; then

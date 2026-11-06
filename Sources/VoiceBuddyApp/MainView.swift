@@ -72,7 +72,7 @@ struct MainView: View {
     }
 
     private var mascot: NSImage {
-        if let url = Bundle.module.url(forResource: "mascot", withExtension: "png"), let image = NSImage(contentsOf: url) {
+        if let url = Bundle.main.url(forResource: "mascot", withExtension: "png"), let image = NSImage(contentsOf: url) {
             return image
         }
         return NSImage()

@@ -27,7 +27,7 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle"),
                 .product(name: "MediaRemoteAdapter", package: "mediaremote-adapter")
             ],
-            resources: [.process("Resources")]
+            exclude: ["Resources"]
         ),
         .testTarget(name: "VoiceBuddyCoreTests", dependencies: ["VoiceBuddyCore", .product(name: "Qwen3ASR", package: "speech-swift"), .product(name: "SpeechVAD", package: "speech-swift"), .product(name: "Qwen3Chat", package: "speech-swift")])
     ]
