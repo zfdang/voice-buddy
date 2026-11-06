@@ -9,17 +9,7 @@ public enum TargetAccessibility {
         "密码", "口令", "密钥", "令牌", "信用卡", "银行卡", "支付密码", "安全码"
     ]
 
-    private static let terminalBundleIDs: Set<String> = [
-        "com.apple.Terminal", "com.googlecode.iterm2", "org.alacritty", "com.mitchellh.ghostty", "net.kovidgoyal.kitty"
-    ]
-
-    private static let browserAndEditorBundleIDs: Set<String> = [
-        "com.google.Chrome", "org.chromium.Chromium", "com.apple.Safari", "org.mozilla.firefox",
-        "com.microsoft.edgemac", "com.brave.Browser", "com.openai.chat", "com.openai.codex", "com.sublimetext.4",
-        "com.microsoft.VSCode", "com.github.GitHubClient", "com.todesktop.230313mzl4w4u92", "abnerworks.Typora"
-    ]
-
-    /// Wakes up Chromium / Electron accessibility tree if not already activated.
+    /// Wakes up Chromium / Electron accessibility tree if supported.
     public static func wakeManualAccessibility(processIdentifier: pid_t) {
         guard processIdentifier != 0 else { return }
         let applicationElement = AXUIElementCreateApplication(processIdentifier)
@@ -37,7 +27,8 @@ public enum TargetAccessibility {
         }
     }
 
-    /// Captures the true focused application PID, app name, and AXUIElement using system-wide + frontmost fallbacks.
+    /// Captures the true focused application PID, app name, and AXUIElement.
+    /// Always binds to the user-facing frontmost application to avoid getting trapped in child helper/renderers.
     public static func captureTargetFocus() -> (pid: pid_t, name: String, element: AXUIElement?) {
         guard let frontmost = NSWorkspace.shared.frontmostApplication else {
             return (0, "", nil)
@@ -56,20 +47,10 @@ public enum TargetAccessibility {
         if AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedElementValue) == .success,
            let focused = focusedElementValue, CFGetTypeID(focused) == AXUIElementGetTypeID() {
             let element = (focused as! AXUIElement)
-            var elemPID: pid_t = 0
-            if AXUIElementGetPid(element, &elemPID) == .success {
-                // If element belongs to frontmost app or an unbundled helper/renderer, always bind to frontmost app
-                if elemPID == pid || NSRunningApplication(processIdentifier: elemPID) == nil {
-                    return (pid, name, element)
-                } else if let elemApp = NSRunningApplication(processIdentifier: elemPID) {
-                    wakeManualAccessibility(processIdentifier: elemPID)
-                    return (elemPID, elemApp.localizedName ?? name, element)
-                }
-            }
             return (pid, name, element)
         }
 
-        // 2. Fallback to app focused UI element
+        // 2. Fallback to application-level focused UI element
         var appFocusedValue: CFTypeRef?
         let appElement = AXUIElementCreateApplication(pid)
         if AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &appFocusedValue) == .success,
@@ -121,60 +102,6 @@ public enum TargetAccessibility {
                     return true
                 }
             }
-        }
-
-        return false
-    }
-
-    /// Decides whether text injection should directly prefer synthesized ⌘V pasteboard pasting.
-    public static func prefersPaste(targetPID: pid_t, element: AXUIElement?) -> Bool {
-        guard let app = NSRunningApplication(processIdentifier: targetPID) else { return true }
-        let bundleID = app.bundleIdentifier ?? ""
-
-        // Terminals always prefer paste
-        if terminalBundleIDs.contains(bundleID) { return true }
-
-        // Browsers & known rich editors prefer paste
-        if browserAndEditorBundleIDs.contains(bundleID) || browserAndEditorBundleIDs.contains(where: { bundleID.hasPrefix($0 + ".") }) {
-            return true
-        }
-
-        // Electron & Chromium framework detection (including ChatGPT Codex Framework)
-        if let bundleURL = app.bundleURL {
-            let electronPath = bundleURL.appendingPathComponent("Contents/Frameworks/Electron Framework.framework").path
-            let codexPath = bundleURL.appendingPathComponent("Contents/Frameworks/Codex Framework.framework").path
-            if FileManager.default.fileExists(atPath: electronPath) || FileManager.default.fileExists(atPath: codexPath) {
-                return true
-            }
-        }
-
-        // Ancestor WebArea check (e.g. Chrome / Webkit web contents like Gmail)
-        if let element {
-            var ancestor: AXUIElement? = element
-            var depth = 0
-            while let current = ancestor, depth < 8 {
-                var roleVal: CFTypeRef?
-                if AXUIElementCopyAttributeValue(current, kAXRoleAttribute as CFString, &roleVal) == .success,
-                   let role = roleVal as? String, role == "AXWebArea" {
-                    return true
-                }
-                var parentVal: CFTypeRef?
-                if AXUIElementCopyAttributeValue(current, kAXParentAttribute as CFString, &parentVal) == .success,
-                   let parent = parentVal, CFGetTypeID(parent) == AXUIElementGetTypeID() {
-                    ancestor = (parent as! AXUIElement)
-                } else {
-                    break
-                }
-                depth += 1
-            }
-        }
-
-        // Check if AXSelectedTextAttribute is writable on native controls
-        guard let element else { return true }
-        var isSettable: DarwinBoolean = false
-        let settableCheck = AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &isSettable)
-        if settableCheck != .success || !isSettable.boolValue {
-            return true
         }
 
         return false

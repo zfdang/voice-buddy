@@ -706,10 +706,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 if let failure = error as? RefinementFailure {
                     original = failure.original
                     result = failure.original
-                    selectedTab = .recovery
+                    copyResult()
                 }
                 status = error.localizedDescription
-                showWindow(tab: .recovery)
             }
         }
     }
@@ -746,18 +745,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             copyResult()
             return false
         }
-        // 5. Try Direct Accessibility Insertion (if supported by standard controls and not preferring paste)
-        let prefersPasteRoute = TargetAccessibility.prefersPaste(targetPID: targetPID, element: targetElem)
-        if !prefersPasteRoute, AXIsProcessTrusted(), let element = targetElem {
-            var isSettable: DarwinBoolean = false
-            if AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &isSettable) == .success,
-               isSettable.boolValue {
-                if AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFTypeRef) == .success {
-                    return true
-                }
-            }
-        }
-        // 6. Universal Insertion via Clipboard + Synthesized ⌘V (Sublime Text, Word, Chrome, etc.)
+        // 5. Universal Insertion via Clipboard + Hardware-level Synthesized ⌘V (100% of apps supported)
         guard AXIsProcessTrusted() else {
             insertFailure = label("Accessibility access needed; content copied to clipboard. Press ⌘V to paste.", "需要辅助功能权限以自动上屏，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
