@@ -129,6 +129,9 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
 
     func prepareEditor(id: String? = nil, progress: @escaping @Sendable (Double, String) -> Void) async throws {
         let targetId = id ?? "qwen35-text-0.8b-int5"
+        guard TextModelSpec.allModels.contains(where: { $0.id == targetId }) else {
+            throw VoiceBuddyError.modelUnavailable("Invalid text model identifier")
+        }
         let q: Qwen35MLXChat.Quantization = targetId.contains("int8") ? .int8 : .int5
         var dir = textDirectory(targetId)
         if targetId == "qwen35-text-0.8b-int5" && !FileManager.default.fileExists(atPath: dir.path) {
@@ -154,6 +157,9 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
 
     func removeEditor(id: String? = nil) throws {
         let targetId = id ?? selectedEditorID
+        guard TextModelSpec.allModels.contains(where: { $0.id == targetId }) else {
+            throw VoiceBuddyError.modelUnavailable("Invalid text model identifier")
+        }
         if selectedEditorID == targetId {
             editor = nil
             selectedEditorID = ""
