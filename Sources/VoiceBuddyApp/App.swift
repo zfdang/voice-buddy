@@ -705,6 +705,13 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 original = output.original
                 result = output.result
                 busy = false
+                if settings.refinement.needsModel {
+                    overlay.hide()
+                    liveTranscriptState.clear()
+                    status = label("Review the edited text before inserting or copying.", "请先检查整理后的文字，再插入或复制。")
+                    showWindow(tab: .recovery)
+                    return
+                }
                 if settings.autoInsert {
                     let targetPt = targetInsertionPoint()
                     overlay.flyAndDismiss(to: targetPt) { [weak self] in
