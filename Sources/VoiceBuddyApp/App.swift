@@ -708,8 +708,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 if settings.refinement.needsModel {
                     overlay.hide()
                     liveTranscriptState.clear()
-                    status = label("Review the edited text before inserting or copying.", "请先检查整理后的文字，再插入或复制。")
-                    showWindow(tab: .recovery)
+                    copyResult()
+                    status = label("Edited text copied. Review it before pasting; open Result to compare the original.", "整理后的文字已复制，请检查后粘贴；可打开结果页查看原文。")
+                    overlay.showStatus(state: self)
                     return
                 }
                 if settings.autoInsert {
