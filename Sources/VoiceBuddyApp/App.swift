@@ -672,19 +672,29 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
         let audio = recorder.stop(); recording = false; meter?.invalidate(); level = 0; busy = true
         if preferences.sounds { NSSound(named: "Pop")?.play() }
-        status = label("Transcribing…", "正在识别…"); overlay.show(state: self); let id = UUID(); transcriptionGeneration = id
-        let settings = preferences; let pipeline = Pipeline(detector: models, transcription: models, refinement: models)
+        status = label("Transcribing…", "正在识别…"); overlay.show(state: self)
+        let id = UUID()
+        transcriptionGeneration = id
+        let boundPID = targetPID
+        let boundAppName = targetAppName
+        let boundElement = targetElement
+        let settings = preferences
+        let pipeline = Pipeline(detector: models, transcription: models, refinement: models)
         transcriptionTask = Task {
             do {
                 let output = try await pipeline.run(samples: audio, language: settings.speechLanguage, mode: settings.refinement)
-                guard transcriptionGeneration == id else { return }; original = output.original; result = output.result; busy = false
+                guard transcriptionGeneration == id else { return }
+                original = output.original
+                result = output.result
+                busy = false
                 if settings.autoInsert {
                     let targetPt = targetInsertionPoint()
                     overlay.flyAndDismiss(to: targetPt) { [weak self] in
                         guard let self else { return }
+                        guard self.transcriptionGeneration == id, !self.recording else { return }
                         self.liveTranscriptState.clear()
-                        if self.insertIfSafe(output.result) {
-                            let appName = self.targetAppName.isEmpty ? self.label("target application", "目标应用") : self.targetAppName
+                        if self.insertIfSafe(output.result, targetPID: boundPID, targetAppName: boundAppName, targetElement: boundElement, sessionID: id) {
+                            let appName = boundAppName.isEmpty ? self.label("target application", "目标应用") : boundAppName
                             self.status = self.label("Inserted into \(appName)", "已插入到 \(appName)")
                         } else {
                             self.copyResult()
@@ -693,6 +703,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         }
                     }
                 } else {
+                    guard transcriptionGeneration == id, !recording else { return }
                     overlay.hide()
                     liveTranscriptState.clear()
                     copyResult()
@@ -700,8 +711,10 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 }
             } catch {
                 guard transcriptionGeneration == id else { return }
-                overlay.hide()
-                liveTranscriptState.clear()
+                if !recording {
+                    overlay.hide()
+                    liveTranscriptState.clear()
+                }
                 busy = false
                 if let failure = error as? RefinementFailure {
                     original = failure.original
@@ -712,38 +725,58 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             }
         }
     }
-    func insertIfSafe(_ text: String) -> Bool {
+    func insertIfSafe(
+        _ text: String,
+        targetPID: pid_t? = nil,
+        targetAppName: String? = nil,
+        targetElement: AXUIElement? = nil,
+        sessionID: UUID? = nil
+    ) -> Bool {
+        let effPID = targetPID ?? self.targetPID
+        let initialElement = targetElement ?? self.targetElement
+
         insertFailure = ""
         refreshPermissions()
         guard !text.isEmpty else {
             insertFailure = label("No text to insert.", "没有可插入的文字。")
             return false
         }
-        // 1. Password & Sensitive Field Protection
-        let targetElem = targetElement ?? (targetPID != 0 ? focusedElement(pid: targetPID) : nil)
-        if TargetAccessibility.isSensitiveDestination(element: targetElem) {
+        // 1. Password & Sensitive Field Protection (Check BOTH current actual focus and initial focus)
+        let currentFocus = TargetAccessibility.captureTargetFocus()
+        let currentElem: AXUIElement? = (effPID != 0 ? focusedElement(pid: effPID) : nil) ?? (currentFocus.pid == effPID ? currentFocus.element : nil)
+
+        if TargetAccessibility.isSensitiveDestination(element: currentElem) || TargetAccessibility.isSensitiveDestination(element: initialElement) {
             insertFailure = label("Sensitive field detected; content copied to clipboard. Press ⌘V to paste.", "检测到敏感输入框，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
         }
         // 2. Check if target was Voice Buddy itself (e.g. testing in Editor tab)
         let myPID = NSRunningApplication.current.processIdentifier
-        if targetPID == 0 || targetPID == myPID {
+        if effPID == 0 || effPID == myPID {
             copyResult()
             return true
         }
         // 3. Ensure target application is still running
-        guard let targetApp = NSRunningApplication(processIdentifier: targetPID), !targetApp.isTerminated else {
+        guard let targetApp = NSRunningApplication(processIdentifier: effPID), !targetApp.isTerminated else {
             insertFailure = label("Target app not running; content copied to clipboard. Press ⌘V to paste.", "目标应用未在运行，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
         }
-        // 4. Target Change Protection (prevent pasting into wrong app if user switched windows)
+        // 4. Target Change Protection (prevent pasting into wrong app or different focus in same app)
+        // 4a. Check if frontmost application switched
         if let currentFrontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
-           currentFrontPID != targetPID && currentFrontPID != myPID {
+           currentFrontPID != effPID && currentFrontPID != myPID {
             insertFailure = label("Target application changed; content copied to clipboard. Press ⌘V to paste.", "目标应用已切换，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
             copyResult()
             return false
+        }
+        // 4b. Check if focused element switched within the same application
+        if let initial = initialElement, let current = currentElem {
+            if !CFEqual(initial, current) {
+                insertFailure = label("Focused input changed; content copied to clipboard. Press ⌘V to paste.", "输入框焦点已切换，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
+                copyResult()
+                return false
+            }
         }
         // 5. Universal Insertion via Clipboard + Hardware-level Synthesized ⌘V (100% of apps supported)
         guard AXIsProcessTrusted() else {
@@ -780,9 +813,22 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         let count = board.changeCount
 
         // Avoid hardware modifier collisions (Shift, Ctrl, Alt) before sending ⌘V
-        TargetAccessibility.waitForModifiersReleased(timeout: 0.25) {
+        TargetAccessibility.waitForModifiersReleased(timeout: 0.25) { [weak self] in
             // Give target app's window server activation time to settle before posting ⌘V
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                if let sid = sessionID, let currentGen = self?.transcriptionGeneration, currentGen != sid {
+                    return
+                }
+                guard board.changeCount == count, board.string(forType: .string) == text else {
+                    return
+                }
+                guard let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                      frontPID == effPID else {
+                    return
+                }
+                if let liveFocus = self?.focusedElement(pid: effPID), TargetAccessibility.isSensitiveDestination(element: liveFocus) {
+                    return
+                }
                 TargetAccessibility.postPasteShortcut()
             }
         }
@@ -790,8 +836,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         // Restore original clipboard after target app has had time to read it
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             guard board.changeCount == count else { return }
+            board.clearContents()
             if !savedItems.isEmpty {
-                board.clearContents()
                 let restored: [NSPasteboardItem] = savedItems.compactMap { entries in
                     guard !entries.isEmpty else { return nil }
                     let item = NSPasteboardItem()

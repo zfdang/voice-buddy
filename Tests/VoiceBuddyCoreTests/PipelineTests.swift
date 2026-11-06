@@ -88,6 +88,9 @@ extension PipelineTests {
         XCTAssertFalse(TextCleanup.looksSafe("As an AI, here is the text", original: "明天下午三点开会"))
         XCTAssertFalse(TextCleanup.looksSafe("明天下午开会", original: "明天下午三点开会"))
         XCTAssertTrue(TextCleanup.looksSafe("明天下午三点开会。", original: "明天下午三点开会"))
+        let longOriginal = "在今天的技术讨论会中，我们针对双仓库架构和应用内文本注入的稳定性进行了深度分析与重构，确保未来的发布版本具备高可靠性与用户信任。"
+        let truncated = "在今天的技术讨论会中"
+        XCTAssertFalse(TextCleanup.looksSafe(truncated, original: longOriginal))
     }
     func testLightRemovesFillersAndPreservesSelfCorrection() {
         let input = "明天，啊不，周五跟小王讨论预算，嗯，大概十万"
