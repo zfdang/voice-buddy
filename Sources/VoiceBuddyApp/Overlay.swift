@@ -429,23 +429,6 @@ private struct OverlayView: View {
                         .padding(.top, 4)
                     }
 
-                    // Cancel button in top-right
-                    if state.recording {
-                        Button {
-                            state.cancel()
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.white.opacity(0.08))
-                                    .frame(width: 24, height: 24)
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(state.label("Cancel", "取消"))
-                    }
                 }
             }
             .padding(.horizontal, 22)
