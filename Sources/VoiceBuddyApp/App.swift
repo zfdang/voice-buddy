@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import Carbon
 import ApplicationServices
 import AVFoundation
 import VoiceBuddyCore
@@ -69,6 +68,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private var meter: Timer?
     private var gesture = HotkeyGesture()
     private var fnGesture = FnKeyGesture()
+    private var fnOtherModifiers: NSEvent.ModifierFlags = []
     private var fnStartedRecording = false
     private var fnGlobalMonitor: Any?
     private var fnLocalMonitor: Any?
@@ -93,6 +93,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     }
     private func configureShortcutMode() {
         fnGesture.reset()
+        fnOtherModifiers = NSEvent.modifierFlags.intersection([.shift, .control, .option, .command])
         gesture.reset()
         fnStartedRecording = false
         if let fnGlobalMonitor { NSEvent.removeMonitor(fnGlobalMonitor); self.fnGlobalMonitor = nil }
@@ -101,29 +102,34 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             KeyboardShortcuts.disable(.toggleDictation)
             let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown]
             fnGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
-                let key = event.keyCode, flags = event.modifierFlags, type = event.type
-                Task { @MainActor in self?.handleFnEvent(key: key, flags: flags, type: type) }
+                let flags = event.modifierFlags, type = event.type
+                Task { @MainActor in self?.handleFnEvent(flags: flags, type: type) }
             }
             fnLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
-                let key = event.keyCode, flags = event.modifierFlags, type = event.type
-                Task { @MainActor in self?.handleFnEvent(key: key, flags: flags, type: type) }
+                let flags = event.modifierFlags, type = event.type
+                Task { @MainActor in self?.handleFnEvent(flags: flags, type: type) }
                 return event
             }
+            DiagnosticLog.shared.record("shortcut.fn.monitor global=\(fnGlobalMonitor != nil) local=\(fnLocalMonitor != nil)")
         } else {
             KeyboardShortcuts.enable(.toggleDictation)
         }
     }
-    private func handleFnEvent(key: UInt16, flags: NSEvent.ModifierFlags, type: NSEvent.EventType) {
+    private func handleFnEvent(flags: NSEvent.ModifierFlags, type: NSEvent.EventType) {
         guard preferences.useFnKey else { return }
         let action: FnKeyGesture.Action
-        if type == .flagsChanged && key == UInt16(kVK_Function) {
-            action = fnGesture.fnChanged(down: flags.contains(.function), holdToTalk: preferences.holdToTalk ?? true)
-            if flags.contains(.function) && !flags.intersection([.shift, .control, .option, .command]).isEmpty {
-                _ = fnGesture.otherKeyPressed()
-                return
-            }
-        } else if type == .keyDown || type == .flagsChanged {
+        if type == .flagsChanged {
+            let fnDown = flags.contains(.function)
+            let wasDown = fnGesture.isDown
+            let otherModifiers = flags.intersection([.shift, .control, .option, .command])
+            let otherModifiersChanged = otherModifiers != fnOtherModifiers
+            fnOtherModifiers = otherModifiers
+            action = fnGesture.flagsChanged(fnDown: fnDown, otherModifierChanged: otherModifiersChanged, otherModifiersHeld: !otherModifiers.isEmpty, holdToTalk: preferences.holdToTalk ?? true)
+            if fnDown != wasDown { DiagnosticLog.shared.record("shortcut.fn.transition down=\(fnDown) action=\(String(describing: action))") }
+            if action == .cancel { DiagnosticLog.shared.record("shortcut.fn.chord cancelled=true") }
+        } else if type == .keyDown {
             action = fnGesture.otherKeyPressed()
+            if action == .cancel { DiagnosticLog.shared.record("shortcut.fn.chord cancelled=true") }
         } else { return }
         switch action {
         case .press:

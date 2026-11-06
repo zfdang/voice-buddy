@@ -36,6 +36,23 @@ final class PipelineTests: XCTestCase {
         var value = legacy; value.useFnKey = true
         XCTAssertTrue(try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(value)).useFnKey)
     }
+    func testFnFlagsTransitionsDoNotRequireSpecificKeyCode() {
+        var fn = FnKeyGesture()
+        XCTAssertEqual(fn.flagsChanged(fnDown: true, otherModifierChanged: true, otherModifiersHeld: false, holdToTalk: true), .press)
+        XCTAssertEqual(fn.flagsChanged(fnDown: false, otherModifierChanged: true, otherModifiersHeld: false, holdToTalk: true), .release)
+    }
+    func testFnFlagsWithExistingModifierDoNotTrigger() {
+        var fn = FnKeyGesture()
+        XCTAssertEqual(fn.flagsChanged(fnDown: true, otherModifierChanged: true, otherModifiersHeld: true, holdToTalk: true), .none)
+        XCTAssertEqual(fn.flagsChanged(fnDown: false, otherModifierChanged: true, otherModifiersHeld: true, holdToTalk: true), .none)
+    }
+    func testFnRepeatedFlagsAndModifierChord() {
+        var fn = FnKeyGesture()
+        XCTAssertEqual(fn.flagsChanged(fnDown: true, otherModifierChanged: false, otherModifiersHeld: false, holdToTalk: true), .press)
+        XCTAssertEqual(fn.flagsChanged(fnDown: true, otherModifierChanged: false, otherModifiersHeld: false, holdToTalk: true), .none)
+        XCTAssertEqual(fn.flagsChanged(fnDown: true, otherModifierChanged: true, otherModifiersHeld: true, holdToTalk: true), .cancel)
+        XCTAssertEqual(fn.flagsChanged(fnDown: false, otherModifierChanged: false, otherModifiersHeld: false, holdToTalk: true), .none)
+    }
     func testPipelineEmitsStagesAndFailureWithoutContent() async {
         let events = PipelineEvents()
         let pipeline = Pipeline(detector: Detector(value: true), transcription: FailingASR(), refinement: Editor(text: "")) { events.append($0) }

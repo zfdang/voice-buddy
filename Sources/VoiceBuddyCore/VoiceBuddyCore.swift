@@ -171,10 +171,21 @@ public struct HotkeyGesture {
 /// Fn can be used as a modifier, so a chord must not be treated as a dictation tap.
 public struct FnKeyGesture {
     public enum Action: Equatable { case none, press, release, cancel, tap }
-    private var isDown = false
+    public private(set) var isDown = false
     private var chord = false
     private var hold = false
     public init() {}
+    public mutating func flagsChanged(fnDown: Bool, otherModifierChanged: Bool, otherModifiersHeld: Bool, holdToTalk: Bool) -> Action {
+        if fnDown != isDown {
+            let action = fnChanged(down: fnDown, holdToTalk: holdToTalk)
+            if fnDown && otherModifiersHeld {
+                _ = otherKeyPressed()
+                return .none
+            }
+            return action
+        }
+        return fnDown && otherModifierChanged ? otherKeyPressed() : .none
+    }
     public mutating func fnChanged(down: Bool, holdToTalk: Bool) -> Action {
         if down {
             guard !isDown else { return .none }
