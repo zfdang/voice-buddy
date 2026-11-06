@@ -877,14 +877,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         return true
     }
     private func focusedElement(pid: pid_t) -> AXUIElement? {
-        guard pid != 0 else { return nil }
-        TargetAccessibility.wakeManualAccessibility(processIdentifier: pid)
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), kAXFocusedUIElementAttribute as CFString, &value) == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
-        let element = value as! AXUIElement
-        var elementPID: pid_t = 0
-        guard AXUIElementGetPid(element, &elementPID) == .success, elementPID == pid else { return nil }
-        return element
+        TargetAccessibility.focusedElement(processIdentifier: pid)
     }
     func copyResult() { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(result, forType: .string); status = label("Copied", "已复制") }
     static let menuBarMascotIcon: NSImage = {

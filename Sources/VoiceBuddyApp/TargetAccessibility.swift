@@ -41,31 +41,35 @@ public enum TargetAccessibility {
             return (pid, name, nil)
         }
 
-        // 1. Try system-wide focused UI element first
+        return (pid, name, focusedElement(processIdentifier: pid))
+    }
+
+    /// Prefer the system-wide element when it agrees with the target application's
+    /// focus. Some applications expose a helper-owned element through their AX tree.
+    public static func focusedElement(processIdentifier pid: pid_t) -> AXUIElement? {
+        guard pid != 0, AXIsProcessTrusted() else { return nil }
+        wakeManualAccessibility(processIdentifier: pid)
+        var appFocusedValue: CFTypeRef?
+        let appElement = AXUIElementCreateApplication(pid)
+        let appFocus: AXUIElement? = {
+            guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &appFocusedValue) == .success,
+                  let value = appFocusedValue, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+            return (value as! AXUIElement)
+        }()
+
         let systemWide = AXUIElementCreateSystemWide()
         var focusedElementValue: CFTypeRef?
-        if AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedElementValue) == .success,
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
+           AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedElementValue) == .success,
            let focused = focusedElementValue, CFGetTypeID(focused) == AXUIElementGetTypeID() {
             let element = (focused as! AXUIElement)
             var elementPID: pid_t = 0
-            if AXUIElementGetPid(element, &elementPID) == .success && elementPID == pid {
-                return (pid, name, element)
+            if (AXUIElementGetPid(element, &elementPID) == .success && elementPID == pid) ||
+                (appFocus != nil && CFEqual(element, appFocus!)) {
+                return element
             }
         }
-
-        // 2. Fallback to application-level focused UI element
-        var appFocusedValue: CFTypeRef?
-        let appElement = AXUIElementCreateApplication(pid)
-        if AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &appFocusedValue) == .success,
-           let val = appFocusedValue, CFGetTypeID(val) == AXUIElementGetTypeID() {
-            let element = val as! AXUIElement
-            var elementPID: pid_t = 0
-            if AXUIElementGetPid(element, &elementPID) == .success && elementPID == pid {
-                return (pid, name, element)
-            }
-        }
-
-        return (pid, name, nil)
+        return appFocus
     }
 
     /// Detects whether an element represents a sensitive / password field.
