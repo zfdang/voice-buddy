@@ -30,6 +30,10 @@
    - 私有仓库包含运行时间长达 45 分钟的 macOS 15 虚拟机测试和打包任务。
    - **严禁**为 `.github/workflows/macos.yml` 添加 `push` 或 `pull_request` 自动触发器！该工作流**仅允许保留 `workflow_dispatch` 手动触发**。
    - 严禁任何自作主张恢复 CI 自动触发的行为。发布工作流 `.github/workflows/release.yml` 仅在打版本标签（`v*`）或手动分发时运行。
+5. **绝对禁止直接 Push 到 `main` 分支 (严格遵守 PR 流程)**：
+   - **严禁任何开发者或 AI 助理向 `main` 分支执行 `git push origin main`**。
+   - 所有的新增功能、Bug 修复、工作流调整或文档更改，**必须**首先在独立的特性分支（如 `feat/...`、`fix/...`、`docs/...`）上进行。
+   - 必须通过 GitHub Pull Request 提交变更，由仓库所有者（用户）审查确认后再行合入主分支。
 
 ---
 
