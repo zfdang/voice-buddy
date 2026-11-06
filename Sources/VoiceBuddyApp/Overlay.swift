@@ -541,7 +541,21 @@ private struct OverlayView: View {
         .frame(width: 520, height: 236)
         .background {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(Color(red: 0.12, green: 0.30, blue: 0.43).opacity(0.72))
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.07, green: 0.24, blue: 0.30).opacity(0.78),
+                            Color(red: 0.15, green: 0.21, blue: 0.33).opacity(0.76),
+                            Color(red: 0.24, green: 0.16, blue: 0.34).opacity(0.78)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .fill(LinearGradient(colors: [.clear, Color(red: 0.02, green: 0.04, blue: 0.13).opacity(0.42)], startPoint: .center, endPoint: .bottom))
+                }
                 .overlay {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .stroke(
