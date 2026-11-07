@@ -14,7 +14,43 @@ import XCTest
     func complete(_ value: MediaPlaybackSnapshot?) { pending.removeFirst()(value) }
 }
 
+@MainActor private final class FakeToggleBackend: MediaToggleBackend {
+    var active = true
+    var succeeds = true
+    var count = 0
+    func hasActiveOutput() -> Bool { active }
+    func toggle() -> Bool { count += 1; return succeeds }
+}
+
 final class MediaPlaybackControllerTests: XCTestCase {
+    func testToggleFallbackOnlyRestoresAfterSendingInitialKey() async {
+        await MainActor.run {
+            let backend = FakeMediaBackend(), toggle = FakeToggleBackend()
+            let controller = MediaPlaybackController(backend: backend, toggleFallback: toggle)
+            controller.pauseIfPlaying(); backend.complete(nil)
+            XCTAssertEqual(toggle.count, 1)
+            controller.resumeIfPaused()
+            XCTAssertEqual(toggle.count, 2)
+            controller.resumeIfPaused()
+            XCTAssertEqual(toggle.count, 2)
+            toggle.active = false
+            controller.pauseIfPlaying(); backend.complete(nil); controller.resumeIfPaused()
+            XCTAssertEqual(toggle.count, 2)
+            toggle.active = true; toggle.succeeds = false
+            controller.pauseIfPlaying(); backend.complete(nil); controller.resumeIfPaused()
+            XCTAssertEqual(toggle.count, 3)
+        }
+    }
+
+    func testToggleFallbackDoesNotOverrideKnownPausedState() async {
+        await MainActor.run {
+            let backend = FakeMediaBackend(), toggle = FakeToggleBackend()
+            let controller = MediaPlaybackController(backend: backend, toggleFallback: toggle)
+            controller.pauseIfPlaying(); backend.complete(.init(processID: 10, isPlaying: false))
+            controller.resumeIfPaused()
+            XCTAssertEqual(toggle.count, 0)
+        }
+    }
     func testFallbackUsedOnlyWhenSystemCannotIdentifyAPlayer() async {
         await MainActor.run {
             let primary = FakeMediaBackend(), fallback = FakeMediaBackend()

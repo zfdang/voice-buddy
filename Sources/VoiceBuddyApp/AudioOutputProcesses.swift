@@ -5,32 +5,40 @@ import Darwin
 /// Detects active output streams only; this is not proof of media playback.
 enum AudioOutputProcesses {
     static func uniqueApplicationPID() -> pid_t? {
+        let candidates = activeCandidatePIDs()
+        return uniqueCandidate(candidates)
+    }
+
+    static func hasActiveAudioOutput() -> Bool {
+        !activeCandidatePIDs().isEmpty
+    }
+
+    private static func activeCandidatePIDs() -> Set<pid_t> {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
         guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr,
-              size > 0, size % UInt32(MemoryLayout<AudioObjectID>.size) == 0, size <= 65536 else { return nil }
+              size > 0, size % UInt32(MemoryLayout<AudioObjectID>.size) == 0, size <= 65536 else { return [] }
         var objects = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
         let status = objects.withUnsafeMutableBufferPointer { buffer in
             guard let base = buffer.baseAddress else { return OSStatus(-1) }
             return AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, base)
         }
-        guard status == noErr else { return nil }
+        guard status == noErr else { return [] }
         let applications = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && !$0.isTerminated }
         let appIDs = Set(applications.map(\.processIdentifier))
         var candidates = Set<pid_t>()
         for object in objects {
-            guard let active = uint32Property(object, kAudioProcessPropertyIsRunningOutput) else { return nil }
-            guard active != 0 else { continue }
+            guard let active = uint32Property(object, kAudioProcessPropertyIsRunningOutput), active != 0 else { continue }
             // Voice Input Buddy writes dictated audio into its virtual microphone.
             // That stream is not background media and must not mask a player.
             if outputsOnlyToVoiceInputBuddyMic(object) { continue }
-            guard let rawPID = uint32Property(object, kAudioProcessPropertyPID), rawPID > 0, rawPID <= UInt32(Int32.max) else { return nil }
+            guard let rawPID = uint32Property(object, kAudioProcessPropertyPID), rawPID > 0, rawPID <= UInt32(Int32.max) else { continue }
             let pid = pid_t(rawPID)
             if pid == getpid() { continue }
-            guard let appPID = owner(of: pid, among: appIDs) else { return nil }
+            guard let appPID = owner(of: pid, among: appIDs) else { continue }
             candidates.insert(appPID)
         }
-        return uniqueCandidate(candidates)
+        return candidates
     }
 
     static func uniqueCandidate(_ candidates: Set<pid_t>) -> pid_t? {

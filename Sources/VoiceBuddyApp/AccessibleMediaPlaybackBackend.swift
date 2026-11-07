@@ -80,6 +80,19 @@ import VoiceBuddyCore
         }
     }
 
+    nonisolated static func isPlaybackMenu(title: String) -> Bool {
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return ["playback", "controls", "control", "播放", "控制"].contains(t)
+    }
+
+    nonisolated static func menuPlaybackState(forLabel label: String?) -> Bool? {
+        switch label?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "暂停", "pause", "暫停", "暂停 (space)", "pause (space)", "暂停播放", "pause playback", "pause video", "一時停止", "일시 정지": return true
+        case "播放", "play", "resume", "播放 (space)", "play (space)", "开始播放", "恢复播放", "play playback", "resume playback", "play video", "繼續播放", "再生", "재생": return false
+        default: return nil
+        }
+    }
+
     nonisolated static func isPlaybackProgress(_ label: String?) -> Bool {
         guard let label = label?.lowercased() else { return false }
         return ["播放进度", "playback progress", "playback position", "seek", "timeline"].contains { label.contains($0) }
@@ -87,15 +100,64 @@ import VoiceBuddyCore
 
     nonisolated private static func controlState(_ element: AXUIElement) -> Bool? {
         for attribute in [kAXHelpAttribute, kAXTitleAttribute, kAXDescriptionAttribute] {
-            if let result = playbackState(forLabel: stringAttribute(element, attribute as CFString)) { return result }
+            let label = stringAttribute(element, attribute as CFString)
+            if let result = playbackState(forLabel: label) ?? menuPlaybackState(forLabel: label) { return result }
         }
         return nil
     }
 
-    nonisolated private static func findControl(pid: pid_t) -> (element: AXUIElement, isPlaying: Bool)? {
+    nonisolated static func findControl(pid: pid_t) -> (element: AXUIElement, isPlaying: Bool)? {
         let app = AXUIElementCreateApplication(pid)
         _ = AXUIElementSetMessagingTimeout(app, 0.1)
         _ = AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+
+        // 1. First, search standard application menu bar (AXMenuBar).
+        // This reliably controls desktop players (e.g. Movist Pro, IINA, QuickTime, VLC)
+        // even when full-screen or on-screen controls are auto-hidden.
+        if let menuControl = findMenuBarControl(app: app) {
+            return menuControl
+        }
+
+        // 2. Second, search application windows for accessible media buttons.
+        return findWindowControl(app: app)
+    }
+
+    nonisolated private static func findMenuBarControl(app: AXUIElement) -> (element: AXUIElement, isPlaying: Bool)? {
+        var menuBarValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXMenuBarAttribute as CFString, &menuBarValue) == .success,
+              let menuBar = menuBarValue else { return nil }
+
+        var barItemsValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(menuBar as! AXUIElement, kAXChildrenAttribute as CFString, &barItemsValue) == .success,
+              let barItems = barItemsValue as? [AXUIElement] else { return nil }
+
+        for barItem in barItems {
+            guard let barTitle = stringAttribute(barItem, kAXTitleAttribute as CFString),
+                  isPlaybackMenu(title: barTitle) else { continue }
+            var menuValue: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(barItem, kAXChildrenAttribute as CFString, &menuValue) == .success,
+                  let menus = menuValue as? [AXUIElement] else { continue }
+            for menu in menus {
+                var itemsValue: CFTypeRef?
+                guard AXUIElementCopyAttributeValue(menu, kAXChildrenAttribute as CFString, &itemsValue) == .success,
+                      let items = itemsValue as? [AXUIElement] else { continue }
+                for item in items {
+                    guard let title = stringAttribute(item, kAXTitleAttribute as CFString) else { continue }
+                    var enabledValue: CFTypeRef?
+                    if AXUIElementCopyAttributeValue(item, kAXEnabledAttribute as CFString, &enabledValue) == .success,
+                       let enabled = enabledValue as? Bool, !enabled {
+                        continue
+                    }
+                    if let playing = menuPlaybackState(forLabel: title) {
+                        return (item, playing)
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    nonisolated private static func findWindowControl(app: AXUIElement) -> (element: AXUIElement, isPlaying: Bool)? {
         var windowsValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsValue) == .success,
               let windows = windowsValue as? [AXUIElement] else { return nil }

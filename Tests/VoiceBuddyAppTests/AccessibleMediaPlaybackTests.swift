@@ -21,6 +21,21 @@ final class AccessibleMediaPlaybackTests: XCTestCase {
         XCTAssertNil(AudioOutputProcesses.uniqueCandidate([123, 456]))
     }
 
+    func testPlaybackMenuAndMenuItemLabelsAreAccepted() {
+        XCTAssertTrue(AccessibleMediaPlaybackBackend.isPlaybackMenu(title: "Playback"))
+        XCTAssertTrue(AccessibleMediaPlaybackBackend.isPlaybackMenu(title: "Controls"))
+        XCTAssertTrue(AccessibleMediaPlaybackBackend.isPlaybackMenu(title: "播放"))
+        XCTAssertTrue(AccessibleMediaPlaybackBackend.isPlaybackMenu(title: "控制"))
+        XCTAssertFalse(AccessibleMediaPlaybackBackend.isPlaybackMenu(title: "File"))
+        XCTAssertFalse(AccessibleMediaPlaybackBackend.isPlaybackMenu(title: "Help"))
+
+        XCTAssertEqual(AccessibleMediaPlaybackBackend.menuPlaybackState(forLabel: "暂停"), true)
+        XCTAssertEqual(AccessibleMediaPlaybackBackend.menuPlaybackState(forLabel: "Pause"), true)
+        XCTAssertEqual(AccessibleMediaPlaybackBackend.menuPlaybackState(forLabel: "播放"), false)
+        XCTAssertEqual(AccessibleMediaPlaybackBackend.menuPlaybackState(forLabel: "Play"), false)
+        XCTAssertNil(AccessibleMediaPlaybackBackend.menuPlaybackState(forLabel: "Playback Speed"))
+        XCTAssertNil(AccessibleMediaPlaybackBackend.menuPlaybackState(forLabel: nil))
+    }
     func testOnlyVoiceInputBuddyMicrophoneIsIgnored() {
         XCTAssertTrue(AudioOutputProcesses.isVoiceInputBuddyOnly(["BuddyMic2ch_UID"]))
         XCTAssertFalse(AudioOutputProcesses.isVoiceInputBuddyOnly([]))
