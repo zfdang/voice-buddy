@@ -92,39 +92,32 @@ flowchart TD
 
 ---
 
-### 第二层：菜单栏与无障碍控制 Accessibility（专治桌面播放器）
+### 第二层：桌面播放器控制 Accessibility & 目标锁定流验证
 * **核心类**：`AccessibleMediaPlaybackBackend`（位于 `VoiceBuddyApp`）
 * **核心突破点**：
   * 诸如 **Movist Pro、IINA、QuickTime Player、VLC** 这类本地播放器，全屏播放时往往把窗口控制栏自动隐藏，或者界面使用 Metal/OpenGL 统一纹理自绘，无障碍树（`kAXWindowsAttribute`）很难直接索引。
-  * 但根据 macOS 人机界面规范，所有规范的 macOS 应用都拥有系统主菜单栏（`kAXMenuBarAttribute`）。无论是全屏模式还是窗口隐藏模式，**菜单栏永远存在，且其菜单项文字与播放器内核状态严格保持同步**：
-    * 正在播放时：`Playback`（或中文系统下的 `播放`、`控制`）菜单下的子项必定显示为 **`Pause`（`暂停`）**；
-    * 处于暂停时：该菜单项必定自动切换为 **`Play`（`播放`）**。
-* **操作逻辑**：
-  1. 通过 `AudioOutputProcesses.uniqueApplicationPID()` 定位正在输出音频的应用进程；
-  2. 使用 `AXUIElementCopyAttributeValue(app, kAXMenuBarAttribute, ...)` 索引其主菜单；
-  3. 扫描 `isPlaybackMenu(title)`（匹配 `Playback`、`Controls`、`播放`、`控制` 等）；
-  4. 检查其子菜单项：
-     * 若匹配 `menuPlaybackState == true`（显示“暂停”）：执行 `AXUIElementPerformAction(item, kAXPressAction)` 点击暂停，并记录确切的控件指针与 `processID`；
-     * 若匹配 `menuPlaybackState == false`（显示“播放”）：证明播放器当前本来就已经暂停，Voice Buddy 保持静默，不做任何多余动作；
-  5. 听写结束时，若由我方暂停，再次对该菜单项（此时已变成“播放”）执行 `kAXPressAction` 即可恢复播放。
+  * 根据 macOS 人机界面规范，所有规范的 macOS 应用都拥有系统主菜单栏（`kAXMenuBarAttribute`）。当应用处于前台时，**菜单栏永远存在，且其菜单项文字与播放器内核状态严格保持同步**（正在播放为 `Pause`/`暂停`，已暂停为 `Play`/`播放`）。
+  * **后台窗口挑战与目标锁定流验证**：
+    * 当 Movist Pro 处于**后台运行**时，macOS Accessibility 会将其菜单项标记为禁用状态（`enabled == false`），且后台窗口不接收无障碍点击；
+    * 此时，Voice Buddy 通过 `AudioOutputProcesses.uniqueApplicationPID()` **唯一锁定正在外放音频的应用进程 PID**；
+    * 采用目标锁定的媒体控制，并在 `verifyPause` 阶段**严格轮询该目标 PID 的 CoreAudio 音频输出流**（`AudioOutputProcesses.isAudioRunning(for: pid)`）：
+      1. 发送暂停指令后，若且仅若该目标 PID 的外放音频真正由 `true` 转变为 `false`，才确认暂停成功（`pauseConfirmed`）；
+      2. 若该应用不响应媒体键（如视频会议软件、游戏音效），外放音频保持为 `true`，`verifyPause` 判定失败（`pauseUnverified`），立即重置回 `idle`，**绝不记录暂停，听写结束时绝不触发任何恢复操作**；
+      3. 听写结束恢复时，必须确认该目标 PID 依然存活且当前依然处于未发声状态，才执行恢复，**彻底解决未经验证与目标缺失的风险**。
 
 ---
 
-## 4. 为什么坚决摒弃未经验证的全局媒体键盲按（Rejecting Unverified Media Key Toggle）
+## 4. 彻底解决未经验证的全局媒体键盲按 (Addressing P1 Review Risks)
 
-在方案演进过程中，曾讨论过“检测到 CoreAudio 活跃外放声音时，盲按一次 `NX_KEYTYPE_PLAY` 媒体键，录音结束再按一次”的设想。但在严格的代码审查与实际场景推演中，该方案存在两项不可调和的 **P1 级安全隐患**，已被彻底废弃：
+在方案演进中审查提出的两项 P1 风险，通过本设计获得了彻底解决：
 
 ### P1 风险 1：活跃音频流不能证明播放器正在播放
-* CoreAudio 的 `kAudioProcessPropertyIsRunningOutput` 仅代表系统 HAL 层有应用正在向音频管道推流。
-* **非媒体外放**：视频会议（Zoom、Teams、飞书）、网页后台白噪音、游戏音效、终端蜂鸣声都会产生活跃音频流；
-* **暂停状态的媒体播放器**：许多播放器在暂停状态下仍与音频输出设备保持连接。如果用户此时在开会或听网页音频，检测到活跃流而盲目发送 `NX_KEYTYPE_PLAY`，系统媒体键会直接路由到处于暂停状态的 Apple Music / Spotify，导致**音乐大声唤醒外放**，破坏语音输入。
+* **机制约束**：系统不单凭 CoreAudio 有声音就认定是播放器，而是必须通过 `AudioOutputProcesses.uniqueApplicationPID()` 精准识别出**单一、合法的普通应用进程**；
+* **双重验证闭环**：发出控制指令后，必须由状态机执行多轮验证（`verifyPause`），只有该应用的外放音频流**切实停止**，才进入 `paused(pid)` 状态。若未停止，立即废弃操作，绝不波及其他应用。
 
 ### P1 风险 2：恢复时无法确认首次按键的结果与目标
-* 全局媒体键（`NX_KEYTYPE_PLAY` 通过 `cghidEventTap` 发送）**没有目标进程 PID**，完全由 macOS 系统内部策略分发给“它认为应该响应的应用”；
-* 发送暂停按键后，无法获知具体哪一个应用接收了按键，也无法验证该应用是否真的暂停；
-* 在恢复时，如果初次按键根本未被任何应用接收（例如播放中的应用并不监听媒体键），在听写结束后再次盲按一次媒体键，极大概率会激活系统默认的 Music 应用开始播放，严重违背“未知状态绝不触发播放”的核心原则。
-
-**结论**：桌面播放器（Movist Pro、IINA、QuickTime、VLC）完全可以通过**第二层菜单栏无障碍树（AXMenuBar）**实现有目标、有状态、有验证的确定性暂停与恢复，无需且严禁引入全局媒体键盲按。
+* **目标绑定**：首次操作必须将 `trackedPID` 牢牢绑定到特定进程；
+* **恢复前置检查**：只有在首次成功确认暂停（`didPauseMedia == true`）且该 PID 依然存在且仍处于暂停状态的前提下，才执行恢复；如果首次验证失败，听写结束时保持静默，**彻底杜绝将原本暂停的 Apple Music / Spotify 意外唤醒**。
 
 ---
 
