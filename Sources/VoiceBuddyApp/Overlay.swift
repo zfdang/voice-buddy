@@ -285,7 +285,7 @@ final class Overlay {
     func showStatus(state: AppState) {
         show(state: state)
         let id = presentationID
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             guard let self, self.presentationID == id else { return }
             self.hide()
         }

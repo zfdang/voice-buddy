@@ -565,7 +565,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=microphone_permission")
             status = label("Microphone permission required.", "需要麦克风权限。")
             requestMicrophoneAccess()
-            overlay.show(state: self)
+            overlay.showStatus(state: self)
             return
         }
 
@@ -599,7 +599,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         } catch {
             DiagnosticLog.shared.record("recording.failed id=\(diagnosticSession) error_type=\(String(describing: type(of: error))) code=\((error as NSError).code)")
             status = error.localizedDescription
-            overlay.show(state: self)
+            overlay.showStatus(state: self)
         }
     }
     private func startLiveStreaming() {
