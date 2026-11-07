@@ -38,13 +38,22 @@ final class Recorder {
             guard status == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
         } else if !deviceUID.isEmpty { throw NSError(domain: "VoiceBuddy", code: 1, userInfo: [NSLocalizedDescriptionKey: "Selected microphone is unavailable."]) }
         let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
+        // The output format can still describe the previous default device after
+        // changing the input Audio Unit's device. Synchronize it with the new
+        // hardware format before installing a tap or starting the engine.
+        let format = input.inputFormat(forBus: 0)
         DiagnosticLog.shared.record("recording.format custom_device=\(!deviceUID.isEmpty) sample_rate=\(format.sampleRate) channels=\(format.channelCount)")
         guard format.sampleRate > 0, format.channelCount > 0,
               let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
               let converter = AVAudioConverter(from: format, to: target) else {
             throw NSError(domain: "VoiceBuddy", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to configure microphone."])
         }
+        guard let unit = input.audioUnit else {
+            throw NSError(domain: "VoiceBuddy", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to configure microphone."])
+        }
+        var streamFormat = format.streamDescription.pointee
+        let formatStatus = AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &streamFormat, UInt32(MemoryLayout<AudioStreamBasicDescription>.size))
+        guard formatStatus == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(formatStatus)) }
         lock.lock(); samples = []; level = 0; diagnostics = CaptureDiagnostics(); lock.unlock()
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             guard let self else { return }
