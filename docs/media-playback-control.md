@@ -1,6 +1,6 @@
 # Voice Buddy 媒体播放暂停与恢复架构设计 (Media Playback Pause & Resume Architecture)
 
-> **版本**：1.0.0  
+> **版本**：1.1.0  
 > **生效日期**：2026-11-07  
 > **适用范围**：Voice Buddy 媒体播放控制模块研发、维护与测试。
 
@@ -14,18 +14,22 @@ Voice Buddy 提供「录音时暂停背景媒体」（Pause Media During Dictati
 1. **防止杂音污染识别**：避免麦克风录入正在播放的视频对白、背景音乐，大幅提升 Silero VAD（语音活动检测）切片精度与端侧语音模型识别率。
 2. **免除用户心智负担**：用户在看视频或听播客时临时需要语音输入，无需手动找播放器按空格暂停再切回来。
 
+### 核心安全准则 (Core Invariant)
+> **“未知或陈旧的播放状态绝不触发播放” (Unknown or stale playback state never starts playback)**
+>
+> 语音输入软件最严重的用户体验事故，就是在用户试图安静讲话或结束输入时，原本处于暂停状态的播放器突然开始大声外放音频。所有控制行为必须具备明确的进程定位、确切的状态检查、状态变更确认与闭环恢复，绝不允许盲目投机操作。
+
 ### macOS 平台的技术困境
 macOS 并没有向第三方应用开放统一、简单、确定性的“全局媒体暂停与恢复”公共 API，市面各类播放器在技术实现上高度割裂：
 * **原生应用**（Apple Music、Podcasts、Safari HTML5、QuickTime）：大多接入了系统的 NowPlaying 控制中心；
 * **第三方独立播放器**（Movist Pro、IINA、VLC）：普遍没有接入 NowPlaying，通常采用自定义渲染管线（Metal/OpenGL），全屏播放时控制栏自动隐藏甚至无法被窗口无障碍树（AXWindow）稳定索引；
-* **网页与跨平台应用**（Chrome 后台标签、Electron 客户端、游戏）：既没有原生菜单也没有 NowPlaying；
-* **系统媒体键（Media Key, `NX_KEYTYPE_PLAY`）的双刃剑特性**：媒体键在系统层面是一个 **Toggle（翻转键）**。如果盲目发送媒体键，对于**原本已经暂停的视频**，反而会被意外触发播放。
+* **盲目使用系统媒体键（Media Key, `NX_KEYTYPE_PLAY`）的致命缺陷**：系统媒体键是无目标的全局 Toggle 翻转键。如果发送给原本已经暂停的播放器，反而会将其意外唤醒播放。
 
-为此，Voice Buddy 设计了**三层递进的媒体控制管线（Three-Tier Control Pipeline）**。
+为此，Voice Buddy 建立了**双层确定性验证控制管线（Two-Tier Verified Control Pipeline）**，并坚决排除未经状态和目标验证的全局媒体键盲按。
 
 ---
 
-## 2. 三层控制架构全景 (Three-Tier Control Pipeline)
+## 2. 双层验证控制架构全景 (Two-Tier Verified Control Pipeline)
 
 ```mermaid
 flowchart TD
@@ -40,7 +44,7 @@ flowchart TD
         T1_Verify --> SetPausedState[标记: paused(pid), didPauseMedia = true]
     end
 
-    T1_Query -- 否 / 超时 --> T2[第二层: 菜单栏 Accessibility 控制]
+    T1_Query -- 否 / 超时 --> T2[第二层: 菜单栏 Accessibility 确定性控制]
 
     subgraph Tier2["第二层: 菜单栏 AXMenuBar (专治桌面播放器)"]
         T2 --> T2_AudioProc{CoreAudio 能否识别<br>外放音频的应用 PID?}
@@ -52,30 +56,23 @@ flowchart TD
         T2_AlreadyPaused --> EndIdle
         T2_Menu -- 菜单不可读 --> T2_Window[降级检查窗口中的控制按钮]
         T2_Window -- 找到确切暂停按钮 --> T2_ClickPause
+        T2_Window -- 找到播放按钮 / 无按钮 --> EndIdle
     end
 
-    T2_AudioProc -- 否 --> T3[第三层: CoreAudio 活跃外放检测 + 媒体键兜底]
-    T2_Window -- 未找到有效控件 --> T3
-
-    subgraph Tier3["第三层: 媒体键 Toggle 兜底 (广谱兼容)"]
-        T3 --> T3_CheckAudio{CoreAudio 检测扬声器/耳机<br>是否有非本应用的活跃音频流?}
-        T3_CheckAudio -- 是 (确实有声音在播放) --> T3_SendKey[模拟发送全局 NX_KEYTYPE_PLAY]
-        T3_SendKey --> SetToggleState[进入状态: toggleSent, didPauseMedia = true]
-        T3_CheckAudio -- 否 (当前无声音外放) --> EndIdle
-    end
+    T2_AudioProc -- 否 --> EndIdle
 
     subgraph ResumePhase["听写结束恢复流程: resumeIfPaused"]
         FinishDictation([听写结束 / 取消]) --> CheckPhase{检查当前状态 Phase}
-        CheckPhase -- paused(pid) --> ExecResume[调用对应后端发送确定性 Play / 恢复指令]
-        CheckPhase -- toggleSent --> ExecToggleRestore[再次发送 NX_KEYTYPE_PLAY 翻转恢复]
+        CheckPhase -- paused(pid) --> CheckStillPaused{确认该 PID 播放器<br>当前仍处于暂停状态?}
+        CheckStillPaused -- 是 --> ExecResume[调用对应后端发送确定性 Play / 恢复指令]
+        CheckStillPaused -- 否 (已被用户手动调整) --> SkipResume[跳过恢复: resumeSkipped]
         CheckPhase -- idle / 未曾暂停 --> DoNothing([不执行任何恢复操作])
         ExecResume --> ResetState([状态重置为 idle])
-        ExecToggleRestore --> ResetState
+        SkipResume --> ResetState
         DoNothing --> ResetState
     end
 
     SetPausedState -.-> FinishDictation
-    SetToggleState -.-> FinishDictation
 ```
 
 ---
@@ -113,35 +110,25 @@ flowchart TD
 
 ---
 
-### 第三层：CoreAudio 活跃外放检测 + 媒体键兜底（广谱兼容）
-* **核心类**：`MediaKeyFallback` 与 `AudioOutputProcesses`（位于 `VoiceBuddyApp`）
-* **解决的问题**：
-  针对没有接入 MediaRemote、也没有规范菜单栏的特殊客户端（如某些跨平台视频工具、游戏音效、未知网页音频），落实用户提出的“听写前有声就按一次暂停，听写后如果是我们暂停的就按一次恢复”闭环逻辑。
-* **健壮的 CoreAudio 音频检测**：
-  * 读取 CoreAudio HAL `kAudioHardwarePropertyProcessObjectList`；
-  * 逐个查询 `kAudioProcessPropertyIsRunningOutput`（输出流是否处于活跃推流状态）；
-  * **必须排除干扰项**：
-    1. 排除 Voice Buddy 应用自身（`pid == getpid()`）；
-    2. 排除写入虚拟麦克风（如 `Voice Input Buddy Mic`，UID 为 `BuddyMic2ch_UID`）的音频流，避免语音输入自身的回路被误当成背景播放器；
-    3. 遇到非普通应用的系统级守护进程（如 `coreaudiod`）采用 `continue` 容错跳过，而不是中断返回空。
-* **按键与状态机联动**：
-  * 只有在 `hasActiveAudioOutput() == true`（确认扬声器/耳机当前确实有实际声音在播放）时，才模拟发送系统媒体键：
-    ```swift
-    // NX_KEYTYPE_PLAY (16) 在 system-defined 媒体事件中的封装
-    let key = 16 << 16
-    let down = NSEvent.otherEvent(with: .systemDefined, ..., data1: key | (0x0a << 8), ...)
-    let up   = NSEvent.otherEvent(with: .systemDefined, ..., data1: key | (0x0b << 8), ...)
-    down?.cgEvent?.post(tap: .cghidEventTap)
-    up?.cgEvent?.post(tap: .cghidEventTap)
-    ```
-  * 发送后状态机迁移至 `.toggleSent`，并置 `didPauseMedia = true`；
-  * 听写结束调用 `resumeIfPaused()` 时：
-    * **若当前处于 `.toggleSent`**：再次发送一次 `NX_KEYTYPE_PLAY` 恢复播放，并记录 `media.mediaKeyRestoreSent`；
-    * **若开始时未检测到声音（处于 `.idle`）**：绝对不发送任何按键，**彻底杜绝将原本暂停的视频误唤醒的问题**。
+## 4. 为什么坚决摒弃未经验证的全局媒体键盲按（Rejecting Unverified Media Key Toggle）
+
+在方案演进过程中，曾讨论过“检测到 CoreAudio 活跃外放声音时，盲按一次 `NX_KEYTYPE_PLAY` 媒体键，录音结束再按一次”的设想。但在严格的代码审查与实际场景推演中，该方案存在两项不可调和的 **P1 级安全隐患**，已被彻底废弃：
+
+### P1 风险 1：活跃音频流不能证明播放器正在播放
+* CoreAudio 的 `kAudioProcessPropertyIsRunningOutput` 仅代表系统 HAL 层有应用正在向音频管道推流。
+* **非媒体外放**：视频会议（Zoom、Teams、飞书）、网页后台白噪音、游戏音效、终端蜂鸣声都会产生活跃音频流；
+* **暂停状态的媒体播放器**：许多播放器在暂停状态下仍与音频输出设备保持连接。如果用户此时在开会或听网页音频，检测到活跃流而盲目发送 `NX_KEYTYPE_PLAY`，系统媒体键会直接路由到处于暂停状态的 Apple Music / Spotify，导致**音乐大声唤醒外放**，破坏语音输入。
+
+### P1 风险 2：恢复时无法确认首次按键的结果与目标
+* 全局媒体键（`NX_KEYTYPE_PLAY` 通过 `cghidEventTap` 发送）**没有目标进程 PID**，完全由 macOS 系统内部策略分发给“它认为应该响应的应用”；
+* 发送暂停按键后，无法获知具体哪一个应用接收了按键，也无法验证该应用是否真的暂停；
+* 在恢复时，如果初次按键根本未被任何应用接收（例如播放中的应用并不监听媒体键），在听写结束后再次盲按一次媒体键，极大概率会激活系统默认的 Music 应用开始播放，严重违背“未知状态绝不触发播放”的核心原则。
+
+**结论**：桌面播放器（Movist Pro、IINA、QuickTime、VLC）完全可以通过**第二层菜单栏无障碍树（AXMenuBar）**实现有目标、有状态、有验证的确定性暂停与恢复，无需且严禁引入全局媒体键盲按。
 
 ---
 
-## 4. 状态机流转与防重入机制
+## 5. 状态机流转与防重入机制
 
 在 `VoiceBuddyCore/MediaPlaybackController.swift` 中，所有决策严格在 `@MainActor` 线程串行执行，避免并发数据竞争：
 
@@ -155,22 +142,25 @@ flowchart TD
        │ checking  ├────────────────────────────┐    │
        └─────┬─────┘                            │    │
              │                                  │    │
-             │ snapshot 为空 & hasActiveOutput  ▼    │ resumeIfPaused()
-             │ 且 toggle() 成功         ┌────────────────┐ 或未识别
-             ▼                          │ verifyingPause │
-       ┌───────────┐                    └───────┬────────┘
-       │ toggleSent│                            │ pauseConfirmed
-       └─────┬─────┘                            ▼
-             │                          ┌────────────────┐
-             │ resumeIfPaused()         │  paused(pid)   │
-             │ 触发一次恢复按键          └───────┬────────┘
-             │                                  │ resumeIfPaused()
-             │                                  ▼
-             │                          ┌────────────────┐
-             │                          │ checkingResume │
-             │                          └───────┬────────┘
-             │                                  │
-             └──────────────────────────────────┴────────────┘
+             │ snapshot 为空 / 未播放           ▼    │ resumeIfPaused()
+             │ 或 pause() 失败          ┌────────────────┐ 或未识别
+             └─────────────────────────►│ verifyingPause │
+                                        └───────┬────────┘
+                                                │ pauseConfirmed
+                                                ▼
+                                        ┌────────────────┐
+                                        │  paused(pid)   │
+                                        └───────┬────────┘
+                                                │ resumeIfPaused()
+                                                ▼
+                                        ┌────────────────┐
+                                        │ checkingResume │
+                                        └───────┬────────┘
+                                                │
+                                                ▼
+                                        ┌────────────────┐
+                                        │      idle      │
+                                        └────────────────┘
 ```
 
 ### 极速按键/会话重叠保护（Carry Forward）
@@ -180,7 +170,7 @@ flowchart TD
 
 ---
 
-## 5. 诊断日志对照表 (Diagnostics Reference)
+## 6. 诊断日志对照表 (Diagnostics Reference)
 
 开发调试或用户反馈时，可通过 Finder 查看 `~/Library/Logs/VoiceBuddy/diagnostics.log` 中的媒体相关记录：
 
@@ -193,20 +183,17 @@ flowchart TD
 | `media.resumeSent` | 录音结束，已向播放器发送恢复播放指令。 |
 | `media.resumeSkipped` | 录音结束时，检测到播放器已被用户手动调整或其他原因，跳过恢复。 |
 | `media.notPlayingOrUnavailable` | 系统没有播放中的媒体，或者原本就已经处于暂停状态，无需操作。 |
-| `media.mediaKeySent` | 前两层未命中，第三层检测到活跃声音外放，已模拟发送媒体键暂停。 |
-| `media.mediaKeyRestoreSent` | 录音结束，按序发送媒体键恢复播放。 |
-| `media.mediaKeyFailed` | 媒体键模拟创建或发送失败（通常因辅助功能权限未授权）。 |
 
 ---
 
-## 6. 自动化测试保障
+## 7. 自动化测试保障
 
 相关单测位于 `Tests/` 目录，CI 与本地可通过 `swift test` 验证：
 * [`Tests/VoiceBuddyCoreTests/MediaPlaybackControllerTests.swift`](file:///Users/zfdang/workspaces/voice-buddy-private/Tests/VoiceBuddyCoreTests/MediaPlaybackControllerTests.swift)：
-  * 验证第一层（MediaRemote）与第二层（Fallback）的优先次序；
-  * 验证第三层（`MediaToggleBackend`）仅在无确定性状态但有活跃声音时才发送媒体键；
+  * 验证第一层（MediaRemote）与第二层（Fallback）的优先次序与生命周期；
   * 验证开局未暂停时，结束时绝不发送恢复按键；
-  * 验证原本已知处于暂停状态的应用绝不被媒体键意外唤醒。
+  * 验证原本已知处于暂停状态的应用绝不被意外唤醒；
+  * 验证验证暂停失败时不进入已暂停状态。
 * [`Tests/VoiceBuddyAppTests/AccessibleMediaPlaybackTests.swift`](file:///Users/zfdang/workspaces/voice-buddy-private/Tests/VoiceBuddyAppTests/AccessibleMediaPlaybackTests.swift)：
   * 验证播放菜单名（`Playback`、`Controls`、`播放`、`控制`）识别规范；
   * 验证各语言菜单项（“暂停”、“Pause”、“播放”、“Play”）状态解析；

@@ -12,7 +12,6 @@ public struct MediaPlaybackSnapshot: Equatable {
 public enum MediaPlaybackEvent: String {
     case checkStarted, notPlayingOrUnavailable, pauseSent, pauseFailed, pauseUnverified, pauseConfirmed
     case resumeSkipped, resumeSent, resumeFailed
-    case mediaKeySent, mediaKeyRestoreSent, mediaKeyFailed
 }
 
 @MainActor public protocol MediaPlaybackBackend {
@@ -26,16 +25,10 @@ public extension MediaPlaybackBackend {
     func beginSession() {}
 }
 
-@MainActor public protocol MediaToggleBackend {
-    func hasActiveOutput() -> Bool
-    func toggle() -> Bool
-}
-
 /// All decisions run on the main actor. Unknown or stale playback state never starts playback.
 @MainActor public final class MediaPlaybackController {
-    private enum Phase { case idle, checking, verifyingPause(Int32), paused(Int32), checkingResume(Int32), toggleSent }
+    private enum Phase { case idle, checking, verifyingPause(Int32), paused(Int32), checkingResume(Int32) }
     private let backend: any MediaPlaybackBackend
-    private let toggleFallback: (any MediaToggleBackend)?
     private let onEvent: (MediaPlaybackEvent) -> Void
     private let scheduleRetry: @MainActor (@escaping @MainActor @Sendable () -> Void) -> Void
     private var token: UUID?
@@ -43,8 +36,7 @@ public extension MediaPlaybackBackend {
     private var ended = false
     public private(set) var didPauseMedia = false
 
-    public init(fallbackBackend: (any MediaPlaybackBackend)? = nil, toggleFallback: (any MediaToggleBackend)? = nil, onEvent: @escaping (MediaPlaybackEvent) -> Void = { _ in }) {
-        self.toggleFallback = toggleFallback
+    public init(fallbackBackend: (any MediaPlaybackBackend)? = nil, onEvent: @escaping (MediaPlaybackEvent) -> Void = { _ in }) {
         if let fallbackBackend {
             backend = FallbackMediaPlaybackBackend(primary: SystemMediaPlaybackBackend(), fallback: fallbackBackend)
         } else {
@@ -53,8 +45,8 @@ public extension MediaPlaybackBackend {
         self.onEvent = onEvent
         scheduleRetry = { action in DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: action) }
     }
-    public init(backend: any MediaPlaybackBackend, toggleFallback: (any MediaToggleBackend)? = nil, onEvent: @escaping (MediaPlaybackEvent) -> Void = { _ in }, scheduleRetry: @escaping @MainActor (@escaping @MainActor @Sendable () -> Void) -> Void = { action in DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: action) }) {
-        self.backend = backend; self.toggleFallback = toggleFallback; self.onEvent = onEvent; self.scheduleRetry = scheduleRetry
+    public init(backend: any MediaPlaybackBackend, onEvent: @escaping (MediaPlaybackEvent) -> Void = { _ in }, scheduleRetry: @escaping @MainActor (@escaping @MainActor @Sendable () -> Void) -> Void = { action in DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: action) }) {
+        self.backend = backend; self.onEvent = onEvent; self.scheduleRetry = scheduleRetry
     }
 
     public func pauseIfPlaying() {
@@ -70,9 +62,6 @@ public extension MediaPlaybackBackend {
                 ended = false
                 phase = .paused(pid)
                 return
-            case .toggleSent:
-                ended = false
-                return
             case .idle, .checking, .paused:
                 break
             }
@@ -84,16 +73,6 @@ public extension MediaPlaybackBackend {
         backend.snapshot { [weak self] snapshot in
             guard let self, self.token == id, !self.ended, case .checking = self.phase else { return }
             guard let snapshot, snapshot.processID > 0, snapshot.isPlaying else {
-                if snapshot == nil, let fallback = self.toggleFallback, fallback.hasActiveOutput() {
-                    if fallback.toggle() {
-                        self.phase = .toggleSent
-                        self.didPauseMedia = true
-                        self.onEvent(.mediaKeySent)
-                    } else {
-                        self.onEvent(.mediaKeyFailed); self.token = nil; self.phase = .idle
-                    }
-                    return
-                }
                 self.onEvent(.notPlayingOrUnavailable)
                 self.token = nil; self.phase = .idle
                 return
@@ -137,11 +116,6 @@ public extension MediaPlaybackBackend {
             token = nil; phase = .idle
         case .paused(let pid):
             resumeVerified(id: id, pid: pid)
-        case .toggleSent:
-            if let toggleFallback {
-                onEvent(toggleFallback.toggle() ? .mediaKeyRestoreSent : .mediaKeyFailed)
-            }
-            didPauseMedia = false; token = nil; phase = .idle
         case .idle, .verifyingPause, .checkingResume:
             break
         }

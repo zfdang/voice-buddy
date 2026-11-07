@@ -9,10 +9,6 @@ enum AudioOutputProcesses {
         return uniqueCandidate(candidates)
     }
 
-    static func hasActiveAudioOutput() -> Bool {
-        !activeCandidatePIDs().isEmpty
-    }
-
     private static func activeCandidatePIDs() -> Set<pid_t> {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0

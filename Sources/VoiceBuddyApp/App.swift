@@ -50,7 +50,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     @Published var micStatus: AVAuthorizationStatus = .notDetermined
     let models = LocalModels()
     let updater = UpdaterViewModel()
-    private let mediaPlayback = MediaPlaybackController(fallbackBackend: AccessibleMediaPlaybackBackend(), toggleFallback: MediaKeyFallback()) { event in
+    private let mediaPlayback = MediaPlaybackController(fallbackBackend: AccessibleMediaPlaybackBackend()) { event in
         DiagnosticLog.shared.record("media.\(event.rawValue)")
     }
     private let recorder = Recorder()
