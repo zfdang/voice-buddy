@@ -34,7 +34,8 @@ final class Recorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     var currentLevel: Float { lock.lock(); defer { lock.unlock() }; return level }
     var currentSamples: [Float] { lock.lock(); defer { lock.unlock() }; return samples }
 
-    func start(deviceUID: String) throws {
+    @discardableResult
+    func start(deviceUID: String) throws -> String {
         if let existing = session {
             existing.stopRunning()
             captureQueue.sync { }
@@ -67,6 +68,7 @@ final class Recorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         }
         self.session = session
         DiagnosticLog.shared.record("recording.capture_session custom_device=\(!deviceUID.isEmpty)")
+        return input.device.localizedName
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {

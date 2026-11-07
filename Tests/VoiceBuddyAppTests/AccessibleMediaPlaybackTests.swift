@@ -20,4 +20,12 @@ final class AccessibleMediaPlaybackTests: XCTestCase {
         XCTAssertEqual(AudioOutputProcesses.uniqueCandidate([123]), 123)
         XCTAssertNil(AudioOutputProcesses.uniqueCandidate([123, 456]))
     }
+
+    func testOnlyVoiceInputBuddyMicrophoneIsIgnored() {
+        XCTAssertTrue(AudioOutputProcesses.isVoiceInputBuddyOnly(["BuddyMic2ch_UID"]))
+        XCTAssertFalse(AudioOutputProcesses.isVoiceInputBuddyOnly([]))
+        XCTAssertFalse(AudioOutputProcesses.isVoiceInputBuddyOnly([nil]))
+        XCTAssertFalse(AudioOutputProcesses.isVoiceInputBuddyOnly(["BuddyMic2ch_UID", "speakers"]))
+        XCTAssertFalse(AudioOutputProcesses.isVoiceInputBuddyOnly(["other-virtual-device"]))
+    }
 }

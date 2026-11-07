@@ -1013,7 +1013,7 @@ struct MainView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text(t("Diagnostics", "诊断日志")).font(.headline)
-                Text(t("Stored only on this Mac. Logs include app identifiers and diagnostic status, but not audio, dictated text, or clipboard contents. Seven files of up to about 1 MB each are retained.", "日志仅保存在本机，包含应用标识和诊断状态，不包含录音、听写文字或剪贴板内容。最多保留 7 个文件，每个约 1 MB。"))
+                Text(t("Stored only on this Mac. Logs include app identifiers, microphone names, and diagnostic status, but not audio, dictated text, or clipboard contents. Seven files of up to about 1 MB each are retained.", "日志仅保存在本机，包含应用标识、麦克风名称和诊断状态，不包含录音、听写文字或剪贴板内容。最多保留 7 个文件，每个约 1 MB。"))
                     .font(.caption).foregroundStyle(.secondary)
                 Button(t("Show Logs in Finder", "在 Finder 中显示日志")) {
                     do {

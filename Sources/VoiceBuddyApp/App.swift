@@ -580,7 +580,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         targetElement = element
 
         do {
-            try recorder.start(deviceUID: preferences.microphoneUID)
+            let microphoneName = try recorder.start(deviceUID: preferences.microphoneUID)
+            DiagnosticLog.shared.record("recording.device id=\(diagnosticSession) name=\(microphoneName.debugDescription) selection=\(preferences.microphoneUID.isEmpty ? "default" : "selected")")
             recording = true
             DiagnosticLog.shared.record("recording.started id=\(diagnosticSession)")
             if preferences.pauseMediaDuringRecording {

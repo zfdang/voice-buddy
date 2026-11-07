@@ -12,7 +12,8 @@ final class RecorderTests: XCTestCase {
         }
         let uid = try XCTUnwrap(AudioDevices.devices().first { $0.1 == name }?.0)
         let recorder = Recorder()
-        try recorder.start(deviceUID: uid)
+        let actualName = try recorder.start(deviceUID: uid)
+        XCTAssertEqual(actualName, name)
         let duration = Double(ProcessInfo.processInfo.environment["VOICE_BUDDY_TEST_DURATION"] ?? "5") ?? 5
         Thread.sleep(forTimeInterval: duration)
         let result = recorder.stop()
