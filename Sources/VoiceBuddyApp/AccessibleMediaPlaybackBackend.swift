@@ -8,10 +8,11 @@ import VoiceBuddyCore
     private var control: AXUIElement?
     private var processID: pid_t = 0
     private var trackedPID: pid_t = 0
+    private var isMediaKeyControlled = false
 
     func beginSession() {
         generation += 1
-        control = nil; processID = 0; trackedPID = 0
+        control = nil; processID = 0; trackedPID = 0; isMediaKeyControlled = false
     }
 
     func snapshot(completion: @escaping (MediaPlaybackSnapshot?) -> Void) {
@@ -19,6 +20,21 @@ import VoiceBuddyCore
         let current = generation
         control = nil; processID = 0
         guard AXIsProcessTrusted() else { completion(nil); return }
+
+        // If we are already tracking a media-key controlled player, directly check its audio output status
+        if trackedPID != 0 && isMediaKeyControlled {
+            let pid = trackedPID
+            guard let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else {
+                completion(nil)
+                return
+            }
+            let isRunning = AudioOutputProcesses.isAudioRunning(for: pid)
+            self.processID = pid
+            DiagnosticLog.shared.record("media.audio_verified pid=\(pid) running=\(isRunning)")
+            completion(MediaPlaybackSnapshot(processID: pid, isPlaying: isRunning))
+            return
+        }
+
         // Once a player is selected, retain its identity after output stops.
         let pid = trackedPID != 0 ? trackedPID : (AudioOutputProcesses.uniqueApplicationPID() ?? 0)
         guard pid != 0, let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else {
@@ -42,19 +58,49 @@ import VoiceBuddyCore
                         }
                         return
                     }
+                    // When accessible controls cannot be located or are disabled in background,
+                    // check if this specific application is actively outputting audio.
+                    let isRunning = AudioOutputProcesses.isAudioRunning(for: pid)
+                    if isRunning {
+                        self.processID = pid; self.trackedPID = pid; self.isMediaKeyControlled = true
+                        DiagnosticLog.shared.record("media.audio_candidate available=true pid=\(pid) media_key_verified=true")
+                        completion(MediaPlaybackSnapshot(processID: pid, isPlaying: true))
+                        return
+                    }
                     DiagnosticLog.shared.record("media.player_control available=false")
                     completion(nil)
                     return
                 }
-                self.control = found.element; self.processID = pid; self.trackedPID = pid
+                self.control = found.element; self.processID = pid; self.trackedPID = pid; self.isMediaKeyControlled = false
                 DiagnosticLog.shared.record("media.player_control available=true playing=\(found.isPlaying)")
                 completion(MediaPlaybackSnapshot(processID: pid, isPlaying: found.isPlaying))
             }
         }
     }
 
-    func pause() -> Bool { perform(expectedPlaying: true) }
-    func play() -> Bool { perform(expectedPlaying: false) }
+    func pause() -> Bool {
+        if isMediaKeyControlled {
+            return Self.postMediaKey()
+        }
+        return perform(expectedPlaying: true)
+    }
+
+    func play() -> Bool {
+        if isMediaKeyControlled {
+            return Self.postMediaKey()
+        }
+        return perform(expectedPlaying: false)
+    }
+
+    private static func postMediaKey() -> Bool {
+        let key = 16 << 16
+        guard let down = NSEvent.otherEvent(with: .systemDefined, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, subtype: 8, data1: key | (0x0a << 8), data2: -1)?.cgEvent,
+              let up = NSEvent.otherEvent(with: .systemDefined, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, subtype: 8, data1: key | (0x0b << 8), data2: -1)?.cgEvent else { return false }
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
+        DiagnosticLog.shared.record("media.media_key_posted")
+        return true
+    }
 
     private func perform(expectedPlaying: Bool) -> Bool {
         guard let control, processID != 0,
