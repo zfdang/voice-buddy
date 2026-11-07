@@ -21,73 +21,99 @@ struct CaptureDiagnostics {
     }
 }
 
-final class Recorder {
-    private var engine: AVAudioEngine?
+final class Recorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
+    private var session: AVCaptureSession?
+    private let captureQueue = DispatchQueue(label: "VoiceBuddy.audioCapture")
     private let lock = NSLock()
     private var samples: [Float] = []
     private var level: Float = 0
     private var diagnostics = CaptureDiagnostics()
+    private var converter: AVAudioConverter?
+    private var sourceFormat: AVAudioFormat?
+    private let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
     var currentLevel: Float { lock.lock(); defer { lock.unlock() }; return level }
     var currentSamples: [Float] { lock.lock(); defer { lock.unlock() }; return samples }
 
     func start(deviceUID: String) throws {
-        let engine = AVAudioEngine()
-        if !deviceUID.isEmpty, let device = AudioDevices.id(for: deviceUID), let unit = engine.inputNode.audioUnit {
-            var id = device
-            let status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &id, UInt32(MemoryLayout<AudioDeviceID>.size))
-            guard status == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
-        } else if !deviceUID.isEmpty { throw NSError(domain: "VoiceBuddy", code: 1, userInfo: [NSLocalizedDescriptionKey: "Selected microphone is unavailable."]) }
-        let input = engine.inputNode
-        // The output format can still describe the previous default device after
-        // changing the input Audio Unit's device. Synchronize it with the new
-        // hardware format before installing a tap or starting the engine.
-        let format = input.inputFormat(forBus: 0)
-        DiagnosticLog.shared.record("recording.format custom_device=\(!deviceUID.isEmpty) sample_rate=\(format.sampleRate) channels=\(format.channelCount)")
-        guard format.sampleRate > 0, format.channelCount > 0,
-              let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
-              let converter = AVAudioConverter(from: format, to: target) else {
+        if let existing = session {
+            existing.stopRunning()
+            captureQueue.sync { }
+            session = nil
+        }
+        let device: AVCaptureDevice?
+        if deviceUID.isEmpty {
+            device = AVCaptureDevice.default(for: .audio)
+        } else {
+            device = AVCaptureDevice(uniqueID: deviceUID)
+        }
+        guard let device, device.hasMediaType(.audio), device.isConnected else {
+            throw NSError(domain: "VoiceBuddy", code: 1, userInfo: [NSLocalizedDescriptionKey: "Selected microphone is unavailable."])
+        }
+        let input = try AVCaptureDeviceInput(device: device)
+        let session = AVCaptureSession()
+        let output = AVCaptureAudioDataOutput()
+        guard session.canAddInput(input), session.canAddOutput(output) else {
             throw NSError(domain: "VoiceBuddy", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to configure microphone."])
         }
-        guard let unit = input.audioUnit else {
-            throw NSError(domain: "VoiceBuddy", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to configure microphone."])
-        }
-        var streamFormat = format.streamDescription.pointee
-        let formatStatus = AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &streamFormat, UInt32(MemoryLayout<AudioStreamBasicDescription>.size))
-        guard formatStatus == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(formatStatus)) }
+        session.addInput(input)
+        output.setSampleBufferDelegate(self, queue: captureQueue)
+        session.addOutput(output)
         lock.lock(); samples = []; level = 0; diagnostics = CaptureDiagnostics(); lock.unlock()
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-            guard let self else { return }
-            var allocated = false
-            var conversionFailed = false
-            var conversionErrorCode: Int?
-            var outputFrames = 0
-            defer {
-                self.lock.lock()
-                self.diagnostics.record(inputFrames: Int(buffer.frameLength), outputFrames: outputFrames, allocated: allocated, conversionFailed: conversionFailed, errorCode: conversionErrorCode)
-                self.lock.unlock()
-            }
-            let count = AVAudioFrameCount(ceil(Double(buffer.frameLength) * 16000 / format.sampleRate) + 64)
-            guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: count) else { return }
-            allocated = true
-            var consumed = false; var error: NSError?
-            let status = converter.convert(to: out, error: &error) { _, flag in
-                if consumed { flag.pointee = .noDataNow; return nil }
-                consumed = true; flag.pointee = .haveData; return buffer
-            }
-            guard status != .error, let data = out.floatChannelData?[0] else {
-                conversionFailed = true
-                conversionErrorCode = error?.code
-                return
-            }
-            let n = Int(out.frameLength); var rms: Float = 0
-            outputFrames = n
-            if n > 0 { vDSP_rmsqv(data, 1, &rms, vDSP_Length(n)) }
-            self.lock.lock(); self.samples.append(contentsOf: UnsafeBufferPointer(start: data, count: n)); self.level = rms; self.lock.unlock()
+        converter = nil; sourceFormat = nil
+        session.startRunning()
+        guard session.isRunning else {
+            output.setSampleBufferDelegate(nil, queue: nil)
+            throw NSError(domain: "VoiceBuddy", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to configure microphone."])
         }
-        do { try engine.start(); self.engine = engine } catch { input.removeTap(onBus: 0); throw error }
+        self.session = session
+        DiagnosticLog.shared.record("recording.capture_session custom_device=\(!deviceUID.isEmpty)")
     }
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard let description = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(description),
+              let format = AVAudioFormat(streamDescription: asbd) else { return }
+        if sourceFormat != format {
+            sourceFormat = format
+            converter = AVAudioConverter(from: format, to: target)
+            DiagnosticLog.shared.record("recording.format sample_rate=\(format.sampleRate) channels=\(format.channelCount)")
+        }
+        let frames = AVAudioFrameCount(CMSampleBufferGetNumSamples(sampleBuffer))
+        var allocated = false
+        var conversionFailed = false
+        var conversionErrorCode: Int?
+        var outputFrames = 0
+        defer {
+            lock.lock()
+            diagnostics.record(inputFrames: Int(frames), outputFrames: outputFrames, allocated: allocated, conversionFailed: conversionFailed, errorCode: conversionErrorCode)
+            lock.unlock()
+        }
+        guard let converter, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { return }
+        buffer.frameLength = frames
+        guard CMSampleBufferCopyPCMDataIntoAudioBufferList(sampleBuffer, at: 0, frameCount: Int32(frames), into: buffer.mutableAudioBufferList) == noErr else {
+            conversionFailed = true; return
+        }
+        let capacity = AVAudioFrameCount(ceil(Double(frames) * 16000 / format.sampleRate) + 64)
+        guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return }
+        allocated = true
+        var consumed = false; var error: NSError?
+        let status = converter.convert(to: out, error: &error) { _, flag in
+            if consumed { flag.pointee = .noDataNow; return nil }
+            consumed = true; flag.pointee = .haveData; return buffer
+        }
+        guard status != .error, let data = out.floatChannelData?[0] else {
+            conversionFailed = true; conversionErrorCode = error?.code; return
+        }
+        let n = Int(out.frameLength); var rms: Float = 0
+        outputFrames = n
+        if n > 0 { vDSP_rmsqv(data, 1, &rms, vDSP_Length(n)) }
+        lock.lock(); samples.append(contentsOf: UnsafeBufferPointer(start: data, count: n)); level = rms; lock.unlock()
+    }
+
     func stop() -> (samples: [Float], diagnostics: CaptureDiagnostics) {
-        engine?.inputNode.removeTap(onBus: 0); engine?.stop(); engine = nil
+        session?.stopRunning()
+        captureQueue.sync { }
+        session = nil
         lock.lock(); defer { lock.unlock() }
         let result = (samples, diagnostics)
         samples = []; level = 0
