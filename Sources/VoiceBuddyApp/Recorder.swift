@@ -35,6 +35,11 @@ final class Recorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     var currentSamples: [Float] { lock.lock(); defer { lock.unlock() }; return samples }
 
     func start(deviceUID: String) throws {
+        if let existing = session {
+            existing.stopRunning()
+            captureQueue.sync { }
+            session = nil
+        }
         let device: AVCaptureDevice?
         if deviceUID.isEmpty {
             device = AVCaptureDevice.default(for: .audio)
