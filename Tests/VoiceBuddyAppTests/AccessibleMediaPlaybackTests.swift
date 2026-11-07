@@ -43,4 +43,8 @@ final class AccessibleMediaPlaybackTests: XCTestCase {
         XCTAssertFalse(AudioOutputProcesses.isVoiceInputBuddyOnly(["BuddyMic2ch_UID", "speakers"]))
         XCTAssertFalse(AudioOutputProcesses.isVoiceInputBuddyOnly(["other-virtual-device"]))
     }
+
+    func testAudioRunningForDeadPIDReturnsFalse() {
+        XCTAssertFalse(AudioOutputProcesses.isAudioRunning(for: -9999))
+    }
 }
