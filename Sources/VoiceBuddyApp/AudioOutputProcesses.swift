@@ -21,6 +21,9 @@ enum AudioOutputProcesses {
         for object in objects {
             guard let active = uint32Property(object, kAudioProcessPropertyIsRunningOutput) else { return nil }
             guard active != 0 else { continue }
+            // Voice Input Buddy writes dictated audio into its virtual microphone.
+            // That stream is not background media and must not mask a player.
+            if outputsOnlyToVoiceInputBuddyMic(object) { continue }
             guard let rawPID = uint32Property(object, kAudioProcessPropertyPID), rawPID > 0, rawPID <= UInt32(Int32.max) else { return nil }
             let pid = pid_t(rawPID)
             if pid == getpid() { continue }
@@ -33,6 +36,28 @@ enum AudioOutputProcesses {
     static func uniqueCandidate(_ candidates: Set<pid_t>) -> pid_t? {
         guard candidates.count == 1 else { return nil }
         return candidates.first
+    }
+
+    private static func outputsOnlyToVoiceInputBuddyMic(_ process: AudioObjectID) -> Bool {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioProcessPropertyDevices, mScope: kAudioObjectPropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(process, &address, 0, nil, &size) == noErr,
+              size > 0, size % UInt32(MemoryLayout<AudioObjectID>.size) == 0, size <= 65536 else { return false }
+        var devices = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(process, &address, 0, nil, &size, &devices) == noErr else { return false }
+        return isVoiceInputBuddyOnly(devices.map(deviceUID))
+    }
+
+    static func isVoiceInputBuddyOnly(_ deviceUIDs: [String?]) -> Bool {
+        !deviceUIDs.isEmpty && deviceUIDs.allSatisfy { $0 == "BuddyMic2ch_UID" }
+    }
+
+    private static func deviceUID(_ device: AudioObjectID) -> String? {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyDeviceUID, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var value: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr, let value else { return nil }
+        return value.takeRetainedValue() as String
     }
 
     private static func uint32Property(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> UInt32? {
