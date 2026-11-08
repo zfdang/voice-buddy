@@ -6,7 +6,7 @@ Voice Buddy 是一款离线优先的 macOS 语音输入工具。无论是在聊�
 
 全部语音识别与文本润色均在 Apple Silicon 芯片本地完成，音频和文字绝不离开你的 Mac。
 
-![Voice Buddy 录音悬浮指示器](docs/images/00_recording_overlay.png)
+![Voice Buddy 主界面与通用设置](docs/images/01_settings_general.png)
 
 ## 开始使用
 
