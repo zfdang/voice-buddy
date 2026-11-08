@@ -6,7 +6,7 @@ Voice Buddy 是一款离线优先的 macOS 语音输入工具。无论是在聊�
 
 全部语音识别与文本润色均在 Apple Silicon 芯片本地完成，音频和文字绝不离开你的 Mac。
 
-![Voice Buddy 主界面与通用设置](docs/images/01_settings_general.png)
+![Voice Buddy 语音听写主窗口](docs/images/00_recording_overlay.png)
 
 ## 开始使用
 
@@ -44,6 +44,11 @@ Voice Buddy 是一款离线优先的 macOS 语音输入工具。无论是在聊�
 ---
 
 ## 软件截图
+
+### 语音听写主窗口 (Recording HUD)
+按住快捷键说话时于屏幕底部浮现的实时交互窗口。支持流式实时转写预览、呼吸打字光标、动态音频波形律动、文字即时纠错与吉祥物状态指示：
+
+![语音听写主窗口](docs/images/00_recording_overlay.png)
 
 ### 通用设置 (General Settings)
 就绪状态检查（系统权限、语音模型、文本模型 3/3 核心组件检测）、快捷键配置、Fn 键切换、录音模式选择、背景音乐暂停与文本整理力度调节：
