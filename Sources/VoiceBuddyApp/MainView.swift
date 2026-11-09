@@ -692,8 +692,8 @@ struct MainView: View {
                     HStack(alignment: .top, spacing: 10) {
                         Text("•")
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(t("Qwen3-ASR Acoustic Transcription", "Qwen3-ASR 端侧声学识别")).font(.subheadline.bold())
-                            Text(t("Runs locally on Apple Neural Engine and GPU via MLX. Accurately transcribes Chinese, English, code terms, and mixed speech with proper punctuation.", "通过 MLX 引擎全本地运行于 Apple 芯片 GPU 与神经引擎。精准识别中英双语、技术术语与混合说话，并自带标点分句。")).font(.caption).foregroundStyle(.secondary)
+                            Text(t("On-Device Acoustic Transcription", "端侧声学识别引擎")).font(.subheadline.bold())
+                            Text(t("Runs locally on Apple Neural Engine and GPU via MLX and CoreML (supporting Qwen3-ASR and Whisper Large-v3 Turbo). Accurately transcribes Chinese, English, multilingual speech, and code terms with proper punctuation.", "通过 MLX 与 CoreML 原生引擎全本地运行于 Apple 芯片 GPU 与神经引擎（支持 Qwen3-ASR 与 Whisper Large-v3 Turbo）。精准识别中英、多语种、技术术语与混合说话，并自带标点分句。")).font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     Divider()

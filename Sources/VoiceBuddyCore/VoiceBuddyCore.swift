@@ -28,7 +28,9 @@ public struct Preferences: Codable, Equatable {
         speechLanguage = try container.decodeIfPresent(String.self, forKey: .speechLanguage) ?? "auto"
         microphoneUID = try container.decodeIfPresent(String.self, forKey: .microphoneUID) ?? ""
         let rawSpeech = try container.decodeIfPresent(String.self, forKey: .speechModel) ?? "qwen-asr-0.6b"
-        if rawSpeech.contains("1.7") {
+        if rawSpeech.contains("whisper") {
+            speechModel = "whisper-large-v3-turbo"
+        } else if rawSpeech.contains("1.7") {
             speechModel = "qwen-asr-1.7b"
         } else {
             speechModel = "qwen-asr-0.6b"
