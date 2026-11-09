@@ -20,8 +20,11 @@ final class AppleSpeechEngine: @unchecked Sendable {
 
         // 2. Recognizer resolution
         let locale = localeForLanguage(language)
-        guard let recognizer = SFSpeechRecognizer(locale: locale) ?? SFSpeechRecognizer(), recognizer.isAvailable else {
+        guard let recognizer = SFSpeechRecognizer(locale: locale) ?? SFSpeechRecognizer() else {
             throw VoiceBuddyError.modelUnavailable("Apple Speech recognizer unavailable for \(locale.identifier)")
+        }
+        guard recognizer.isAvailable else {
+            throw VoiceBuddyError.modelUnavailable("Apple Speech recognizer is unavailable. Please enable 'Dictation' in macOS System Settings -> Keyboard. (macOS 系统听写或 Siri 未开启，请前往「系统设置 ➔ 键盘 ➔ 听写」开启听写功能，或切换至 SenseVoice/Qwen 独立模型)")
         }
 
         // 3. Audio file writing
@@ -41,7 +44,14 @@ final class AppleSpeechEngine: @unchecked Sendable {
                 if let error = error {
                     if !hasResumed {
                         hasResumed = true
-                        continuation.resume(throwing: error)
+                        let nsError = error as NSError
+                        let desc = error.localizedDescription.lowercased()
+                        if nsError.domain == "kAFAssistantErrorDomain" || desc.contains("siri") || desc.contains("dictation") || desc.contains("disabled") {
+                            let friendlyMessage = "Apple Speech requires macOS Dictation to be enabled. Please enable 'Dictation' in System Settings -> Keyboard, or switch to SenseVoice/Qwen. (macOS 系统听写或 Siri 未开启，请前往「系统设置 ➔ 键盘 ➔ 听写」开启听写功能，或切换至 SenseVoice/Qwen 独立模型)"
+                            continuation.resume(throwing: VoiceBuddyError.modelUnavailable(friendlyMessage))
+                        } else {
+                            continuation.resume(throwing: error)
+                        }
                     }
                     return
                 }

@@ -103,10 +103,10 @@ public struct SpeechModelSpec: Identifiable, Hashable, Sendable {
             accuracyScore: "90 分 · 开箱即用免下载等待",
             accuracyScoreEn: "90 / 100 · Built-in zero-wait dictation",
             memoryUsage: "近乎 0 MB (系统共享)",
-            bestForZh: "免等待下载模型！首次安装即用、离线无网兜底、0 磁盘占用",
-            bestForEn: "Zero download waiting! Instant out-of-the-box dictation, zero disk footprint",
-            description: "系统内置 · 开箱即用无需下载，0 磁盘占用，离线无网也能直接听写",
-            descriptionEn: "macOS built-in · Ready out-of-the-box, zero download & disk footprint, works completely offline"
+            bestForZh: "依赖系统「听写」开启；免等待下载、离线无网兜底、0 磁盘占用",
+            bestForEn: "Requires macOS Dictation enabled; zero download waiting & 0 MB disk footprint",
+            description: "系统内置 · 依赖 macOS 听写服务开启，0 磁盘占用，免下载即刻可用",
+            descriptionEn: "macOS built-in · Requires macOS Dictation enabled, 0 MB download & disk footprint"
         )
     ]
 }

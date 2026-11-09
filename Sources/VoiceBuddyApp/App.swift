@@ -623,8 +623,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         guard ready else {
             DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=speech_model_not_ready")
             status = label("Loading speech model…", "正在加载语音模型…")
-            overlay.show(state: self)
             if !speechPreparing {
+                overlay.show(state: self)
                 prepareSpeech { [weak self] success in
                     guard let self else { return }
                     if success {
@@ -636,14 +636,16 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self.overlay.hide()
                     }
                 }
+            } else {
+                overlay.showStatus(state: self)
             }
             return
         }
         if preferences.refinement.needsModel && !editorReady {
             DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=text_model_not_ready")
             status = label("Loading text model…", "正在加载文本模型…")
-            overlay.show(state: self)
             if !editorPreparing {
+                overlay.show(state: self)
                 prepareEditor { [weak self] success in
                     guard let self else { return }
                     if success {
@@ -655,6 +657,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self.overlay.hide()
                     }
                 }
+            } else {
+                overlay.showStatus(state: self)
             }
             return
         }
@@ -1265,7 +1269,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @objc private func showSettingsFromStatusItem() {
         let mouseLocation = NSEvent.mouseLocation
         let targetScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
-        VoiceBuddyAppDelegate.shared?.showSettingsWindow(tab: .general, targetScreen: targetScreen)
+        VoiceBuddyAppDelegate.shared?.showSettingsWindow(tab: nil, targetScreen: targetScreen)
     }
 
     func updateIcon(isRecording: Bool) {
@@ -1502,6 +1506,18 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
         }
         guard let windowController = settingsWindowController,
               let window = windowController.window else { return }
+
+        // If the settings window is already open/visible or miniaturized, simply refocus it without moving or resetting
+        if window.isVisible || window.isMiniaturized {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            isSettingsWindowOpen = true
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
 
         let screen = targetScreen
             ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
