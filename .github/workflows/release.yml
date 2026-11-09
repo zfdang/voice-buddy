@@ -65,6 +65,17 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "short=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Cache SwiftPM and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm/artifacts
+            .build
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ steps.commit.outputs.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-swift-${{ hashFiles('Package.resolved', 'Package.swift') }}-
+            ${{ runner.os }}-${{ runner.arch }}-swift-
+
       - name: Run test suite
         run: swift test -j 4
 
