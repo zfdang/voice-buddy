@@ -1305,14 +1305,16 @@ final class ApplicationShortcutMonitor {
     func install() {
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
             let chars = event.charactersIgnoringModifiers?.lowercased()
+            let hasCmd = event.modifierFlags.contains(.command)
+            let hasCtrl = event.modifierFlags.contains(.control)
 
-            let isCmdQ = (modifiers == .command && chars == "q")
-            let isCmdW = (modifiers == .command && chars == "w")
-            let isCtrlCmdW = (modifiers == [.command, .control] && chars == "w")
+            let isCmdQ = hasCmd && (chars == "q" || event.keyCode == 12)
+            let isCmdW = hasCmd && (chars == "w" || event.keyCode == 13)
+            let isCtrlCmdW = hasCmd && hasCtrl && (chars == "w" || event.keyCode == 13)
 
             if isCmdQ || isCmdW || isCtrlCmdW {
+                DiagnosticLog.shared.record("shortcut.intercepted isCmdQ=\(isCmdQ) isCmdW=\(isCmdW) isCtrlCmdW=\(isCtrlCmdW)")
                 Task { @MainActor in
                     AppState.closeKeyWindow()
                 }
@@ -1457,11 +1459,55 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     @objc private func menuQuit() {
+        DiagnosticLog.shared.record("app.explicit_quit_requested")
+        AppDelegate.allowTermination = true
         NSApp.terminate(nil)
     }
 }
 
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    static var allowTermination = false
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        DiagnosticLog.shared.record("app.delegate_did_finish_launching")
+        AppDelegate.sanitizeMainMenu()
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willPowerOffNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            AppDelegate.allowTermination = true
+        }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        DiagnosticLog.shared.record("app.should_terminate allow=\(AppDelegate.allowTermination)")
+        if AppDelegate.allowTermination {
+            return .terminateNow
+        }
+        Task { @MainActor in
+            AppState.closeKeyWindow()
+        }
+        return .terminateCancel
+    }
+
+    @MainActor
+    static func sanitizeMainMenu() {
+        guard let mainMenu = NSApp.mainMenu else { return }
+        for item in mainMenu.items {
+            if let submenu = item.submenu {
+                for subitem in submenu.items {
+                    if subitem.action == #selector(NSApplication.terminate(_:)) {
+                        subitem.keyEquivalent = ""
+                    }
+                }
+            }
+        }
+    }
+}
+
 @main struct VoiceBuddyApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var state = AppState()
     var body: some Scene {
         Window("Voice Buddy", id: "main") {
