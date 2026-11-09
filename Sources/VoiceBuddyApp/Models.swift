@@ -135,6 +135,22 @@ public struct TextModelSpec: Identifiable, Hashable, Sendable {
             quantization: "INT8",
             description: "高精量化 · 表达更加严谨细腻，推荐正式长文与重写润色",
             descriptionEn: "Higher precision · Rigorous and nuanced phrasing, recommended for long-form rewrite and polishing"
+        ),
+        TextModelSpec(
+            id: "qwen3-text-1.7b-4bit",
+            name: "Qwen 3 1.7B",
+            size: "923 MB",
+            quantization: "4-bit",
+            description: "逻辑进阶 · Dense 架构，倒装句理顺与口语重构更自然，理解力强",
+            descriptionEn: "Advanced logic · Dense transformer, natural spoken-syntax cleanup and strong comprehension"
+        ),
+        TextModelSpec(
+            id: "qwen3-text-4b-4bit",
+            name: "Qwen 3 4B",
+            size: "2.26 GB",
+            quantization: "4-bit",
+            description: "深度重写 · 旗舰级指令遵循，深度段落逻辑重构与书面文风润色",
+            descriptionEn: "Deep rewrite · Flagship instruction following, structural rewriting and polished prose"
         )
     ]
 }
@@ -145,7 +161,8 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     private var senseVoice: SenseVoiceASRModel?
     private var appleSpeech: AppleSpeechEngine?
     private var vad: SileroVADModel?
-    private var editor: Qwen35MLXChat?
+    private var qwen35Editor: Qwen35MLXChat?
+    private var denseEditor: Qwen3DenseChat?
     private var selectedID = ""
     private var selectedEditorID = ""
     private let root: URL
@@ -219,7 +236,12 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return false }
         for f in files {
             if f.hasSuffix(".safetensors") && !f.hasPrefix(".") {
-                return true
+                let filePath = dir.appendingPathComponent(f).path
+                if let attrs = try? FileManager.default.attributesOfItem(atPath: filePath),
+                   let size = attrs[.size] as? NSNumber,
+                   size.int64Value > 0 {
+                    return true
+                }
             }
             var isDir: ObjCBool = false
             let sub = dir.appendingPathComponent(f)
@@ -339,21 +361,41 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         guard TextModelSpec.allModels.contains(where: { $0.id == targetId }) else {
             throw VoiceBuddyError.modelUnavailable("Invalid text model identifier")
         }
-        let q: Qwen35MLXChat.Quantization = targetId.contains("int8") ? .int8 : .int5
+        let isCached = isEditorModelCached(id: targetId)
         var dir = textDirectory(targetId)
-        if targetId == "qwen35-text-0.8b-int5" && !FileManager.default.fileExists(atPath: dir.path) {
-            let legacy = directory("qwen35-text-0.8b")
-            if FileManager.default.fileExists(atPath: legacy.path) {
-                dir = legacy
+
+        if targetId.hasPrefix("qwen35-text-0.8b") {
+            let q: Qwen35MLXChat.Quantization = targetId.contains("int8") ? .int8 : .int5
+            if targetId == "qwen35-text-0.8b-int5" && !FileManager.default.fileExists(atPath: dir.path) {
+                let legacy = directory("qwen35-text-0.8b")
+                if FileManager.default.fileExists(atPath: legacy.path) {
+                    dir = legacy
+                }
             }
-        }
-        if editor == nil || selectedEditorID != targetId {
-            editor = try await Qwen35MLXChat.fromPretrained(
-                quantization: q,
-                cacheDir: dir,
-                progressHandler: progress
-            )
-            selectedEditorID = targetId
+            if qwen35Editor == nil || selectedEditorID != targetId {
+                denseEditor = nil
+                qwen35Editor = try await Qwen35MLXChat.fromPretrained(
+                    quantization: q,
+                    cacheDir: dir,
+                    offlineMode: isCached,
+                    progressHandler: progress
+                )
+                selectedEditorID = targetId
+            }
+        } else {
+            let hfModelId = (targetId == "qwen3-text-4b-4bit")
+                ? "aufklarer/Qwen3-4B-Instruct-2507-MLX-4bit"
+                : "mlx-community/Qwen3-1.7B-4bit"
+            if denseEditor == nil || selectedEditorID != targetId {
+                qwen35Editor = nil
+                denseEditor = try await Qwen3DenseChat.fromPretrained(
+                    modelId: hfModelId,
+                    cacheDir: dir,
+                    offlineMode: isCached,
+                    progressHandler: progress
+                )
+                selectedEditorID = targetId
+            }
         }
     }
 
@@ -384,7 +426,8 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
             throw VoiceBuddyError.modelUnavailable("Invalid text model identifier")
         }
         if selectedEditorID == targetId {
-            editor = nil
+            qwen35Editor = nil
+            denseEditor = nil
             selectedEditorID = ""
         }
         let path = textDirectory(targetId)
@@ -441,15 +484,38 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
     }
     func refine(_ text: String, mode: Refinement) async throws -> String {
-        guard let editor else { throw VoiceBuddyError.modelUnavailable("Text model") }
-        let instruction = mode == .rewrite ? "Rewrite the dictated text clearly. Preserve facts. Output only the rewritten text." : "Edit the dictated text lightly for clarity and punctuation. Preserve all facts, language and meaning. Output only the edited text."
+        let instruction = mode == .rewrite
+            ? "Rewrite the dictated text clearly. Preserve facts. Output only the rewritten text."
+            : "Edit the dictated text lightly for clarity and punctuation. Preserve all facts, language and meaning. Output only the edited text."
         let tokenBudget = max(512, min(text.count * 4 + 128, 2048))
-        let generated = try editor.generate(
-            messages: [.init(role: .system, content: instruction), .init(role: .user, content: text)],
-            sampling: .init(temperature: 0, maxTokens: tokenBudget)
-        )
-        let trimmed = generated.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tokenCount = editor.tokenizer.encode(trimmed).count
+        let messages: [ChatMessage] = [
+            .init(role: .system, content: instruction),
+            .init(role: .user, content: text)
+        ]
+        let sampling = ChatSamplingConfig(temperature: 0, maxTokens: tokenBudget)
+
+        let generated: String
+        let tokenizer: ChatTokenizer
+
+        if let editor = qwen35Editor {
+            tokenizer = editor.tokenizer
+            generated = try editor.generate(messages: messages, sampling: sampling)
+        } else if let editor = denseEditor {
+            tokenizer = editor.tokenizer
+            var output = ""
+            for try await chunk in editor.generateStream(messages: messages, sampling: sampling) {
+                output += chunk
+            }
+            generated = output
+        } else {
+            throw VoiceBuddyError.modelUnavailable("Text model")
+        }
+
+        var trimmed = generated.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let thinkEnd = trimmed.range(of: "</think>") {
+            trimmed = String(trimmed[thinkEnd.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let tokenCount = tokenizer.encode(trimmed).count
         if tokenCount >= tokenBudget || (text.count >= 40 && trimmed.count < max(12, text.count / 3)) {
             throw RefinementFailure(original: text, reason: "Refinement output exceeded token budget or was truncated")
         }

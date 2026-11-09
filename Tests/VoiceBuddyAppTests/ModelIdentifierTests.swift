@@ -161,4 +161,64 @@ final class ModelIdentifierTests: XCTestCase {
             // Success
         }
     }
+
+    func testAllTextModelSpecsExistAndHaveValidMetadata() {
+        let expectedIds = [
+            "qwen35-text-0.8b-int5",
+            "qwen35-text-0.8b-int8",
+            "qwen3-text-1.7b-4bit",
+            "qwen3-text-4b-4bit"
+        ]
+        XCTAssertEqual(TextModelSpec.allModels.count, expectedIds.count)
+        for id in expectedIds {
+            guard let spec = TextModelSpec.allModels.first(where: { $0.id == id }) else {
+                XCTFail("Missing expected text model: \(id)")
+                continue
+            }
+            XCTAssertFalse(spec.name.isEmpty)
+            XCTAssertFalse(spec.size.isEmpty)
+            XCTAssertFalse(spec.quantization.isEmpty)
+            XCTAssertFalse(spec.description.isEmpty)
+            XCTAssertFalse(spec.descriptionEn.isEmpty)
+        }
+    }
+
+    func testTextModelCacheDetectionAndRemoval() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let models = LocalModels(root: root)
+
+        let targetId = "qwen3-text-1.7b-4bit"
+        let isCachedBefore = await models.isEditorModelCached(id: targetId)
+        XCTAssertFalse(isCachedBefore)
+
+        let dir = root.appendingPathComponent(targetId)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        // Write 1.5MB dummy file
+        let dummyData = Data(count: 1_500_000)
+        try dummyData.write(to: dir.appendingPathComponent("model.safetensors"))
+
+        let isCachedAfter = await models.isEditorModelCached(id: targetId)
+        XCTAssertTrue(isCachedAfter)
+
+        try await models.removeEditor(id: targetId)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.path))
+        let isCachedAfterRemove = await models.isEditorModelCached(id: targetId)
+        XCTAssertFalse(isCachedAfterRemove)
+    }
+
+    func testInvalidTextModelCannotBeRemoved() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let models = LocalModels(root: root)
+
+        for invalidId in ["", "unknown", "invalid/../traversal"] {
+            do {
+                try await models.removeEditor(id: invalidId)
+                XCTFail("Should fail for invalid text model id: \(invalidId)")
+            } catch {
+                // Expected
+            }
+        }
+    }
 }
