@@ -1269,7 +1269,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @objc private func showSettingsFromStatusItem() {
         let mouseLocation = NSEvent.mouseLocation
         let targetScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
-        VoiceBuddyAppDelegate.shared?.showSettingsWindow(tab: .general, targetScreen: targetScreen)
+        VoiceBuddyAppDelegate.shared?.showSettingsWindow(tab: nil, targetScreen: targetScreen)
     }
 
     func updateIcon(isRecording: Bool) {
@@ -1506,6 +1506,18 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
         }
         guard let windowController = settingsWindowController,
               let window = windowController.window else { return }
+
+        // If the settings window is already open/visible or miniaturized, simply refocus it without moving or resetting
+        if window.isVisible || window.isMiniaturized {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            isSettingsWindowOpen = true
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
 
         let screen = targetScreen
             ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
