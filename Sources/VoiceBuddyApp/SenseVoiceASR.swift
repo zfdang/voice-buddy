@@ -58,7 +58,7 @@ public final class SenseVoiceASRModel: @unchecked Sendable {
         preprocessorConfig.computeUnits = .cpuOnly
 
         let encoderConfig = MLModelConfiguration()
-        encoderConfig.computeUnits = .cpuAndNeuralEngine
+        encoderConfig.computeUnits = .cpuAndGPU
 
         let preprocessor: MLModel
         let encoder: MLModel

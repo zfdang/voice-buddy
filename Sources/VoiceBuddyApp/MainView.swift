@@ -54,11 +54,6 @@ struct MainView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             state.refreshPermissions()
         }
-        .onChange(of: state.status) { _, _ in
-            if !state.result.isEmpty && !state.recording && !state.busy {
-                state.selectedTab = .recovery
-            }
-        }
         .onChange(of: state.selectedTab) { _, _ in
             state.checkModelCacheStatus()
         }

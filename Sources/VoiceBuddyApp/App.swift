@@ -623,8 +623,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         guard ready else {
             DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=speech_model_not_ready")
             status = label("Loading speech model…", "正在加载语音模型…")
-            overlay.show(state: self)
             if !speechPreparing {
+                overlay.show(state: self)
                 prepareSpeech { [weak self] success in
                     guard let self else { return }
                     if success {
@@ -636,14 +636,16 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self.overlay.hide()
                     }
                 }
+            } else {
+                overlay.showStatus(state: self)
             }
             return
         }
         if preferences.refinement.needsModel && !editorReady {
             DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=text_model_not_ready")
             status = label("Loading text model…", "正在加载文本模型…")
-            overlay.show(state: self)
             if !editorPreparing {
+                overlay.show(state: self)
                 prepareEditor { [weak self] success in
                     guard let self else { return }
                     if success {
@@ -655,6 +657,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self.overlay.hide()
                     }
                 }
+            } else {
+                overlay.showStatus(state: self)
             }
             return
         }
