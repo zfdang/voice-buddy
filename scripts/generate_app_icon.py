@@ -5,6 +5,7 @@ from supplied artwork with transparent backgrounds.
 """
 from pathlib import Path
 from PIL import Image
+import numpy as np
 import subprocess
 import tempfile
 
@@ -50,7 +51,7 @@ active_img = Image.open(icons_dir / 'voice_buddy_mono_red_dot_512.png')
 
 status_sources = [
     (inactive_img, ['MenuBarIcon', 'MenuBarIconTemplate']),
-    (active_img, ['MenuBarIconColor'])
+    (active_img, ['MenuBarIconColor', 'MenuBarIconActiveTemplate'])
 ]
 
 boxes = [img.getchannel('A').point(lambda value: 255 if value >= 10 else 0).getbbox()
@@ -74,4 +75,8 @@ for source, names in status_sources:
         sz = 22 * scale
         resized = cropped.resize((sz, sz), Image.Resampling.LANCZOS)
         for name in names:
-            resized.save(res_dir / f'{name}{suffix}.png')
+            arr = np.array(resized.convert('RGBA'))
+            arr[:, :, 0] = 0
+            arr[:, :, 1] = 0
+            arr[:, :, 2] = 0
+            Image.fromarray(arr).save(res_dir / f'{name}{suffix}.png')

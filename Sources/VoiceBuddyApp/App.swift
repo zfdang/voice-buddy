@@ -1187,8 +1187,10 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         let size = NSSize(width: 20, height: 20)
         let img = NSImage(size: size)
 
-        let url1x = Bundle.main.url(forResource: "MenuBarIconColor", withExtension: "png")
-        let url2x = Bundle.main.url(forResource: "MenuBarIconColor@2x", withExtension: "png")
+        let url1x = Bundle.main.url(forResource: "MenuBarIconActiveTemplate", withExtension: "png")
+            ?? Bundle.main.url(forResource: "MenuBarIconColor", withExtension: "png")
+        let url2x = Bundle.main.url(forResource: "MenuBarIconActiveTemplate@2x", withExtension: "png")
+            ?? Bundle.main.url(forResource: "MenuBarIconColor@2x", withExtension: "png")
 
         if let url1x, let data1x = try? Data(contentsOf: url1x), let rep1x = NSBitmapImageRep(data: data1x) {
             rep1x.size = size
@@ -1200,27 +1202,36 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
 
         if !img.representations.isEmpty {
-            img.isTemplate = false
+            img.isTemplate = true
             return img
         }
 
         if let url = url1x ?? url2x, let raw = NSImage(contentsOf: url) {
             raw.size = size
-            raw.isTemplate = false
+            raw.isTemplate = true
             return raw
         }
 
-        let fallback = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Recording") ?? NSImage()
+        let fallback = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "Recording")
+            ?? NSImage(systemSymbolName: "waveform", accessibilityDescription: "Recording")
+            ?? NSImage()
         fallback.size = size
+        fallback.isTemplate = true
         return fallback
     }()
     static let appMascotColorIcon: NSImage = {
         let size = NSSize(width: 44, height: 44)
-        let img = NSImage(size: size)
+        if let url = Bundle.main.url(forResource: "mascot", withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            img.size = size
+            img.isTemplate = false
+            return img
+        }
 
         let url1x = Bundle.main.url(forResource: "MenuBarIconColor", withExtension: "png")
         let url2x = Bundle.main.url(forResource: "MenuBarIconColor@2x", withExtension: "png")
 
+        let img = NSImage(size: size)
         if let url2x, let data2x = try? Data(contentsOf: url2x), let rep2x = NSBitmapImageRep(data: data2x) {
             rep2x.size = size
             img.addRepresentation(rep2x)
@@ -1232,12 +1243,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         if !img.representations.isEmpty {
             img.isTemplate = false
             return img
-        }
-
-        if let url = url2x ?? url1x, let raw = NSImage(contentsOf: url) {
-            raw.size = size
-            raw.isTemplate = false
-            return raw
         }
 
         return menuBarActiveIcon
@@ -1364,15 +1369,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     func updateIcon(isRecording: Bool) {
-        if isRecording {
-            let active = AppState.menuBarActiveIcon
-            active.isTemplate = false
-            statusItem?.button?.image = active
-        } else {
-            let mascot = AppState.menuBarMascotIcon
-            mascot.isTemplate = true
-            statusItem?.button?.image = mascot
-        }
+        let icon = isRecording ? AppState.menuBarActiveIcon : AppState.menuBarMascotIcon
+        icon.isTemplate = true
+        statusItem?.button?.image = icon
+        statusItem?.button?.image?.isTemplate = true
         statusItem?.button?.imagePosition = .imageOnly
     }
 
