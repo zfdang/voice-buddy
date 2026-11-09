@@ -86,7 +86,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private var escMonitor: Any?
     private let defaultsKey = "VoiceBuddy.preferences"
 
-    private var waitingForSystemSettingsReturn = false
+    var waitingForSystemSettingsReturn = false
 
     init() {
         preferences = UserDefaults.standard.data(forKey: defaultsKey).flatMap { try? JSONDecoder().decode(Preferences.self, from: $0) } ?? Preferences()
@@ -95,9 +95,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         setupKeyboardShortcuts()
         configureShortcutMode()
         autoPreloadModels()
-        setupWorkspaceObservers()
         menuBarController = MenuBarController(appState: self)
-        ApplicationShortcutMonitor.shared.install()
     }
     private func setupKeyboardShortcuts() {
         KeyboardShortcuts.onKeyDown(for: .toggleDictation) { [weak self] in
@@ -232,48 +230,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         if let url = URL(string: urlString) { NSWorkspace.shared.open(url) }
     }
 
-    private func setupWorkspaceObservers() {
-        let center = NSWorkspace.shared.notificationCenter
-        center.addObserver(
-            forName: NSWorkspace.didTerminateApplicationNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            Task { @MainActor in
-                self?.handleSystemSettingsEvent(notification: notification)
-            }
-        }
-        center.addObserver(
-            forName: NSWorkspace.didDeactivateApplicationNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            Task { @MainActor in
-                self?.handleSystemSettingsEvent(notification: notification)
-            }
-        }
-    }
-
-    private func handleSystemSettingsEvent(notification: Notification) {
-        guard waitingForSystemSettingsReturn else { return }
-        if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-           let bundleId = app.bundleIdentifier,
-           bundleId.contains("systempreferences") || bundleId.contains("SystemSettings") {
-            waitingForSystemSettingsReturn = false
-            Task { @MainActor [weak self] in
-                self?.refreshPermissions()
-                self?.bringMainWindowToFront()
-            }
-        }
-    }
-
     func bringMainWindowToFront() {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
-            window.isReleasedWhenClosed = false
-            window.makeKeyAndOrderFront(nil)
-        }
+        VoiceBuddyAppDelegate.shared?.showSettingsWindow()
     }
 
     func setupMenuBar() {
@@ -1248,80 +1206,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         return menuBarActiveIcon
     }()
     func showWindow(tab: AppTab? = nil, targetScreen: NSScreen? = nil) {
-        if let tab { selectedTab = tab }
-        refreshPermissions()
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) ?? NSApp.windows.first(where: { !$0.isFloatingPanel && !($0 is NSPanel) }) {
-            window.delegate = SettingsWindowDelegate.shared
-            window.isReleasedWhenClosed = false
-            let screen = targetScreen
-                ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
-                ?? NSScreen.main
-            if let screen {
-                let visibleFrame = screen.visibleFrame
-                var frame = window.frame
-                frame.origin = NSPoint(
-                    x: visibleFrame.midX - frame.width / 2,
-                    y: visibleFrame.midY - frame.height / 2
-                )
-                if frame.maxX > visibleFrame.maxX { frame.origin.x = visibleFrame.maxX - frame.width }
-                if frame.minX < visibleFrame.minX { frame.origin.x = visibleFrame.minX }
-                if frame.maxY > visibleFrame.maxY { frame.origin.y = visibleFrame.maxY - frame.height }
-                if frame.minY < visibleFrame.minY { frame.origin.y = visibleFrame.minY }
-                window.setFrame(frame, display: true)
-            }
-            window.makeKeyAndOrderFront(nil)
-        }
+        VoiceBuddyAppDelegate.shared?.showSettingsWindow(tab: tab, targetScreen: targetScreen)
     }
 
     @MainActor
     static func closeKeyWindow() {
-        if let keyWindow = NSApp.keyWindow, !keyWindow.isFloatingPanel && !(keyWindow is NSPanel) {
-            keyWindow.orderOut(nil)
-            NSApp.setActivationPolicy(.accessory)
-            return
-        }
-        for window in NSApp.windows where window.isVisible && !window.isFloatingPanel && !(window is NSPanel) {
-            window.orderOut(nil)
-        }
-        NSApp.setActivationPolicy(.accessory)
-    }
-}
-
-final class SettingsWindowDelegate: NSObject, NSWindowDelegate {
-    static let shared = SettingsWindowDelegate()
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        sender.orderOut(nil)
-        NSApp.setActivationPolicy(.accessory)
-        return false
-    }
-}
-
-final class ApplicationShortcutMonitor {
-    static let shared = ApplicationShortcutMonitor()
-    private var monitor: Any?
-
-    func install() {
-        guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let chars = event.charactersIgnoringModifiers?.lowercased()
-            let hasCmd = event.modifierFlags.contains(.command)
-            let hasCtrl = event.modifierFlags.contains(.control)
-
-            let isCmdQ = hasCmd && (chars == "q" || event.keyCode == 12)
-            let isCmdW = hasCmd && (chars == "w" || event.keyCode == 13)
-            let isCtrlCmdW = hasCmd && hasCtrl && (chars == "w" || event.keyCode == 13)
-
-            if isCmdQ || isCmdW || isCtrlCmdW {
-                DiagnosticLog.shared.record("shortcut.intercepted isCmdQ=\(isCmdQ) isCmdW=\(isCmdW) isCtrlCmdW=\(isCtrlCmdW)")
-                Task { @MainActor in
-                    AppState.closeKeyWindow()
-                }
-                return nil
-            }
-            return event
-        }
+        VoiceBuddyAppDelegate.shared?.closeKeyWindow()
     }
 }
 
@@ -1375,7 +1265,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @objc private func showSettingsFromStatusItem() {
         let mouseLocation = NSEvent.mouseLocation
         let targetScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
-        appState?.showWindow(tab: .general, targetScreen: targetScreen)
+        VoiceBuddyAppDelegate.shared?.showSettingsWindow(tab: .general, targetScreen: targetScreen)
     }
 
     func updateIcon(isRecording: Bool) {
@@ -1445,13 +1335,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @objc private func menuOpenResult() {
         let mouseLocation = NSEvent.mouseLocation
         let targetScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
-        appState?.showWindow(tab: .recovery, targetScreen: targetScreen)
+        VoiceBuddyAppDelegate.shared?.showSettingsWindow(tab: .recovery, targetScreen: targetScreen)
     }
 
     @objc private func menuOpenAbout() {
         let mouseLocation = NSEvent.mouseLocation
         let targetScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
-        appState?.showWindow(tab: .about, targetScreen: targetScreen)
+        VoiceBuddyAppDelegate.shared?.showSettingsWindow(tab: .about, targetScreen: targetScreen)
     }
 
     @objc private func menuCheckUpdates() {
@@ -1459,69 +1349,300 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     @objc private func menuQuit() {
-        DiagnosticLog.shared.record("app.explicit_quit_requested")
-        AppDelegate.allowTermination = true
-        NSApp.terminate(nil)
+        VoiceBuddyAppDelegate.shared?.quit()
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    static var allowTermination = false
+@MainActor
+final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    static weak var shared: VoiceBuddyAppDelegate?
+
+    let appState: AppState
+    private var settingsWindowController: NSWindowController?
+    private var isSettingsWindowOpen = false
+    private var applicationShortcutMonitor: Any?
+    private var workspaceObservers: [NSObjectProtocol] = []
+    private var allowTermination = false
+
+    override init() {
+        let state = AppState()
+        self.appState = state
+        super.init()
+        VoiceBuddyAppDelegate.shared = self
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         DiagnosticLog.shared.record("app.delegate_did_finish_launching")
-        AppDelegate.sanitizeMainMenu()
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.willPowerOffNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            AppDelegate.allowTermination = true
-        }
+        configureApplicationMenu()
+        installApplicationKeyboardShortcuts()
+        appState.setupMenuBar()
+        setupWorkspaceObservers()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        DiagnosticLog.shared.record("app.should_terminate allow=\(AppDelegate.allowTermination)")
-        if AppDelegate.allowTermination {
+        DiagnosticLog.shared.record("app.should_terminate allow=\(allowTermination)")
+        if allowTermination {
             return .terminateNow
         }
-        Task { @MainActor in
-            AppState.closeKeyWindow()
-        }
+        closeKeyWindow()
         return .terminateCancel
     }
 
-    @MainActor
-    static func sanitizeMainMenu() {
-        guard let mainMenu = NSApp.mainMenu else { return }
-        for item in mainMenu.items {
-            if let submenu = item.submenu {
-                for subitem in submenu.items {
-                    if subitem.action == #selector(NSApplication.terminate(_:)) {
-                        subitem.keyEquivalent = ""
-                    }
-                }
+    private func configureApplicationMenu() {
+        let mainMenu = NSMenu()
+
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu(title: "Voice Buddy")
+        let aboutItem = NSMenuItem(
+            title: appState.label("About Voice Buddy…", "关于 Voice Buddy…"),
+            action: #selector(menuOpenAbout),
+            keyEquivalent: ""
+        )
+        aboutItem.target = self
+        appMenu.addItem(aboutItem)
+        appMenu.addItem(.separator())
+
+        let hideItem = NSMenuItem(
+            title: appState.label("Hide Voice Buddy", "隐藏 Voice Buddy"),
+            action: #selector(NSApplication.hide(_:)),
+            keyEquivalent: "h"
+        )
+        appMenu.addItem(hideItem)
+
+        let hideOthersItem = NSMenuItem(
+            title: appState.label("Hide Others", "隐藏其他"),
+            action: #selector(NSApplication.hideOtherApplications(_:)),
+            keyEquivalent: "h"
+        )
+        hideOthersItem.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(hideOthersItem)
+
+        let showAllItem = NSMenuItem(
+            title: appState.label("Show All", "全部显示"),
+            action: #selector(NSApplication.unhideAllApplications(_:)),
+            keyEquivalent: ""
+        )
+        appMenu.addItem(showAllItem)
+        appMenu.addItem(.separator())
+
+        let quitItem = NSMenuItem(
+            title: appState.label("Quit Voice Buddy", "退出 Voice Buddy"),
+            action: #selector(quit),
+            keyEquivalent: ""
+        )
+        quitItem.target = self
+        appMenu.addItem(quitItem)
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        let fileMenuItem = NSMenuItem()
+        let fileMenu = NSMenu(title: appState.label("File", "文件"))
+        let closeItem = NSMenuItem(
+            title: appState.label("Close Window", "关闭窗口"),
+            action: #selector(closeKeyWindow),
+            keyEquivalent: "w"
+        )
+        closeItem.keyEquivalentModifierMask = .command
+        closeItem.target = self
+        fileMenu.addItem(closeItem)
+        fileMenuItem.submenu = fileMenu
+        mainMenu.addItem(fileMenuItem)
+
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: appState.label("Edit", "编辑"))
+        editMenu.addItem(NSMenuItem(title: appState.label("Undo", "撤销"), action: #selector(UndoManager.undo), keyEquivalent: "z"))
+        editMenu.addItem(NSMenuItem(title: appState.label("Redo", "重做"), action: #selector(UndoManager.redo), keyEquivalent: "Z"))
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: appState.label("Cut", "剪切"), action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: appState.label("Copy", "复制"), action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: appState.label("Paste", "粘贴"), action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: appState.label("Select All", "全选"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        let windowMenuItem = NSMenuItem()
+        let windowMenu = NSMenu(title: appState.label("Window", "窗口"))
+        let minItem = NSMenuItem(
+            title: appState.label("Minimize", "最小化"),
+            action: #selector(NSWindow.miniaturize(_:)),
+            keyEquivalent: "m"
+        )
+        windowMenu.addItem(minItem)
+        windowMenuItem.submenu = windowMenu
+        mainMenu.addItem(windowMenuItem)
+
+        NSApp.mainMenu = mainMenu
+    }
+
+    private func installApplicationKeyboardShortcuts() {
+        applicationShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+            let chars = event.charactersIgnoringModifiers?.lowercased()
+
+            let isCmd = (modifiers == .command)
+            let isCtrlCmd = (modifiers == [.command, .control])
+
+            if (isCmd && (chars == "q" || chars == "w" || event.keyCode == 12 || event.keyCode == 13)) ||
+               (isCtrlCmd && (chars == "w" || event.keyCode == 13)) {
+                DiagnosticLog.shared.record("shortcut.intercepted action=closeWindow chars=\(chars ?? "") keyCode=\(event.keyCode)")
+                self?.closeKeyWindow()
+                return nil
             }
+            return event
+        }
+    }
+
+    func showSettingsWindow(tab: AppTab? = nil, targetScreen: NSScreen? = nil) {
+        if let tab { appState.selectedTab = tab }
+        appState.refreshPermissions()
+
+        if settingsWindowController == nil {
+            settingsWindowController = makeSettingsWindowController()
+        }
+        guard let windowController = settingsWindowController,
+              let window = windowController.window else { return }
+
+        let screen = targetScreen
+            ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
+            ?? NSScreen.main
+
+        if let screen, !isSettingsWindowOpen || window.screen != screen {
+            let visibleFrame = screen.visibleFrame
+            var frame = window.frame
+            frame.origin = NSPoint(
+                x: visibleFrame.midX - frame.width / 2,
+                y: visibleFrame.midY - frame.height / 2
+            )
+            if frame.maxX > visibleFrame.maxX { frame.origin.x = visibleFrame.maxX - frame.width }
+            if frame.minX < visibleFrame.minX { frame.origin.x = visibleFrame.minX }
+            if frame.maxY > visibleFrame.maxY { frame.origin.y = visibleFrame.maxY - frame.height }
+            if frame.minY < visibleFrame.minY { frame.origin.y = visibleFrame.minY }
+            window.setFrame(frame, display: false)
+        }
+
+        isSettingsWindowOpen = true
+        NSApp.setActivationPolicy(.regular)
+        windowController.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func makeSettingsWindowController() -> NSWindowController {
+        let hostingController = NSHostingController(
+            rootView: MainView().environmentObject(appState)
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 840, height: 600),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Voice Buddy"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
+        window.isMovableByWindowBackground = false
+        window.hidesOnDeactivate = false
+        window.delegate = self
+        window.contentViewController = hostingController
+        window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 720, height: 560)
+        window.setFrameAutosaveName("VoiceBuddySettings")
+        if !window.setFrameUsingName("VoiceBuddySettings") {
+            window.center()
+        }
+        return NSWindowController(window: window)
+    }
+
+    @objc func closeKeyWindow() {
+        if let keyWindow = NSApp.keyWindow {
+            keyWindow.performClose(nil)
+        } else if let window = settingsWindowController?.window, window.isVisible {
+            window.performClose(nil)
+        }
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.orderOut(nil)
+        isSettingsWindowOpen = false
+        NSApp.setActivationPolicy(.accessory)
+        NSApp.deactivate()
+        return false
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              window === settingsWindowController?.window else { return }
+        isSettingsWindowOpen = false
+        NSApp.setActivationPolicy(.accessory)
+        NSApp.deactivate()
+    }
+
+    @objc func menuOpenAbout() {
+        let mouseLocation = NSEvent.mouseLocation
+        let targetScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
+        showSettingsWindow(tab: .about, targetScreen: targetScreen)
+    }
+
+    @objc func quit() {
+        DiagnosticLog.shared.record("app.explicit_quit_requested")
+        allowTermination = true
+        NSApp.terminate(nil)
+    }
+
+    private func setupWorkspaceObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        let obs1 = center.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleSystemSettingsEvent(notification: notification)
+            }
+        }
+        let obs2 = center.addObserver(
+            forName: NSWorkspace.didDeactivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleSystemSettingsEvent(notification: notification)
+            }
+        }
+        let obs3 = center.addObserver(
+            forName: NSWorkspace.willPowerOffNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.allowTermination = true
+            }
+        }
+        workspaceObservers = [obs1, obs2, obs3]
+    }
+
+    private func handleSystemSettingsEvent(notification: Notification) {
+        guard appState.waitingForSystemSettingsReturn else { return }
+        if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+           let bundleId = app.bundleIdentifier,
+           bundleId.contains("systempreferences") || bundleId.contains("SystemSettings") {
+            appState.waitingForSystemSettingsReturn = false
+            appState.refreshPermissions()
+            showSettingsWindow()
         }
     }
 }
 
-@main struct VoiceBuddyApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var state = AppState()
-    var body: some Scene {
-        Window("Voice Buddy", id: "main") {
-            MainView()
-                .environmentObject(state)
-                .frame(minWidth: 720, minHeight: 560)
-        }
-        .commands {
-            CommandGroup(replacing: .appTermination) {
-                Button(state.label("Close Window", "关闭设置窗口")) {
-                    AppState.closeKeyWindow()
-                }
-                .keyboardShortcut("q", modifiers: .command)
-            }
-        }
+@main
+enum VoiceBuddyApp {
+    @MainActor
+    static func main() {
+        let application = NSApplication.shared
+        let delegate = VoiceBuddyAppDelegate()
+        application.delegate = delegate
+        application.setActivationPolicy(.accessory)
+        application.run()
     }
 }

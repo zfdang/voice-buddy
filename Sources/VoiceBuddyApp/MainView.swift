@@ -49,12 +49,7 @@ struct MainView: View {
             }
         }
         .onAppear {
-            state.setupMenuBar()
-            ApplicationShortcutMonitor.shared.install()
-            if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
-                window.delegate = SettingsWindowDelegate.shared
-                window.isReleasedWhenClosed = false
-            }
+            state.refreshPermissions()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             state.refreshPermissions()
