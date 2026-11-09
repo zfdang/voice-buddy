@@ -19,6 +19,7 @@ let package = Package(
             dependencies: [
                 "VoiceBuddyCore",
                 .product(name: "Qwen3ASR", package: "speech-swift"),
+                .product(name: "WhisperASR", package: "speech-swift"),
                 .product(name: "SpeechVAD", package: "speech-swift"),
                 .product(name: "Qwen3Chat", package: "speech-swift"),
                 .product(name: "LaunchAtLogin", package: "LaunchAtLogin"),
