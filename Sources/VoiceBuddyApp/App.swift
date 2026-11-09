@@ -25,12 +25,20 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private let tracker = TranscriptStreamTracker()
     @Published var result = ""
     @Published var original = ""
-    @Published var recording = false
+    @Published var recording = false {
+        didSet {
+            menuBarController?.updateIcon(isRecording: recording)
+        }
+    }
     @Published var ready = false
     @Published var editorReady = false
     @Published var isSpeechDownloaded = false
     @Published var isEditorDownloaded = false
     @Published var cachedSpeechModelIDs: Set<String> = []
+    @Published var downloadingSpeechModelIDs: Set<String> = []
+    @Published var speechDownloadProgress: [String: Double] = [:]
+    @Published var speechDownloadMessages: [String: String] = [:]
+    private var speechDownloadTasks: [String: Task<Void, Never>] = [:]
     @Published var activeDownloadingSpeechModelID: String? = nil
     @Published var cachedTextModelIDs: Set<String> = []
     @Published var activeDownloadingTextModelID: String? = nil
@@ -40,6 +48,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     @Published var editorPreparing = false
     @Published var editorProgress: Double = 0
     @Published var editorProgressMessage = ""
+    private var menuBarController: MenuBarController?
     @Published var busy = false
     @Published var modelProgress: Double = 0
     @Published var modelPreparing = false
@@ -77,6 +86,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private var escMonitor: Any?
     private let defaultsKey = "VoiceBuddy.preferences"
 
+    var waitingForSystemSettingsReturn = false
+
     init() {
         preferences = UserDefaults.standard.data(forKey: defaultsKey).flatMap { try? JSONDecoder().decode(Preferences.self, from: $0) } ?? Preferences()
         DiagnosticLog.shared.record("app.start version=\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown")")
@@ -84,6 +95,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         setupKeyboardShortcuts()
         configureShortcutMode()
         autoPreloadModels()
+        menuBarController = MenuBarController(appState: self)
     }
     private func setupKeyboardShortcuts() {
         KeyboardShortcuts.onKeyDown(for: .toggleDictation) { [weak self] in
@@ -211,10 +223,19 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         refreshPermissions()
     }
     func openSystemSettings(for permission: String) {
+        waitingForSystemSettingsReturn = true
         let urlString = permission == "microphone"
             ? "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
             : "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
         if let url = URL(string: urlString) { NSWorkspace.shared.open(url) }
+    }
+
+    func bringMainWindowToFront() {
+        VoiceBuddyAppDelegate.shared?.showSettingsWindow()
+    }
+
+    func setupMenuBar() {
+        menuBarController?.setupStatusItem()
     }
     func label(_ en: String, _ zh: String) -> String {
         let chinese = preferences.interfaceLanguage == "zh" || (preferences.interfaceLanguage == "system" && Locale.preferredLanguages.first?.hasPrefix("zh") == true)
@@ -235,15 +256,100 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     }
 
     func downloadSpeechModel(id: String) {
-        prepareSpeech(id: id) { [weak self] success in
-            guard let self, success else { return }
-            if !self.cachedSpeechModelIDs.contains(self.preferences.speechModel) || self.preferences.speechModel == id {
-                self.preferences.speechModel = id
-                self.ready = true
-            } else {
-                // Restore active model in memory if user was using another model
-                self.loadActiveSpeechModel()
+        guard !downloadingSpeechModelIDs.contains(id) else { return }
+        guard !recording else { return }
+        if id == "apple-speech" {
+            checkModelCacheStatus()
+            return
+        }
+
+        downloadingSpeechModelIDs.insert(id)
+        speechDownloadProgress[id] = 0
+        speechDownloadMessages[id] = label("Starting download…", "正在开始下载…")
+        activeDownloadingSpeechModelID = id
+        speechPreparing = true
+
+        let isSelectedModel = (id == preferences.speechModel)
+        if isSelectedModel {
+            modelPreparing = true
+            modelProgress = 0
+            status = label("Preparing speech model…", "正在准备语音识别模型…")
+        }
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.models.downloadSpeech(id: id) { [weak self] progress, message in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.downloadingSpeechModelIDs.contains(id) else { return }
+                        self.speechDownloadProgress[id] = progress
+                        self.speechDownloadMessages[id] = message
+                        if self.activeDownloadingSpeechModelID == id {
+                            self.speechProgress = progress
+                            self.speechProgressMessage = message
+                        }
+                        if self.preferences.speechModel == id {
+                            self.modelProgress = progress
+                            self.status = message
+                        }
+                    }
+                }
+                await MainActor.run {
+                    self.speechDownloadTasks.removeValue(forKey: id)
+                    self.downloadingSpeechModelIDs.remove(id)
+                    self.speechDownloadProgress.removeValue(forKey: id)
+                    self.speechDownloadMessages.removeValue(forKey: id)
+                    if self.activeDownloadingSpeechModelID == id {
+                        self.activeDownloadingSpeechModelID = self.downloadingSpeechModelIDs.first
+                        if self.downloadingSpeechModelIDs.isEmpty {
+                            self.speechPreparing = false
+                        }
+                    }
+                    self.checkModelCacheStatus()
+
+                    if self.preferences.speechModel == id || !self.cachedSpeechModelIDs.contains(self.preferences.speechModel) {
+                        self.preferences.speechModel = id
+                        self.prepareSpeech(id: id)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.speechDownloadTasks.removeValue(forKey: id)
+                    self.downloadingSpeechModelIDs.remove(id)
+                    self.speechDownloadProgress.removeValue(forKey: id)
+                    self.speechDownloadMessages.removeValue(forKey: id)
+                    if self.activeDownloadingSpeechModelID == id {
+                        self.activeDownloadingSpeechModelID = self.downloadingSpeechModelIDs.first
+                        if self.downloadingSpeechModelIDs.isEmpty {
+                            self.speechPreparing = false
+                        }
+                    }
+                    if self.preferences.speechModel == id {
+                        self.modelPreparing = false
+                        self.status = self.label("Download failed", "下载失败")
+                    }
+                }
             }
+        }
+        speechDownloadTasks[id] = task
+    }
+
+    func cancelSpeechDownload(id: String) {
+        if let task = speechDownloadTasks.removeValue(forKey: id) {
+            task.cancel()
+        }
+        downloadingSpeechModelIDs.remove(id)
+        speechDownloadProgress.removeValue(forKey: id)
+        speechDownloadMessages.removeValue(forKey: id)
+        if activeDownloadingSpeechModelID == id {
+            activeDownloadingSpeechModelID = downloadingSpeechModelIDs.first
+            if downloadingSpeechModelIDs.isEmpty {
+                speechPreparing = false
+            }
+        }
+        if preferences.speechModel == id {
+            modelPreparing = false
+            status = label("Ready", "就绪")
         }
     }
 
@@ -658,6 +764,11 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         transcriptionTask?.cancel(); transcriptionTask = nil
         speechTask?.cancel(); speechTask = nil
         editorTask?.cancel(); editorTask = nil
+        for (_, task) in speechDownloadTasks { task.cancel() }
+        speechDownloadTasks.removeAll()
+        downloadingSpeechModelIDs.removeAll()
+        speechDownloadProgress.removeAll()
+        speechDownloadMessages.removeAll()
         if recording { _ = recorder.stop() }
         recording = false
         busy = false
@@ -997,11 +1108,13 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         status = success ? label("Copied", "已复制") : label("Copy failed", "复制失败")
     }
     static let menuBarMascotIcon: NSImage = {
-        let size = NSSize(width: 20, height: 20)
+        let size = NSSize(width: 22, height: 22)
         let img = NSImage(size: size)
 
-        let url1x = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png")
-        let url2x = Bundle.main.url(forResource: "MenuBarIcon@2x", withExtension: "png")
+        let url1x = Bundle.main.url(forResource: "MenuBarIconTemplate", withExtension: "png")
+            ?? Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png")
+        let url2x = Bundle.main.url(forResource: "MenuBarIconTemplate@2x", withExtension: "png")
+            ?? Bundle.main.url(forResource: "MenuBarIcon@2x", withExtension: "png")
 
         if let url1x, let data1x = try? Data(contentsOf: url1x), let rep1x = NSBitmapImageRep(data: data1x) {
             rep1x.size = size
@@ -1023,17 +1136,19 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             return raw
         }
 
-        let fallback = NSImage(systemSymbolName: "figure.wave", accessibilityDescription: "Voice Buddy") ?? NSImage()
+        let fallback = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Voice Buddy") ?? NSImage()
         fallback.size = size
         fallback.isTemplate = true
         return fallback
     }()
     static let menuBarActiveIcon: NSImage = {
-        let size = NSSize(width: 20, height: 20)
+        let size = NSSize(width: 22, height: 22)
         let img = NSImage(size: size)
 
-        let url1x = Bundle.main.url(forResource: "MenuBarIconColor", withExtension: "png")
-        let url2x = Bundle.main.url(forResource: "MenuBarIconColor@2x", withExtension: "png")
+        let url1x = Bundle.main.url(forResource: "MenuBarIconActiveTemplate", withExtension: "png")
+            ?? Bundle.main.url(forResource: "MenuBarIconColor", withExtension: "png")
+        let url2x = Bundle.main.url(forResource: "MenuBarIconActiveTemplate@2x", withExtension: "png")
+            ?? Bundle.main.url(forResource: "MenuBarIconColor@2x", withExtension: "png")
 
         if let url1x, let data1x = try? Data(contentsOf: url1x), let rep1x = NSBitmapImageRep(data: data1x) {
             rep1x.size = size
@@ -1045,27 +1160,36 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
 
         if !img.representations.isEmpty {
-            img.isTemplate = false
+            img.isTemplate = true
             return img
         }
 
         if let url = url1x ?? url2x, let raw = NSImage(contentsOf: url) {
             raw.size = size
-            raw.isTemplate = false
+            raw.isTemplate = true
             return raw
         }
 
-        let fallback = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Recording") ?? NSImage()
+        let fallback = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "Recording")
+            ?? NSImage(systemSymbolName: "waveform", accessibilityDescription: "Recording")
+            ?? NSImage()
         fallback.size = size
+        fallback.isTemplate = true
         return fallback
     }()
     static let appMascotColorIcon: NSImage = {
         let size = NSSize(width: 44, height: 44)
-        let img = NSImage(size: size)
+        if let url = Bundle.main.url(forResource: "mascot", withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            img.size = size
+            img.isTemplate = false
+            return img
+        }
 
         let url1x = Bundle.main.url(forResource: "MenuBarIconColor", withExtension: "png")
         let url2x = Bundle.main.url(forResource: "MenuBarIconColor@2x", withExtension: "png")
 
+        let img = NSImage(size: size)
         if let url2x, let data2x = try? Data(contentsOf: url2x), let rep2x = NSBitmapImageRep(data: data2x) {
             rep2x.size = size
             img.addRepresentation(rep2x)
@@ -1079,63 +1203,446 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             return img
         }
 
-        if let url = url2x ?? url1x, let raw = NSImage(contentsOf: url) {
-            raw.size = size
-            raw.isTemplate = false
-            return raw
-        }
-
         return menuBarActiveIcon
     }()
-    func showWindow(tab: AppTab? = nil) {
-        if let tab { selectedTab = tab }
-        refreshPermissions()
-        NSApp.activate(ignoringOtherApps: true)
-        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
-            window.isReleasedWhenClosed = false
-            window.makeKeyAndOrderFront(nil)
+    func showWindow(tab: AppTab? = nil, targetScreen: NSScreen? = nil) {
+        VoiceBuddyAppDelegate.shared?.showSettingsWindow(tab: tab, targetScreen: targetScreen)
+    }
+
+    @MainActor
+    static func closeKeyWindow() {
+        VoiceBuddyAppDelegate.shared?.closeKeyWindow()
+    }
+}
+
+@MainActor
+final class MenuBarController: NSObject, NSMenuDelegate {
+    private var statusItem: NSStatusItem?
+    private var statusMenu: NSMenu?
+    private weak var appState: AppState?
+
+    init(appState: AppState) {
+        self.appState = appState
+        super.init()
+        setupStatusItem()
+    }
+
+    func setupStatusItem() {
+        guard statusItem == nil else { return }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = item.button {
+            let icon = AppState.menuBarMascotIcon
+            icon.isTemplate = true
+            button.image = icon
+            button.imagePosition = .imageOnly
+            button.toolTip = "Voice Buddy"
+            button.target = self
+            button.action = #selector(handleStatusItemClick(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
+        statusItem = item
+        rebuildMenu()
+    }
+
+    @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
+        let event = NSApp.currentEvent
+        let isRightClick = (event?.type == .rightMouseUp) || (event?.modifierFlags.contains(.control) == true)
+        if isRightClick {
+            showStatusMenu()
         } else {
-            for window in NSApp.windows where !window.isFloatingPanel && !(window is NSPanel) {
-                window.isReleasedWhenClosed = false
-                window.makeKeyAndOrderFront(nil)
-                break
+            showSettingsFromStatusItem()
+        }
+    }
+
+    private func showStatusMenu() {
+        guard let statusItem, let statusMenu else { return }
+        rebuildMenu()
+        statusItem.menu = statusMenu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    @objc private func showSettingsFromStatusItem() {
+        let mouseLocation = NSEvent.mouseLocation
+        let targetScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
+        VoiceBuddyAppDelegate.shared?.showSettingsWindow(tab: .general, targetScreen: targetScreen)
+    }
+
+    func updateIcon(isRecording: Bool) {
+        let icon = isRecording ? AppState.menuBarActiveIcon : AppState.menuBarMascotIcon
+        icon.isTemplate = true
+        statusItem?.button?.image = icon
+        statusItem?.button?.image?.isTemplate = true
+        statusItem?.button?.imagePosition = .imageOnly
+    }
+
+    func rebuildMenu() {
+        guard let appState else { return }
+        let menu = NSMenu()
+        menu.delegate = self
+
+        let settingsItem = NSMenuItem(
+            title: appState.label("Settings…", "设置…"),
+            action: #selector(menuOpenSettings),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        let resultItem = NSMenuItem(
+            title: appState.label("Recognition Result…", "识别结果…"),
+            action: #selector(menuOpenResult),
+            keyEquivalent: ""
+        )
+        resultItem.target = self
+        menu.addItem(resultItem)
+
+        menu.addItem(.separator())
+
+        let aboutItem = NSMenuItem(
+            title: appState.label("About Voice Buddy…", "关于 Voice Buddy…"),
+            action: #selector(menuOpenAbout),
+            keyEquivalent: ""
+        )
+        aboutItem.target = self
+        menu.addItem(aboutItem)
+
+        let updateItem = NSMenuItem(
+            title: appState.label("Check for Updates…", "检查更新…"),
+            action: #selector(menuCheckUpdates),
+            keyEquivalent: ""
+        )
+        updateItem.target = self
+        menu.addItem(updateItem)
+
+        menu.addItem(.separator())
+
+        let quitItem = NSMenuItem(
+            title: appState.label("Quit Voice Buddy", "退出 Voice Buddy"),
+            action: #selector(menuQuit),
+            keyEquivalent: ""
+        )
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        self.statusMenu = menu
+    }
+
+    @objc private func menuOpenSettings() {
+        showSettingsFromStatusItem()
+    }
+
+    @objc private func menuOpenResult() {
+        let mouseLocation = NSEvent.mouseLocation
+        let targetScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
+        VoiceBuddyAppDelegate.shared?.showSettingsWindow(tab: .recovery, targetScreen: targetScreen)
+    }
+
+    @objc private func menuOpenAbout() {
+        let mouseLocation = NSEvent.mouseLocation
+        let targetScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
+        VoiceBuddyAppDelegate.shared?.showSettingsWindow(tab: .about, targetScreen: targetScreen)
+    }
+
+    @objc private func menuCheckUpdates() {
+        appState?.checkForUpdates()
+    }
+
+    @objc private func menuQuit() {
+        VoiceBuddyAppDelegate.shared?.quit()
+    }
+}
+
+@MainActor
+final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    static weak var shared: VoiceBuddyAppDelegate?
+
+    let appState: AppState
+    private var settingsWindowController: NSWindowController?
+    private var isSettingsWindowOpen = false
+    private var applicationShortcutMonitor: Any?
+    private var workspaceObservers: [NSObjectProtocol] = []
+    private var allowTermination = false
+
+    override init() {
+        let state = AppState()
+        self.appState = state
+        super.init()
+        VoiceBuddyAppDelegate.shared = self
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        DiagnosticLog.shared.record("app.delegate_did_finish_launching")
+        configureApplicationMenu()
+        installApplicationKeyboardShortcuts()
+        appState.setupMenuBar()
+        setupWorkspaceObservers()
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        DiagnosticLog.shared.record("app.should_terminate allow=\(allowTermination)")
+        if allowTermination {
+            return .terminateNow
+        }
+        closeKeyWindow()
+        return .terminateCancel
+    }
+
+    private func configureApplicationMenu() {
+        let mainMenu = NSMenu()
+
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu(title: "Voice Buddy")
+        let aboutItem = NSMenuItem(
+            title: appState.label("About Voice Buddy…", "关于 Voice Buddy…"),
+            action: #selector(menuOpenAbout),
+            keyEquivalent: ""
+        )
+        aboutItem.target = self
+        appMenu.addItem(aboutItem)
+        appMenu.addItem(.separator())
+
+        let hideItem = NSMenuItem(
+            title: appState.label("Hide Voice Buddy", "隐藏 Voice Buddy"),
+            action: #selector(NSApplication.hide(_:)),
+            keyEquivalent: "h"
+        )
+        appMenu.addItem(hideItem)
+
+        let hideOthersItem = NSMenuItem(
+            title: appState.label("Hide Others", "隐藏其他"),
+            action: #selector(NSApplication.hideOtherApplications(_:)),
+            keyEquivalent: "h"
+        )
+        hideOthersItem.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(hideOthersItem)
+
+        let showAllItem = NSMenuItem(
+            title: appState.label("Show All", "全部显示"),
+            action: #selector(NSApplication.unhideAllApplications(_:)),
+            keyEquivalent: ""
+        )
+        appMenu.addItem(showAllItem)
+        appMenu.addItem(.separator())
+
+        let quitItem = NSMenuItem(
+            title: appState.label("Quit Voice Buddy", "退出 Voice Buddy"),
+            action: #selector(quit),
+            keyEquivalent: ""
+        )
+        quitItem.target = self
+        appMenu.addItem(quitItem)
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        let fileMenuItem = NSMenuItem()
+        let fileMenu = NSMenu(title: appState.label("File", "文件"))
+        let closeItem = NSMenuItem(
+            title: appState.label("Close Window", "关闭窗口"),
+            action: #selector(closeKeyWindow),
+            keyEquivalent: "w"
+        )
+        closeItem.keyEquivalentModifierMask = .command
+        closeItem.target = self
+        fileMenu.addItem(closeItem)
+        fileMenuItem.submenu = fileMenu
+        mainMenu.addItem(fileMenuItem)
+
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: appState.label("Edit", "编辑"))
+        editMenu.addItem(NSMenuItem(title: appState.label("Undo", "撤销"), action: #selector(UndoManager.undo), keyEquivalent: "z"))
+        editMenu.addItem(NSMenuItem(title: appState.label("Redo", "重做"), action: #selector(UndoManager.redo), keyEquivalent: "Z"))
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: appState.label("Cut", "剪切"), action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: appState.label("Copy", "复制"), action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: appState.label("Paste", "粘贴"), action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: appState.label("Select All", "全选"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        let windowMenuItem = NSMenuItem()
+        let windowMenu = NSMenu(title: appState.label("Window", "窗口"))
+        let minItem = NSMenuItem(
+            title: appState.label("Minimize", "最小化"),
+            action: #selector(NSWindow.miniaturize(_:)),
+            keyEquivalent: "m"
+        )
+        windowMenu.addItem(minItem)
+        windowMenuItem.submenu = windowMenu
+        mainMenu.addItem(windowMenuItem)
+
+        NSApp.mainMenu = mainMenu
+    }
+
+    private func installApplicationKeyboardShortcuts() {
+        applicationShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+            let chars = event.charactersIgnoringModifiers?.lowercased()
+
+            let isCmd = (modifiers == .command)
+            let isCtrlCmd = (modifiers == [.command, .control])
+
+            if (isCmd && (chars == "q" || chars == "w" || event.keyCode == 12 || event.keyCode == 13)) ||
+               (isCtrlCmd && (chars == "w" || event.keyCode == 13)) {
+                DiagnosticLog.shared.record("shortcut.intercepted action=closeWindow chars=\(chars ?? "") keyCode=\(event.keyCode)")
+                self?.closeKeyWindow()
+                return nil
             }
+            return event
+        }
+    }
+
+    func showSettingsWindow(tab: AppTab? = nil, targetScreen: NSScreen? = nil) {
+        if let tab { appState.selectedTab = tab }
+        appState.refreshPermissions()
+
+        if settingsWindowController == nil {
+            settingsWindowController = makeSettingsWindowController()
+        }
+        guard let windowController = settingsWindowController,
+              let window = windowController.window else { return }
+
+        let screen = targetScreen
+            ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
+            ?? NSScreen.main
+
+        if let screen, !isSettingsWindowOpen || window.screen != screen {
+            let visibleFrame = screen.visibleFrame
+            var frame = window.frame
+            frame.origin = NSPoint(
+                x: visibleFrame.midX - frame.width / 2,
+                y: visibleFrame.midY - frame.height / 2
+            )
+            if frame.maxX > visibleFrame.maxX { frame.origin.x = visibleFrame.maxX - frame.width }
+            if frame.minX < visibleFrame.minX { frame.origin.x = visibleFrame.minX }
+            if frame.maxY > visibleFrame.maxY { frame.origin.y = visibleFrame.maxY - frame.height }
+            if frame.minY < visibleFrame.minY { frame.origin.y = visibleFrame.minY }
+            window.setFrame(frame, display: false)
+        }
+
+        isSettingsWindowOpen = true
+        NSApp.setActivationPolicy(.regular)
+        windowController.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func makeSettingsWindowController() -> NSWindowController {
+        let hostingController = NSHostingController(
+            rootView: MainView().environmentObject(appState)
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 840, height: 600),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Voice Buddy"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
+        window.isMovableByWindowBackground = false
+        window.hidesOnDeactivate = false
+        window.delegate = self
+        window.contentViewController = hostingController
+        window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 720, height: 560)
+        window.setFrameAutosaveName("VoiceBuddySettings")
+        if !window.setFrameUsingName("VoiceBuddySettings") {
+            window.center()
+        }
+        return NSWindowController(window: window)
+    }
+
+    @objc func closeKeyWindow() {
+        if let keyWindow = NSApp.keyWindow {
+            keyWindow.performClose(nil)
+        } else if let window = settingsWindowController?.window, window.isVisible {
+            window.performClose(nil)
+        }
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.orderOut(nil)
+        isSettingsWindowOpen = false
+        NSApp.setActivationPolicy(.accessory)
+        NSApp.deactivate()
+        return false
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              window === settingsWindowController?.window else { return }
+        isSettingsWindowOpen = false
+        NSApp.setActivationPolicy(.accessory)
+        NSApp.deactivate()
+    }
+
+    @objc func menuOpenAbout() {
+        let mouseLocation = NSEvent.mouseLocation
+        let targetScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
+        showSettingsWindow(tab: .about, targetScreen: targetScreen)
+    }
+
+    @objc func quit() {
+        DiagnosticLog.shared.record("app.explicit_quit_requested")
+        allowTermination = true
+        NSApp.terminate(nil)
+    }
+
+    private func setupWorkspaceObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        let obs1 = center.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleSystemSettingsEvent(notification: notification)
+            }
+        }
+        let obs2 = center.addObserver(
+            forName: NSWorkspace.didDeactivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleSystemSettingsEvent(notification: notification)
+            }
+        }
+        let obs3 = center.addObserver(
+            forName: NSWorkspace.willPowerOffNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.allowTermination = true
+            }
+        }
+        workspaceObservers = [obs1, obs2, obs3]
+    }
+
+    private func handleSystemSettingsEvent(notification: Notification) {
+        guard appState.waitingForSystemSettingsReturn else { return }
+        if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+           let bundleId = app.bundleIdentifier,
+           bundleId.contains("systempreferences") || bundleId.contains("SystemSettings") {
+            appState.waitingForSystemSettingsReturn = false
+            appState.refreshPermissions()
+            showSettingsWindow()
         }
     }
 }
 
-@main struct VoiceBuddyApp: App {
-    @StateObject private var state = AppState()
-    var body: some Scene {
-        Window("Voice Buddy", id: "main") {
-            MainView()
-                .environmentObject(state)
-                .frame(minWidth: 700, minHeight: 540)
-        }
-        MenuBarExtra {
-            Button(state.label("Settings…", "设置…")) {
-                state.showWindow(tab: .general)
-            }.keyboardShortcut(",")
-            Button(state.label("Recognition Result…", "识别结果…")) {
-                state.showWindow(tab: .recovery)
-            }
-            Divider()
-            Button(state.label("About Voice Buddy…", "关于 Voice Buddy…")) {
-                state.showWindow(tab: .about)
-            }
-            Button(state.label("Check for Updates…", "检查更新…")) {
-                state.checkForUpdates()
-            }
-            Divider()
-            Button(state.label("Quit Voice Buddy", "退出 Voice Buddy")) {
-                NSApp.terminate(nil)
-            }.keyboardShortcut("q")
-        } label: {
-            if state.recording {
-                Image(nsImage: AppState.menuBarActiveIcon)
-            } else {
-                Image(nsImage: AppState.menuBarMascotIcon)
-            }
-        }
+@main
+enum VoiceBuddyApp {
+    @MainActor
+    static func main() {
+        let application = NSApplication.shared
+        let delegate = VoiceBuddyAppDelegate()
+        application.delegate = delegate
+        application.setActivationPolicy(.accessory)
+        application.run()
     }
 }

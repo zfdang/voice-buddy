@@ -37,8 +37,8 @@ public struct SpeechModelSpec: Identifiable, Hashable, Sendable {
             memoryUsage: "约 1.0 GB 统一内存",
             bestForZh: "日常快速打字、中英夹杂沟通，低资源消耗平衡首选",
             bestForEn: "Daily chat, Chinglish conversation, low memory footprint",
-            description: "极速轻量 · 推荐日常快速听写与中英混说，显存占用极低",
-            descriptionEn: "Ultra-fast & lightweight · Recommended for daily dictation, minimal memory footprint"
+            description: "极速轻量 · 推荐日常快速听写与中英混说，显存占用极低，平衡首选",
+            descriptionEn: "Fast & lightweight · Best for daily dictation & Chinglish, minimal memory footprint"
         ),
         SpeechModelSpec(
             id: "qwen-asr-1.7b",
@@ -54,8 +54,8 @@ public struct SpeechModelSpec: Identifiable, Hashable, Sendable {
             memoryUsage: "约 1.8 GB 统一内存",
             bestForZh: "长篇正式讲座、编程代码术语、学术论文等严谨听写",
             bestForEn: "Formal speeches, code dictation, academic and technical terms",
-            description: "高精旗舰 · 复杂术语、长句及多语种识别更严谨细腻",
-            descriptionEn: "Flagship precision · Highly accurate for complex terms, long sentences, and multilingual speech"
+            description: "高精旗舰 · 适合长句、专业学术与编程术语，多语种更严谨细腻",
+            descriptionEn: "Flagship precision · Highly accurate for long sentences, technical terms, and multilingual speech"
         ),
         SpeechModelSpec(
             id: "whisper-large-v3-turbo",
@@ -71,8 +71,8 @@ public struct SpeechModelSpec: Identifiable, Hashable, Sendable {
             memoryUsage: "约 1.0 GB 统一内存",
             bestForZh: "国际跨国会议、多语种互译办公、纯英文与专业学术场景",
             bestForEn: "Global meetings, multilingual dictation, and professional English",
-            description: "多语旗舰 · 全球 90+ 语言高精听写，专业英文与跨国语种首选",
-            descriptionEn: "Multilingual flagship · High accuracy across 90+ languages, ideal for English and global dictation"
+            description: "多语旗舰 · 全球 90+ 语言高精听写，纯英文与跨国多语互译首选",
+            descriptionEn: "Multilingual flagship · High accuracy across 90+ languages, ideal for global & English dictation"
         ),
         SpeechModelSpec(
             id: "sensevoice-small",
@@ -88,8 +88,8 @@ public struct SpeechModelSpec: Identifiable, Hashable, Sendable {
             memoryUsage: "约 250 MB (超低显存)",
             bestForZh: "说话松开按键秒上屏！8GB 内存设备与粤语、日韩语首选",
             bestForEn: "Instant output on key release! Best for 8GB Macs, Cantonese, Japanese, and Korean",
-            description: "毫秒极速 · 阿里 FunASR 出品，中英粤日韩五语瞬时响应，显存占用极小",
-            descriptionEn: "Ultra-fast response · Alibaba FunASR non-autoregressive model for ZH/EN/YUE/JA/KO with tiny memory footprint"
+            description: "毫秒极速 · 阿里 FunASR 出品，松键秒上屏，中英粤日韩五语首选，超低显存",
+            descriptionEn: "Ultra-fast response · Alibaba FunASR, instant output on key release, ZH/EN/YUE/JA/KO, tiny footprint"
         ),
         SpeechModelSpec(
             id: "apple-speech",
@@ -105,8 +105,8 @@ public struct SpeechModelSpec: Identifiable, Hashable, Sendable {
             memoryUsage: "近乎 0 MB (系统共享)",
             bestForZh: "免等待下载模型！首次安装即用、离线无网兜底、0 磁盘占用",
             bestForEn: "Zero download waiting! Instant out-of-the-box dictation, zero disk footprint",
-            description: "开箱即用 · 0 下载免等待，占用 0 存储，macOS 原生系统语音引擎",
-            descriptionEn: "Instant ready · 0 MB download, 0 MB disk, native macOS speech engine"
+            description: "系统内置 · 开箱即用无需下载，0 磁盘占用，离线无网也能直接听写",
+            descriptionEn: "macOS built-in · Ready out-of-the-box, zero download & disk footprint, works completely offline"
         )
     ]
 }
@@ -291,6 +291,47 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
                 progressHandler: { value, message in progress(0.9 + value * 0.1, message) }
             )
         }
+    }
+
+    func downloadSpeech(id: String, progress: @escaping @Sendable (Double, String) -> Void) async throws {
+        guard SpeechModelSpec.allModels.contains(where: { $0.id == id }) else {
+            throw VoiceBuddyError.modelUnavailable("Invalid speech model identifier")
+        }
+        if id == "apple-speech" {
+            progress(1.0, "Ready")
+            return
+        }
+        let isCached = isSpeechModelCached(id: id)
+        if id.contains("sensevoice") {
+            _ = try await SenseVoiceASRModel.fromPretrained(
+                cacheDir: speechDirectory(id),
+                offlineMode: isCached,
+                progressHandler: { value, message in progress(value * 0.9, message) }
+            )
+        } else if id.contains("whisper") {
+            _ = try await WhisperASRModel.fromPretrained(
+                cacheDir: speechDirectory(id),
+                offlineMode: isCached,
+                progressHandler: { value, message in progress(value * 0.9, message) }
+            )
+        } else {
+            let hfModelId = id.contains("1.7") ? "mlx-community/Qwen3-ASR-1.7B-8bit" : "mlx-community/Qwen3-ASR-0.6B-8bit"
+            _ = try await Qwen3ASRModel.fromPretrained(
+                modelId: hfModelId,
+                cacheDir: speechDirectory(id),
+                offlineMode: isCached,
+                progressHandler: { value, message in progress(value * 0.9, message) }
+            )
+        }
+        let vadCached = hasSafetensors(in: directory("silero-vad"))
+        if !vadCached {
+            _ = try await SileroVADModel.fromPretrained(
+                cacheDir: directory("silero-vad"),
+                offlineMode: vadCached,
+                progressHandler: { value, message in progress(0.9 + value * 0.1, message) }
+            )
+        }
+        progress(1.0, "Completed")
     }
 
     func prepareEditor(id: String? = nil, progress: @escaping @Sendable (Double, String) -> Void) async throws {
