@@ -522,22 +522,57 @@ struct MainView: View {
                                         Text(spec.size)
                                             .font(.caption2.monospacedDigit())
                                             .foregroundStyle(.secondary)
+                                        HStack(spacing: 2) {
+                                            Image(systemName: "bolt.fill")
+                                                .font(.caption2)
+                                                .foregroundStyle(.yellow)
+                                            Text(spec.latency)
+                                                .font(.caption2.monospacedDigit())
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.yellow.opacity(0.1))
+                                        .clipShape(Capsule())
                                     }
                                     Text(t(spec.descriptionEn, spec.description))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+
+                                    HStack(spacing: 12) {
+                                        Label(t(spec.languagesEn, spec.languagesZh), systemImage: "globe")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                        Label(t(spec.bestForEn, spec.bestForZh), systemImage: "sparkles")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding(.top, 2)
                                 }
 
                                 Spacer()
 
-                                // Status indicator (Download status only)
-                                if isDownloadingThis {
+                                // Status indicator & Action button
+                                if spec.id == "apple-speech" {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "checkmark.seal.fill")
+                                            .foregroundStyle(.green)
+                                        Text(t("Built-in · Ready", "系统内置 · 免下载"))
+                                            .font(.caption.bold())
+                                            .foregroundStyle(.green)
+                                    }
+                                } else if isDownloadingThis {
                                     HStack(spacing: 4) {
                                         ProgressView().controlSize(.small)
                                         Text("\(Int(state.speechProgress * 100))%")
                                             .font(.caption.monospacedDigit())
                                             .foregroundStyle(.secondary)
                                     }
+                                    Button(t("Cancel", "取消")) {
+                                        state.cancel()
+                                    }
+                                    .controlSize(.small)
+                                    .accessibilityLabel(t("Cancel", "取消"))
                                 } else if isCached {
                                     HStack(spacing: 4) {
                                         Circle().fill(Color.green).frame(width: 8, height: 8)
@@ -545,23 +580,6 @@ struct MainView: View {
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
-                                } else {
-                                    HStack(spacing: 4) {
-                                        Circle().stroke(Color.secondary, lineWidth: 1.5).frame(width: 8, height: 8)
-                                        Text(t("Not Downloaded", "尚未下载"))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-
-                                // Action button
-                                if isDownloadingThis {
-                                    Button(t("Cancel", "取消")) {
-                                        state.cancel()
-                                    }
-                                    .controlSize(.small)
-                                    .accessibilityLabel(t("Cancel", "取消"))
-                                } else if isCached {
                                     Button(role: .destructive) {
                                         speechModelToDelete = spec.id
                                         confirmSpeechDelete = true
@@ -572,6 +590,12 @@ struct MainView: View {
                                     .disabled(state.busy || state.recording)
                                     .accessibilityLabel(t("Delete Cache…", "删除本地缓存…"))
                                 } else {
+                                    HStack(spacing: 4) {
+                                        Circle().stroke(Color.secondary, lineWidth: 1.5).frame(width: 8, height: 8)
+                                        Text(t("Not Downloaded", "尚未下载"))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
                                     Button {
                                         state.downloadSpeechModel(id: spec.id)
                                     } label: {
@@ -639,6 +663,67 @@ struct MainView: View {
 
                     Divider()
 
+                    // Active Model Characteristics & Evaluation Card
+                    if let activeSpec = SpeechModelSpec.allModels.first(where: { $0.id == state.preferences.speechModel }) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(t("Model Profile & Evaluation", "当前模型特点与性能评估"))
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                HStack(spacing: 3) {
+                                    ForEach(0..<5) { star in
+                                        Image(systemName: star < activeSpec.speedRating ? "bolt.fill" : "bolt")
+                                            .font(.caption2)
+                                            .foregroundStyle(star < activeSpec.speedRating ? .yellow : .secondary)
+                                    }
+                                    Text(activeSpec.latency)
+                                        .font(.caption2.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+
+                            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 5) {
+                                GridRow {
+                                    Text(t("Languages:", "主攻语种："))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    Text(t(activeSpec.languagesEn, activeSpec.languagesZh))
+                                        .font(.caption2.bold())
+                                }
+                                GridRow {
+                                    Text(t("Evaluation:", "效果打分："))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    Text(t(activeSpec.accuracyScoreEn, activeSpec.accuracyScore))
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(.blue)
+                                }
+                                GridRow {
+                                    Text(t("Footprint:", "显存占用："))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    Text("\(activeSpec.memoryUsage) · \(activeSpec.size) (\(activeSpec.quantization))")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                GridRow {
+                                    Text(t("Best For:", "适用场景："))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    Text(t(activeSpec.bestForEn, activeSpec.bestForZh))
+                                        .font(.caption2)
+                                        .foregroundStyle(.primary)
+                                }
+                            }
+                        }
+                        .padding(10)
+                        .background(Color.secondary.opacity(0.08))
+                        .cornerRadius(8)
+                    }
+
+                    Divider()
+
                     HStack(spacing: 8) {
                         if state.ready {
                             Image(systemName: "checkmark.circle.fill")
@@ -675,9 +760,12 @@ struct MainView: View {
                         subtitle: t("Select primary spoken language or auto-detect", "选择听写主要使用的语言或开启多语种自动混说检测")
                     ) {
                         Picker("", selection: $state.preferences.speechLanguage) {
-                            Text(t("Automatic", "自动识别 / 混说")).tag("auto")
-                            Text("中文").tag("Chinese")
+                            Text(t("Automatic / Mixed", "自动识别 / 混说")).tag("auto")
+                            Text("中文 (普通话)").tag("Chinese")
+                            Text("粵語 (Cantonese)").tag("Cantonese")
                             Text("English").tag("English")
+                            Text("日本語 (Japanese)").tag("Japanese")
+                            Text("한국어 (Korean)").tag("Korean")
                             Text("Français").tag("French")
                         }
                         .labelsHidden()
@@ -692,8 +780,8 @@ struct MainView: View {
                     HStack(alignment: .top, spacing: 10) {
                         Text("•")
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(t("On-Device Acoustic Transcription", "端侧声学识别引擎")).font(.subheadline.bold())
-                            Text(t("Runs locally on Apple Neural Engine and GPU via MLX and CoreML (supporting Qwen3-ASR and Whisper Large-v3 Turbo). Accurately transcribes Chinese, English, multilingual speech, and code terms with proper punctuation.", "通过 MLX 与 CoreML 原生引擎全本地运行于 Apple 芯片 GPU 与神经引擎（支持 Qwen3-ASR 与 Whisper Large-v3 Turbo）。精准识别中英、多语种、技术术语与混合说话，并自带标点分句。")).font(.caption).foregroundStyle(.secondary)
+                            Text(t("Multi-Engine On-Device Transcription", "多引擎端侧声学识别系统")).font(.subheadline.bold())
+                            Text(t("Voice Buddy supports 4 distinct model architectures tailored to your hardware and workflows: Qwen3-ASR (MLX flagship for Chinese & Chinglish), Whisper Large-v3 Turbo (CoreML 90+ languages), SenseVoice Small (FunASR sub-100ms instant response), and Apple Speech (0 MB built-in instant ready).", "Voice Buddy 支持 4 类特色声学引擎满足不同硬件与场景需求：Qwen3-ASR（MLX 旗舰中英混说）、Whisper Large-v3 Turbo（CoreML 全球 90+ 语言）、SenseVoice Small（阿里 FunASR 毫秒级极速响应）、Apple Speech（macOS 系统内置 0 下载即用）。")).font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     Divider()

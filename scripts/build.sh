@@ -251,6 +251,8 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<PLIST
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Voice Buddy uses the microphone to transcribe your speech locally with on-device AI.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Voice Buddy uses Apple Speech to provide fast, built-in on-device dictation.</string>
     <key>SUFeedURL</key>
     <string>https://raw.githubusercontent.com/zfdang/voice-buddy/main/appcast.xml</string>
     <key>SUEnableAutomaticChecks</key>
