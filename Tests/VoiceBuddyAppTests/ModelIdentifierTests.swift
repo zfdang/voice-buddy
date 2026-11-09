@@ -130,4 +130,35 @@ final class ModelIdentifierTests: XCTestCase {
         let isCachedAfterRemove = await models.isSpeechModelCached(id: "whisper-large-v3-turbo")
         XCTAssertFalse(isCachedAfterRemove)
     }
+
+    func testDownloadSpeechInstantForAppleSpeech() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let models = LocalModels(root: root)
+
+        final class ProgressBox: @unchecked Sendable {
+            var completed = false
+        }
+        let box = ProgressBox()
+
+        try await models.downloadSpeech(id: "apple-speech") { progress, message in
+            if progress >= 1.0 {
+                box.completed = true
+            }
+        }
+        XCTAssertTrue(box.completed)
+    }
+
+    func testDownloadSpeechRejectsInvalidModel() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let models = LocalModels(root: root)
+
+        do {
+            try await models.downloadSpeech(id: "non-existent-model") { _, _ in }
+            XCTFail("Should throw for invalid model")
+        } catch {
+            // Success
+        }
+    }
 }

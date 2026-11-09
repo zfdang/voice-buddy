@@ -25,12 +25,20 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private let tracker = TranscriptStreamTracker()
     @Published var result = ""
     @Published var original = ""
-    @Published var recording = false
+    @Published var recording = false {
+        didSet {
+            menuBarController?.updateIcon(isRecording: recording)
+        }
+    }
     @Published var ready = false
     @Published var editorReady = false
     @Published var isSpeechDownloaded = false
     @Published var isEditorDownloaded = false
     @Published var cachedSpeechModelIDs: Set<String> = []
+    @Published var downloadingSpeechModelIDs: Set<String> = []
+    @Published var speechDownloadProgress: [String: Double] = [:]
+    @Published var speechDownloadMessages: [String: String] = [:]
+    private var speechDownloadTasks: [String: Task<Void, Never>] = [:]
     @Published var activeDownloadingSpeechModelID: String? = nil
     @Published var cachedTextModelIDs: Set<String> = []
     @Published var activeDownloadingTextModelID: String? = nil
@@ -40,6 +48,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     @Published var editorPreparing = false
     @Published var editorProgress: Double = 0
     @Published var editorProgressMessage = ""
+    private var menuBarController: MenuBarController?
     @Published var busy = false
     @Published var modelProgress: Double = 0
     @Published var modelPreparing = false
@@ -84,6 +93,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         setupKeyboardShortcuts()
         configureShortcutMode()
         autoPreloadModels()
+        menuBarController = MenuBarController(appState: self)
+        ApplicationShortcutMonitor.shared.install()
     }
     private func setupKeyboardShortcuts() {
         KeyboardShortcuts.onKeyDown(for: .toggleDictation) { [weak self] in
@@ -235,15 +246,100 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     }
 
     func downloadSpeechModel(id: String) {
-        prepareSpeech(id: id) { [weak self] success in
-            guard let self, success else { return }
-            if !self.cachedSpeechModelIDs.contains(self.preferences.speechModel) || self.preferences.speechModel == id {
-                self.preferences.speechModel = id
-                self.ready = true
-            } else {
-                // Restore active model in memory if user was using another model
-                self.loadActiveSpeechModel()
+        guard !downloadingSpeechModelIDs.contains(id) else { return }
+        guard !recording else { return }
+        if id == "apple-speech" {
+            checkModelCacheStatus()
+            return
+        }
+
+        downloadingSpeechModelIDs.insert(id)
+        speechDownloadProgress[id] = 0
+        speechDownloadMessages[id] = label("Starting download…", "正在开始下载…")
+        activeDownloadingSpeechModelID = id
+        speechPreparing = true
+
+        let isSelectedModel = (id == preferences.speechModel)
+        if isSelectedModel {
+            modelPreparing = true
+            modelProgress = 0
+            status = label("Preparing speech model…", "正在准备语音识别模型…")
+        }
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.models.downloadSpeech(id: id) { [weak self] progress, message in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.downloadingSpeechModelIDs.contains(id) else { return }
+                        self.speechDownloadProgress[id] = progress
+                        self.speechDownloadMessages[id] = message
+                        if self.activeDownloadingSpeechModelID == id {
+                            self.speechProgress = progress
+                            self.speechProgressMessage = message
+                        }
+                        if self.preferences.speechModel == id {
+                            self.modelProgress = progress
+                            self.status = message
+                        }
+                    }
+                }
+                await MainActor.run {
+                    self.speechDownloadTasks.removeValue(forKey: id)
+                    self.downloadingSpeechModelIDs.remove(id)
+                    self.speechDownloadProgress.removeValue(forKey: id)
+                    self.speechDownloadMessages.removeValue(forKey: id)
+                    if self.activeDownloadingSpeechModelID == id {
+                        self.activeDownloadingSpeechModelID = self.downloadingSpeechModelIDs.first
+                        if self.downloadingSpeechModelIDs.isEmpty {
+                            self.speechPreparing = false
+                        }
+                    }
+                    self.checkModelCacheStatus()
+
+                    if self.preferences.speechModel == id || !self.cachedSpeechModelIDs.contains(self.preferences.speechModel) {
+                        self.preferences.speechModel = id
+                        self.prepareSpeech(id: id)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.speechDownloadTasks.removeValue(forKey: id)
+                    self.downloadingSpeechModelIDs.remove(id)
+                    self.speechDownloadProgress.removeValue(forKey: id)
+                    self.speechDownloadMessages.removeValue(forKey: id)
+                    if self.activeDownloadingSpeechModelID == id {
+                        self.activeDownloadingSpeechModelID = self.downloadingSpeechModelIDs.first
+                        if self.downloadingSpeechModelIDs.isEmpty {
+                            self.speechPreparing = false
+                        }
+                    }
+                    if self.preferences.speechModel == id {
+                        self.modelPreparing = false
+                        self.status = self.label("Download failed", "下载失败")
+                    }
+                }
             }
+        }
+        speechDownloadTasks[id] = task
+    }
+
+    func cancelSpeechDownload(id: String) {
+        if let task = speechDownloadTasks.removeValue(forKey: id) {
+            task.cancel()
+        }
+        downloadingSpeechModelIDs.remove(id)
+        speechDownloadProgress.removeValue(forKey: id)
+        speechDownloadMessages.removeValue(forKey: id)
+        if activeDownloadingSpeechModelID == id {
+            activeDownloadingSpeechModelID = downloadingSpeechModelIDs.first
+            if downloadingSpeechModelIDs.isEmpty {
+                speechPreparing = false
+            }
+        }
+        if preferences.speechModel == id {
+            modelPreparing = false
+            status = label("Ready", "就绪")
         }
     }
 
@@ -658,6 +754,11 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         transcriptionTask?.cancel(); transcriptionTask = nil
         speechTask?.cancel(); speechTask = nil
         editorTask?.cancel(); editorTask = nil
+        for (_, task) in speechDownloadTasks { task.cancel() }
+        speechDownloadTasks.removeAll()
+        downloadingSpeechModelIDs.removeAll()
+        speechDownloadProgress.removeAll()
+        speechDownloadMessages.removeAll()
         if recording { _ = recorder.stop() }
         recording = false
         busy = false
@@ -1087,20 +1188,199 @@ public enum AppTab: Int, CaseIterable, Identifiable {
 
         return menuBarActiveIcon
     }()
-    func showWindow(tab: AppTab? = nil) {
+    func showWindow(tab: AppTab? = nil, targetScreen: NSScreen? = nil) {
         if let tab { selectedTab = tab }
         refreshPermissions()
         NSApp.activate(ignoringOtherApps: true)
-        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
+        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) ?? NSApp.windows.first(where: { !$0.isFloatingPanel && !($0 is NSPanel) }) {
+            window.delegate = SettingsWindowDelegate.shared
             window.isReleasedWhenClosed = false
-            window.makeKeyAndOrderFront(nil)
-        } else {
-            for window in NSApp.windows where !window.isFloatingPanel && !(window is NSPanel) {
-                window.isReleasedWhenClosed = false
-                window.makeKeyAndOrderFront(nil)
-                break
+            let screen = targetScreen
+                ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
+                ?? NSScreen.main
+            if let screen {
+                let visibleFrame = screen.visibleFrame
+                var frame = window.frame
+                frame.origin = NSPoint(
+                    x: visibleFrame.midX - frame.width / 2,
+                    y: visibleFrame.midY - frame.height / 2
+                )
+                if frame.maxX > visibleFrame.maxX { frame.origin.x = visibleFrame.maxX - frame.width }
+                if frame.minX < visibleFrame.minX { frame.origin.x = visibleFrame.minX }
+                if frame.maxY > visibleFrame.maxY { frame.origin.y = visibleFrame.maxY - frame.height }
+                if frame.minY < visibleFrame.minY { frame.origin.y = visibleFrame.minY }
+                window.setFrame(frame, display: true)
             }
+            window.makeKeyAndOrderFront(nil)
         }
+    }
+}
+
+final class SettingsWindowDelegate: NSObject, NSWindowDelegate {
+    static let shared = SettingsWindowDelegate()
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.orderOut(nil)
+        return false
+    }
+}
+
+final class ApplicationShortcutMonitor {
+    static let shared = ApplicationShortcutMonitor()
+    private var monitor: Any?
+
+    func install() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+            let chars = event.charactersIgnoringModifiers?.lowercased()
+
+            let isCmdQ = (modifiers == .command && chars == "q")
+            let isCmdW = (modifiers == .command && chars == "w")
+            let isCtrlCmdW = (modifiers == [.command, .control] && chars == "w")
+
+            if isCmdQ || isCmdW || isCtrlCmdW {
+                if let keyWin = NSApp.keyWindow, !keyWin.isFloatingPanel, !(keyWin is NSPanel) {
+                    keyWin.orderOut(nil)
+                    return nil
+                } else if let mainWin = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" && $0.isVisible }) {
+                    mainWin.orderOut(nil)
+                    return nil
+                }
+            }
+            return event
+        }
+    }
+}
+
+@MainActor
+final class MenuBarController: NSObject, NSMenuDelegate {
+    private var statusItem: NSStatusItem?
+    private var statusMenu: NSMenu?
+    private weak var appState: AppState?
+
+    init(appState: AppState) {
+        self.appState = appState
+        super.init()
+        setupStatusItem()
+    }
+
+    func setupStatusItem() {
+        guard statusItem == nil else { return }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = item.button {
+            button.image = AppState.menuBarMascotIcon
+            button.image?.isTemplate = false
+            button.target = self
+            button.action = #selector(handleStatusItemClick(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
+        statusItem = item
+        rebuildMenu()
+    }
+
+    @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
+        let event = NSApp.currentEvent
+        let isRightClick = (event?.type == .rightMouseUp) || (event?.modifierFlags.contains(.control) == true)
+        if isRightClick {
+            showStatusMenu()
+        } else {
+            showSettingsFromStatusItem()
+        }
+    }
+
+    private func showStatusMenu() {
+        guard let statusItem, let statusMenu else { return }
+        rebuildMenu()
+        statusItem.menu = statusMenu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    @objc private func showSettingsFromStatusItem() {
+        let mouseLocation = NSEvent.mouseLocation
+        let targetScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
+        appState?.showWindow(tab: .general, targetScreen: targetScreen)
+    }
+
+    func updateIcon(isRecording: Bool) {
+        statusItem?.button?.image = isRecording ? AppState.menuBarActiveIcon : AppState.menuBarMascotIcon
+        statusItem?.button?.image?.isTemplate = false
+    }
+
+    func rebuildMenu() {
+        guard let appState else { return }
+        let menu = NSMenu()
+        menu.delegate = self
+
+        let settingsItem = NSMenuItem(
+            title: appState.label("Settings…", "设置…"),
+            action: #selector(menuOpenSettings),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        let resultItem = NSMenuItem(
+            title: appState.label("Recognition Result…", "识别结果…"),
+            action: #selector(menuOpenResult),
+            keyEquivalent: ""
+        )
+        resultItem.target = self
+        menu.addItem(resultItem)
+
+        menu.addItem(.separator())
+
+        let aboutItem = NSMenuItem(
+            title: appState.label("About Voice Buddy…", "关于 Voice Buddy…"),
+            action: #selector(menuOpenAbout),
+            keyEquivalent: ""
+        )
+        aboutItem.target = self
+        menu.addItem(aboutItem)
+
+        let updateItem = NSMenuItem(
+            title: appState.label("Check for Updates…", "检查更新…"),
+            action: #selector(menuCheckUpdates),
+            keyEquivalent: ""
+        )
+        updateItem.target = self
+        menu.addItem(updateItem)
+
+        menu.addItem(.separator())
+
+        let quitItem = NSMenuItem(
+            title: appState.label("Quit Voice Buddy", "退出 Voice Buddy"),
+            action: #selector(menuQuit),
+            keyEquivalent: "q"
+        )
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        self.statusMenu = menu
+    }
+
+    @objc private func menuOpenSettings() {
+        showSettingsFromStatusItem()
+    }
+
+    @objc private func menuOpenResult() {
+        let mouseLocation = NSEvent.mouseLocation
+        let targetScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
+        appState?.showWindow(tab: .recovery, targetScreen: targetScreen)
+    }
+
+    @objc private func menuOpenAbout() {
+        let mouseLocation = NSEvent.mouseLocation
+        let targetScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
+        appState?.showWindow(tab: .about, targetScreen: targetScreen)
+    }
+
+    @objc private func menuCheckUpdates() {
+        appState?.checkForUpdates()
+    }
+
+    @objc private func menuQuit() {
+        NSApp.terminate(nil)
     }
 }
 
@@ -1110,32 +1390,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         Window("Voice Buddy", id: "main") {
             MainView()
                 .environmentObject(state)
-                .frame(minWidth: 700, minHeight: 540)
-        }
-        MenuBarExtra {
-            Button(state.label("Settings…", "设置…")) {
-                state.showWindow(tab: .general)
-            }.keyboardShortcut(",")
-            Button(state.label("Recognition Result…", "识别结果…")) {
-                state.showWindow(tab: .recovery)
-            }
-            Divider()
-            Button(state.label("About Voice Buddy…", "关于 Voice Buddy…")) {
-                state.showWindow(tab: .about)
-            }
-            Button(state.label("Check for Updates…", "检查更新…")) {
-                state.checkForUpdates()
-            }
-            Divider()
-            Button(state.label("Quit Voice Buddy", "退出 Voice Buddy")) {
-                NSApp.terminate(nil)
-            }.keyboardShortcut("q")
-        } label: {
-            if state.recording {
-                Image(nsImage: AppState.menuBarActiveIcon)
-            } else {
-                Image(nsImage: AppState.menuBarMascotIcon)
-            }
+                .frame(minWidth: 720, minHeight: 560)
         }
     }
 }

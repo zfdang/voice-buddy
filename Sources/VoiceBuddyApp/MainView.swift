@@ -16,22 +16,19 @@ struct MainView: View {
     private func t(_ en: String, _ zh: String) -> String { state.label(en, zh) }
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $state.selectedTab) {
-                Label(t("General", "通用"), systemImage: "slider.horizontal.3").tag(AppTab.general)
-                Label(t("Permissions", "权限检查"), systemImage: "checkmark.shield").tag(AppTab.permissions)
-                Label(t("Speech recognition", "语音识别"), systemImage: "waveform").tag(AppTab.speech)
-                Label(t("Text model", "文本模型"), systemImage: "text.bubble").tag(AppTab.editor)
-                Label(t("Result", "结果"), systemImage: "doc.text").tag(AppTab.recovery)
-                Label(t("About", "关于"), systemImage: "info.circle").tag(AppTab.about)
-            }.navigationSplitViewColumnWidth(min: 160, ideal: 190)
-        } detail: {
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 108)
+            Color(nsColor: .separatorColor)
+                .frame(width: 1)
+                .frame(maxHeight: .infinity)
+                .ignoresSafeArea(.container, edges: .top)
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     HStack {
-                        Image(nsImage: mascot).resizable().scaledToFit().frame(width: 50, height: 50)
-                        VStack(alignment: .leading) {
-                            Text("Voice Buddy").font(.title.bold())
+                        Image(nsImage: mascot).resizable().scaledToFit().frame(width: 48, height: 48)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Voice Buddy").font(.title2.bold())
                             Text(t("Your voice, on your Mac.", "你的声音，在本机变成文字。")).foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -55,8 +52,15 @@ struct MainView: View {
                     }
                     Spacer()
                 }
-                .padding(28)
+                .padding(26)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .onAppear {
+            ApplicationShortcutMonitor.shared.install()
+            if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
+                window.delegate = SettingsWindowDelegate.shared
+                window.isReleasedWhenClosed = false
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -69,6 +73,65 @@ struct MainView: View {
         }
         .onChange(of: state.selectedTab) { _, _ in
             state.checkModelCacheStatus()
+        }
+    }
+
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    ForEach(AppTab.allCases) { tab in
+                        sidebarButton(tab)
+                    }
+                }
+                .padding(.top, 16)
+            }
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private func sidebarButton(_ tab: AppTab) -> some View {
+        let isSelected = state.selectedTab == tab
+        return Button {
+            state.selectedTab = tab
+        } label: {
+            VStack(spacing: 6) {
+                Image(systemName: tabSystemImage(tab))
+                    .font(.system(size: 21, weight: .semibold))
+                Text(tabTitle(tab))
+                    .font(.system(size: 13, weight: .semibold))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+    }
+
+    private func tabSystemImage(_ tab: AppTab) -> String {
+        switch tab {
+        case .general: return "slider.horizontal.3"
+        case .permissions: return "checkmark.shield"
+        case .speech: return "waveform"
+        case .editor: return "text.bubble"
+        case .recovery: return "doc.text"
+        case .about: return "info.circle"
+        }
+    }
+
+    private func tabTitle(_ tab: AppTab) -> String {
+        switch tab {
+        case .general: return t("General", "通用")
+        case .permissions: return t("Permissions", "权限检查")
+        case .speech: return t("Speech", "语音识别")
+        case .editor: return t("Text model", "文本模型")
+        case .recovery: return t("Result", "结果")
+        case .about: return t("About", "关于")
         }
     }
 
@@ -505,10 +568,12 @@ struct MainView: View {
                         }
 
                         let isCached = state.cachedSpeechModelIDs.contains(spec.id)
-                        let isDownloadingThis = state.speechPreparing && state.activeDownloadingSpeechModelID == spec.id && !isCached
+                        let isDownloadingThis = state.downloadingSpeechModelIDs.contains(spec.id)
+                        let progressVal = state.speechDownloadProgress[spec.id] ?? 0
+                        let progressMsg = state.speechDownloadMessages[spec.id] ?? ""
 
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(alignment: .center, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(alignment: .center, spacing: 12) {
                                 VStack(alignment: .leading, spacing: 3) {
                                     HStack(spacing: 8) {
                                         Text(spec.name)
@@ -538,81 +603,90 @@ struct MainView: View {
                                     Text(t(spec.descriptionEn, spec.description))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
-
-                                    HStack(spacing: 12) {
-                                        Label(t(spec.languagesEn, spec.languagesZh), systemImage: "globe")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                        Label(t(spec.bestForEn, spec.bestForZh), systemImage: "sparkles")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .padding(.top, 2)
+                                        .lineLimit(2)
                                 }
 
-                                Spacer()
+                                Spacer(minLength: 16)
 
                                 // Status indicator & Action button
-                                if spec.id == "apple-speech" {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "checkmark.seal.fill")
-                                            .foregroundStyle(.green)
-                                        Text(t("Built-in · Ready", "系统内置 · 免下载"))
-                                            .font(.caption.bold())
-                                            .foregroundStyle(.green)
-                                    }
-                                } else if isDownloadingThis {
-                                    HStack(spacing: 4) {
-                                        ProgressView().controlSize(.small)
-                                        Text("\(Int(state.speechProgress * 100))%")
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Button(t("Cancel", "取消")) {
-                                        state.cancel()
-                                    }
-                                    .controlSize(.small)
-                                    .accessibilityLabel(t("Cancel", "取消"))
-                                } else if isCached {
-                                    HStack(spacing: 4) {
-                                        Circle().fill(Color.green).frame(width: 8, height: 8)
-                                        Text(t("Downloaded", "已下载"))
+                                HStack(spacing: 10) {
+                                    if spec.id == "apple-speech" {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "checkmark.seal.fill")
+                                                .foregroundStyle(.green)
+                                            Text(t("Built-in", "系统内置"))
+                                                .font(.caption.bold())
+                                                .foregroundStyle(.green)
+                                        }
+                                        .frame(width: 80, alignment: .trailing)
+
+                                        Text(t("Free", "免下载"))
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
+                                            .frame(minWidth: 90)
+                                    } else if isDownloadingThis {
+                                        HStack(spacing: 4) {
+                                            ProgressView().controlSize(.small)
+                                            Text("\(Int(progressVal * 100))%")
+                                                .font(.caption.monospacedDigit())
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .frame(width: 80, alignment: .trailing)
+
+                                        Button(t("Cancel", "取消")) {
+                                            state.cancelSpeechDownload(id: spec.id)
+                                        }
+                                        .controlSize(.small)
+                                        .frame(minWidth: 90)
+                                        .accessibilityLabel(t("Cancel", "取消"))
+                                    } else if isCached {
+                                        HStack(spacing: 4) {
+                                            Circle().fill(Color.green).frame(width: 8, height: 8)
+                                            Text(t("Downloaded", "已下载"))
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .frame(width: 80, alignment: .trailing)
+
+                                        Button(role: .destructive) {
+                                            speechModelToDelete = spec.id
+                                            confirmSpeechDelete = true
+                                        } label: {
+                                            Text(t("Delete Cache…", "删除本地缓存…"))
+                                        }
+                                        .controlSize(.small)
+                                        .disabled(state.busy || state.recording)
+                                        .frame(minWidth: 90)
+                                        .accessibilityLabel(t("Delete Cache…", "删除本地缓存…"))
+                                    } else {
+                                        HStack(spacing: 4) {
+                                            Circle().stroke(Color.secondary, lineWidth: 1.5).frame(width: 8, height: 8)
+                                            Text(t("Not Downloaded", "尚未下载"))
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .frame(width: 80, alignment: .trailing)
+
+                                        Button {
+                                            state.downloadSpeechModel(id: spec.id)
+                                        } label: {
+                                            Text(t("Download", "下载"))
+                                        }
+                                        .controlSize(.small)
+                                        .buttonStyle(.borderedProminent)
+                                        .disabled(state.busy || state.recording)
+                                        .frame(minWidth: 90)
+                                        .accessibilityLabel(t("Download", "下载"))
                                     }
-                                    Button(role: .destructive) {
-                                        speechModelToDelete = spec.id
-                                        confirmSpeechDelete = true
-                                    } label: {
-                                        Text(t("Delete Cache…", "删除本地缓存…"))
-                                    }
-                                    .controlSize(.small)
-                                    .disabled(state.busy || state.recording)
-                                    .accessibilityLabel(t("Delete Cache…", "删除本地缓存…"))
-                                } else {
-                                    HStack(spacing: 4) {
-                                        Circle().stroke(Color.secondary, lineWidth: 1.5).frame(width: 8, height: 8)
-                                        Text(t("Not Downloaded", "尚未下载"))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Button {
-                                        state.downloadSpeechModel(id: spec.id)
-                                    } label: {
-                                        Text(t("Download", "下载"))
-                                    }
-                                    .controlSize(.small)
-                                    .buttonStyle(.borderedProminent)
-                                    .disabled(state.busy || state.recording)
-                                    .accessibilityLabel(t("Download", "下载"))
                                 }
+                                .fixedSize(horizontal: true, vertical: false)
                             }
 
                             if isDownloadingThis {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    ProgressView(value: state.speechProgress)
-                                    if !state.speechProgressMessage.isEmpty {
-                                        Text(state.speechProgressMessage)
+                                    ProgressView(value: progressVal)
+                                    if !progressMsg.isEmpty {
+                                        Text(progressMsg)
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                     }
@@ -795,7 +869,7 @@ struct MainView: View {
                 }
             }
         }
-        .frame(maxWidth: 580)
+        .frame(maxWidth: 680)
         .confirmationDialog(t("Delete this speech model from disk?", "从本机删除此语音模型？"), isPresented: $confirmSpeechDelete) {
             Button(t("Delete", "删除"), role: .destructive) {
                 if let targetId = speechModelToDelete {
@@ -844,60 +918,66 @@ struct MainView: View {
                                         .foregroundStyle(.secondary)
                                 }
 
-                                Spacer()
+                                Spacer(minLength: 16)
 
-                                // Status indicator (Download status only)
-                                if isDownloadingThis {
-                                    HStack(spacing: 4) {
-                                        ProgressView().controlSize(.small)
-                                        Text("\(Int(state.editorProgress * 100))%")
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundStyle(.secondary)
-                                    }
-                                } else if isCached {
-                                    HStack(spacing: 4) {
-                                        Circle().fill(Color.green).frame(width: 8, height: 8)
-                                        Text(t("Downloaded", "已下载"))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                } else {
-                                    HStack(spacing: 4) {
-                                        Circle().stroke(Color.secondary, lineWidth: 1.5).frame(width: 8, height: 8)
-                                        Text(t("Not Downloaded", "尚未下载"))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                // Status indicator & Action button
+                                HStack(spacing: 10) {
+                                    if isDownloadingThis {
+                                        HStack(spacing: 4) {
+                                            ProgressView().controlSize(.small)
+                                            Text("\(Int(state.editorProgress * 100))%")
+                                                .font(.caption.monospacedDigit())
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .frame(width: 80, alignment: .trailing)
+
+                                        Button(t("Cancel", "取消")) {
+                                            state.cancel()
+                                        }
+                                        .controlSize(.small)
+                                        .frame(minWidth: 90)
+                                        .accessibilityLabel(t("Cancel", "取消"))
+                                    } else if isCached {
+                                        HStack(spacing: 4) {
+                                            Circle().fill(Color.green).frame(width: 8, height: 8)
+                                            Text(t("Downloaded", "已下载"))
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .frame(width: 80, alignment: .trailing)
+
+                                        Button(role: .destructive) {
+                                            textModelToDelete = spec.id
+                                            confirmTextDelete = true
+                                        } label: {
+                                            Text(t("Delete Cache…", "删除本地缓存…"))
+                                        }
+                                        .controlSize(.small)
+                                        .disabled(state.busy || state.recording)
+                                        .frame(minWidth: 90)
+                                        .accessibilityLabel(t("Delete Cache…", "删除本地缓存…"))
+                                    } else {
+                                        HStack(spacing: 4) {
+                                            Circle().stroke(Color.secondary, lineWidth: 1.5).frame(width: 8, height: 8)
+                                            Text(t("Not Downloaded", "尚未下载"))
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .frame(width: 80, alignment: .trailing)
+
+                                        Button {
+                                            state.downloadTextModel(id: spec.id)
+                                        } label: {
+                                            Text(t("Download", "下载"))
+                                        }
+                                        .controlSize(.small)
+                                        .buttonStyle(.borderedProminent)
+                                        .disabled(state.busy || state.recording)
+                                        .frame(minWidth: 90)
+                                        .accessibilityLabel(t("Download", "下载"))
                                     }
                                 }
-
-                                // Action button
-                                if isDownloadingThis {
-                                    Button(t("Cancel", "取消")) {
-                                        state.cancel()
-                                    }
-                                    .controlSize(.small)
-                                    .accessibilityLabel(t("Cancel", "取消"))
-                                } else if isCached {
-                                    Button(role: .destructive) {
-                                        textModelToDelete = spec.id
-                                        confirmTextDelete = true
-                                    } label: {
-                                        Text(t("Delete Cache…", "删除本地缓存…"))
-                                    }
-                                    .controlSize(.small)
-                                    .disabled(state.busy || state.recording)
-                                    .accessibilityLabel(t("Delete Cache…", "删除本地缓存…"))
-                                } else {
-                                    Button {
-                                        state.downloadTextModel(id: spec.id)
-                                    } label: {
-                                        Text(t("Download", "下载"))
-                                    }
-                                    .controlSize(.small)
-                                    .buttonStyle(.borderedProminent)
-                                    .disabled(state.busy || state.recording)
-                                    .accessibilityLabel(t("Download", "下载"))
-                                }
+                                .fixedSize(horizontal: true, vertical: false)
                             }
 
                             if isDownloadingThis {
@@ -1007,7 +1087,7 @@ struct MainView: View {
                 }
             }
         }
-        .frame(maxWidth: 580)
+        .frame(maxWidth: 680)
         .confirmationDialog(t("Delete this text model from disk?", "从本机删除此文本模型？"), isPresented: $confirmTextDelete) {
             Button(t("Delete", "删除"), role: .destructive) {
                 if let targetId = textModelToDelete {
