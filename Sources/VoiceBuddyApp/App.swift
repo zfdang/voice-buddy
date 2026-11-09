@@ -1150,7 +1150,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         status = success ? label("Copied", "已复制") : label("Copy failed", "复制失败")
     }
     static let menuBarMascotIcon: NSImage = {
-        let size = NSSize(width: 20, height: 20)
+        let size = NSSize(width: 22, height: 22)
         let img = NSImage(size: size)
 
         let url1x = Bundle.main.url(forResource: "MenuBarIconTemplate", withExtension: "png")
@@ -1184,7 +1184,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         return fallback
     }()
     static let menuBarActiveIcon: NSImage = {
-        let size = NSSize(width: 20, height: 20)
+        let size = NSSize(width: 22, height: 22)
         let img = NSImage(size: size)
 
         let url1x = Bundle.main.url(forResource: "MenuBarIconActiveTemplate", withExtension: "png")
@@ -1274,6 +1274,19 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             window.makeKeyAndOrderFront(nil)
         }
     }
+
+    @MainActor
+    static func closeKeyWindow() {
+        if let keyWindow = NSApp.keyWindow, !keyWindow.isFloatingPanel && !(keyWindow is NSPanel) {
+            keyWindow.orderOut(nil)
+            NSApp.setActivationPolicy(.accessory)
+            return
+        }
+        for window in NSApp.windows where window.isVisible && !window.isFloatingPanel && !(window is NSPanel) {
+            window.orderOut(nil)
+        }
+        NSApp.setActivationPolicy(.accessory)
+    }
 }
 
 final class SettingsWindowDelegate: NSObject, NSWindowDelegate {
@@ -1300,15 +1313,10 @@ final class ApplicationShortcutMonitor {
             let isCtrlCmdW = (modifiers == [.command, .control] && chars == "w")
 
             if isCmdQ || isCmdW || isCtrlCmdW {
-                if let keyWin = NSApp.keyWindow, !keyWin.isFloatingPanel, !(keyWin is NSPanel) {
-                    keyWin.orderOut(nil)
-                    NSApp.setActivationPolicy(.accessory)
-                    return nil
-                } else if let mainWin = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" && $0.isVisible }) {
-                    mainWin.orderOut(nil)
-                    NSApp.setActivationPolicy(.accessory)
-                    return nil
+                Task { @MainActor in
+                    AppState.closeKeyWindow()
                 }
+                return nil
             }
             return event
         }
@@ -1420,7 +1428,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let quitItem = NSMenuItem(
             title: appState.label("Quit Voice Buddy", "退出 Voice Buddy"),
             action: #selector(menuQuit),
-            keyEquivalent: "q"
+            keyEquivalent: ""
         )
         quitItem.target = self
         menu.addItem(quitItem)
@@ -1460,6 +1468,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             MainView()
                 .environmentObject(state)
                 .frame(minWidth: 720, minHeight: 560)
+        }
+        .commands {
+            CommandGroup(replacing: .appTermination) {
+                Button(state.label("Close Window", "关闭设置窗口")) {
+                    AppState.closeKeyWindow()
+                }
+                .keyboardShortcut("q", modifiers: .command)
+            }
         }
     }
 }

@@ -61,7 +61,6 @@ top = min(box[1] for box in boxes)
 right = max(box[2] for box in boxes)
 bottom = max(box[3] for box in boxes)
 side = max(right - left, bottom - top)
-side = int(side * 1.05)
 if side % 2 != 0:
     side += 1
 center_x, center_y = (left + right) // 2, (top + bottom) // 2
