@@ -25,14 +25,6 @@ struct MainView: View {
                 .ignoresSafeArea(.container, edges: .top)
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    HStack {
-                        Image(nsImage: mascot).resizable().scaledToFit().frame(width: 48, height: 48)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Voice Buddy").font(.title2.bold())
-                            Text(t("Your voice, on your Mac.", "你的声音，在本机变成文字。")).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
                     if state.recording {
                         HStack {
                             Image(systemName: "mic.fill").foregroundStyle(.red)
@@ -40,8 +32,8 @@ struct MainView: View {
                             ProgressView(value: min(Double(state.level) * 12, 1)).frame(width: 100)
                             Button(t("Cancel", "取消")) { state.cancel() }
                         }
+                        Divider()
                     }
-                    Divider()
                     switch state.selectedTab {
                     case .general: general
                     case .permissions: permissions
@@ -57,6 +49,7 @@ struct MainView: View {
             }
         }
         .onAppear {
+            state.setupMenuBar()
             ApplicationShortcutMonitor.shared.install()
             if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
                 window.delegate = SettingsWindowDelegate.shared
@@ -78,13 +71,30 @@ struct MainView: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
+            // App Branding at the top of the sidebar
+            VStack(spacing: 6) {
+                Image(nsImage: mascot)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 44, height: 44)
+                Text("Voice Buddy")
+                    .font(.system(size: 13, weight: .bold))
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+
+            Divider()
+                .padding(.horizontal, 10)
+
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 0) {
                     ForEach(AppTab.allCases) { tab in
                         sidebarButton(tab)
                     }
                 }
-                .padding(.top, 16)
+                .padding(.top, 6)
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))

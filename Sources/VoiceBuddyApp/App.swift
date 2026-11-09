@@ -86,6 +86,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private var escMonitor: Any?
     private let defaultsKey = "VoiceBuddy.preferences"
 
+    private var waitingForSystemSettingsReturn = false
+
     init() {
         preferences = UserDefaults.standard.data(forKey: defaultsKey).flatMap { try? JSONDecoder().decode(Preferences.self, from: $0) } ?? Preferences()
         DiagnosticLog.shared.record("app.start version=\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown")")
@@ -93,6 +95,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         setupKeyboardShortcuts()
         configureShortcutMode()
         autoPreloadModels()
+        setupWorkspaceObservers()
         menuBarController = MenuBarController(appState: self)
         ApplicationShortcutMonitor.shared.install()
     }
@@ -222,10 +225,59 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         refreshPermissions()
     }
     func openSystemSettings(for permission: String) {
+        waitingForSystemSettingsReturn = true
         let urlString = permission == "microphone"
             ? "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
             : "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
         if let url = URL(string: urlString) { NSWorkspace.shared.open(url) }
+    }
+
+    private func setupWorkspaceObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        center.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleSystemSettingsEvent(notification: notification)
+            }
+        }
+        center.addObserver(
+            forName: NSWorkspace.didDeactivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleSystemSettingsEvent(notification: notification)
+            }
+        }
+    }
+
+    private func handleSystemSettingsEvent(notification: Notification) {
+        guard waitingForSystemSettingsReturn else { return }
+        if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+           let bundleId = app.bundleIdentifier,
+           bundleId.contains("systempreferences") || bundleId.contains("SystemSettings") {
+            waitingForSystemSettingsReturn = false
+            Task { @MainActor [weak self] in
+                self?.refreshPermissions()
+                self?.bringMainWindowToFront()
+            }
+        }
+    }
+
+    func bringMainWindowToFront() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
+            window.isReleasedWhenClosed = false
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    func setupMenuBar() {
+        menuBarController?.setupStatusItem()
     }
     func label(_ en: String, _ zh: String) -> String {
         let chinese = preferences.interfaceLanguage == "zh" || (preferences.interfaceLanguage == "system" && Locale.preferredLanguages.first?.hasPrefix("zh") == true)
@@ -1101,8 +1153,10 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         let size = NSSize(width: 20, height: 20)
         let img = NSImage(size: size)
 
-        let url1x = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png")
-        let url2x = Bundle.main.url(forResource: "MenuBarIcon@2x", withExtension: "png")
+        let url1x = Bundle.main.url(forResource: "MenuBarIconTemplate", withExtension: "png")
+            ?? Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png")
+        let url2x = Bundle.main.url(forResource: "MenuBarIconTemplate@2x", withExtension: "png")
+            ?? Bundle.main.url(forResource: "MenuBarIcon@2x", withExtension: "png")
 
         if let url1x, let data1x = try? Data(contentsOf: url1x), let rep1x = NSBitmapImageRep(data: data1x) {
             rep1x.size = size
@@ -1124,7 +1178,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             return raw
         }
 
-        let fallback = NSImage(systemSymbolName: "figure.wave", accessibilityDescription: "Voice Buddy") ?? NSImage()
+        let fallback = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Voice Buddy") ?? NSImage()
         fallback.size = size
         fallback.isTemplate = true
         return fallback
@@ -1191,6 +1245,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     func showWindow(tab: AppTab? = nil, targetScreen: NSScreen? = nil) {
         if let tab { selectedTab = tab }
         refreshPermissions()
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) ?? NSApp.windows.first(where: { !$0.isFloatingPanel && !($0 is NSPanel) }) {
             window.delegate = SettingsWindowDelegate.shared
@@ -1220,6 +1275,7 @@ final class SettingsWindowDelegate: NSObject, NSWindowDelegate {
     static let shared = SettingsWindowDelegate()
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         sender.orderOut(nil)
+        NSApp.setActivationPolicy(.accessory)
         return false
     }
 }
@@ -1241,9 +1297,11 @@ final class ApplicationShortcutMonitor {
             if isCmdQ || isCmdW || isCtrlCmdW {
                 if let keyWin = NSApp.keyWindow, !keyWin.isFloatingPanel, !(keyWin is NSPanel) {
                     keyWin.orderOut(nil)
+                    NSApp.setActivationPolicy(.accessory)
                     return nil
                 } else if let mainWin = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" && $0.isVisible }) {
                     mainWin.orderOut(nil)
+                    NSApp.setActivationPolicy(.accessory)
                     return nil
                 }
             }
@@ -1268,8 +1326,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         guard statusItem == nil else { return }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
-            button.image = AppState.menuBarMascotIcon
-            button.image?.isTemplate = false
+            let icon = AppState.menuBarMascotIcon
+            icon.isTemplate = true
+            button.image = icon
+            button.imagePosition = .imageOnly
+            button.toolTip = "Voice Buddy"
             button.target = self
             button.action = #selector(handleStatusItemClick(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -1303,8 +1364,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     func updateIcon(isRecording: Bool) {
-        statusItem?.button?.image = isRecording ? AppState.menuBarActiveIcon : AppState.menuBarMascotIcon
-        statusItem?.button?.image?.isTemplate = false
+        if isRecording {
+            let active = AppState.menuBarActiveIcon
+            active.isTemplate = false
+            statusItem?.button?.image = active
+        } else {
+            let mascot = AppState.menuBarMascotIcon
+            mascot.isTemplate = true
+            statusItem?.button?.image = mascot
+        }
+        statusItem?.button?.imagePosition = .imageOnly
     }
 
     func rebuildMenu() {
