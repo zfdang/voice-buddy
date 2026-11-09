@@ -175,6 +175,14 @@ extension PipelineTests {
         let jsonWhisper = #"{"speechModel": "whisper-large-v3-turbo"}"#.data(using: .utf8)!
         let prefsWhisper = try JSONDecoder().decode(Preferences.self, from: jsonWhisper)
         XCTAssertEqual(prefsWhisper.speechModel, "whisper-large-v3-turbo")
+
+        let jsonSenseVoice = #"{"speechModel": "sensevoice-small"}"#.data(using: .utf8)!
+        let prefsSenseVoice = try JSONDecoder().decode(Preferences.self, from: jsonSenseVoice)
+        XCTAssertEqual(prefsSenseVoice.speechModel, "sensevoice-small")
+
+        let jsonApple = #"{"speechModel": "apple-speech"}"#.data(using: .utf8)!
+        let prefsApple = try JSONDecoder().decode(Preferences.self, from: jsonApple)
+        XCTAssertEqual(prefsApple.speechModel, "apple-speech")
     }
     func testGestureReset() {
         var gesture = HotkeyGesture()

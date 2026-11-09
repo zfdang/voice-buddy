@@ -2,14 +2,78 @@ import XCTest
 @testable import VoiceBuddyApp
 
 final class ModelIdentifierTests: XCTestCase {
-    func testWhisperSpeechModelSpecExists() {
-        let whisper = SpeechModelSpec.allModels.first { $0.id == "whisper-large-v3-turbo" }
-        XCTAssertNotNil(whisper)
-        XCTAssertEqual(whisper?.name, "Whisper Large v3 Turbo")
-        XCTAssertEqual(whisper?.quantization, "CoreML")
-        XCTAssertFalse(whisper?.size.isEmpty ?? true)
-        XCTAssertFalse(whisper?.description.isEmpty ?? true)
-        XCTAssertFalse(whisper?.descriptionEn.isEmpty ?? true)
+    func testAllSpeechModelSpecsExistAndHaveRichMetadata() {
+        let expectedIds = ["qwen-asr-0.6b", "qwen-asr-1.7b", "whisper-large-v3-turbo", "sensevoice-small", "apple-speech"]
+        XCTAssertEqual(SpeechModelSpec.allModels.count, expectedIds.count)
+        for id in expectedIds {
+            guard let spec = SpeechModelSpec.allModels.first(where: { $0.id == id }) else {
+                XCTFail("Missing expected model: \(id)")
+                continue
+            }
+            XCTAssertFalse(spec.name.isEmpty)
+            XCTAssertFalse(spec.size.isEmpty)
+            XCTAssertFalse(spec.quantization.isEmpty)
+            XCTAssertFalse(spec.latency.isEmpty)
+            XCTAssertTrue(spec.speedRating >= 1 && spec.speedRating <= 5)
+            XCTAssertFalse(spec.languagesZh.isEmpty)
+            XCTAssertFalse(spec.languagesEn.isEmpty)
+            XCTAssertFalse(spec.accuracyScore.isEmpty)
+            XCTAssertFalse(spec.accuracyScoreEn.isEmpty)
+            XCTAssertFalse(spec.memoryUsage.isEmpty)
+            XCTAssertFalse(spec.bestForZh.isEmpty)
+            XCTAssertFalse(spec.bestForEn.isEmpty)
+            XCTAssertFalse(spec.description.isEmpty)
+            XCTAssertFalse(spec.descriptionEn.isEmpty)
+        }
+    }
+
+    func testAppleSpeechAlwaysCachedAndNonRemovable() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let models = LocalModels(root: root)
+
+        // Apple Speech is system built-in, always cached
+        let isCached = await models.isSpeechModelCached(id: "apple-speech")
+        XCTAssertTrue(isCached)
+
+        // Removing Apple Speech is a safe no-op
+        try await models.removeSpeech(id: "apple-speech")
+        let isStillCached = await models.isSpeechModelCached(id: "apple-speech")
+        XCTAssertTrue(isStillCached)
+    }
+
+    func testSenseVoiceCacheDetectionAndRemoval() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let models = LocalModels(root: root)
+
+        let isCachedBefore = await models.isSpeechModelCached(id: "sensevoice-small")
+        XCTAssertFalse(isCachedBefore)
+
+        // Create silero-vad
+        let vadDir = root.appendingPathComponent("silero-vad")
+        try FileManager.default.createDirectory(at: vadDir, withIntermediateDirectories: true)
+        try Data([0x01]).write(to: vadDir.appendingPathComponent("model.safetensors"))
+
+        // Create SenseVoice files
+        let senseVoiceDir = root.appendingPathComponent("sensevoice-small")
+        let preprocessorFile = senseVoiceDir.appendingPathComponent("SenseVoicePreprocessor.mlmodelc/model.mil")
+        let encoderFile = senseVoiceDir.appendingPathComponent("SenseVoiceSmall.mlmodelc/weights/weight.bin")
+        let vocabFile = senseVoiceDir.appendingPathComponent("vocab.json")
+
+        try FileManager.default.createDirectory(at: preprocessorFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: encoderFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data([0x01]).write(to: preprocessorFile)
+        try Data([0x01]).write(to: encoderFile)
+        try Data("[]".utf8).write(to: vocabFile)
+
+        let isCachedAfter = await models.isSpeechModelCached(id: "sensevoice-small")
+        XCTAssertTrue(isCachedAfter)
+
+        try await models.removeSpeech(id: "sensevoice-small")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: senseVoiceDir.path))
+        let isCachedAfterRemove = await models.isSpeechModelCached(id: "sensevoice-small")
+        XCTAssertFalse(isCachedAfterRemove)
     }
 
     func testInvalidSpeechModelCannotBeRemoved() async throws {

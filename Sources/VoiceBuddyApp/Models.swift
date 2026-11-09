@@ -10,6 +10,15 @@ public struct SpeechModelSpec: Identifiable, Hashable, Sendable {
     public let name: String
     public let size: String
     public let quantization: String
+    public let latency: String
+    public let speedRating: Int
+    public let languagesZh: String
+    public let languagesEn: String
+    public let accuracyScore: String
+    public let accuracyScoreEn: String
+    public let memoryUsage: String
+    public let bestForZh: String
+    public let bestForEn: String
     public let description: String
     public let descriptionEn: String
 
@@ -18,7 +27,16 @@ public struct SpeechModelSpec: Identifiable, Hashable, Sendable {
             id: "qwen-asr-0.6b",
             name: "Qwen 3 ASR 0.6B",
             size: "960 MB",
-            quantization: "8-bit",
+            quantization: "MLX 8-bit",
+            latency: "200~400ms",
+            speedRating: 4,
+            languagesZh: "中文、英文、中英双语混说",
+            languagesEn: "Chinese, English, Mixed Speech",
+            accuracyScore: "98 分 · 中英混说日常首选",
+            accuracyScoreEn: "98 / 100 · Best for Chinglish",
+            memoryUsage: "约 1.0 GB 统一内存",
+            bestForZh: "日常快速打字、中英夹杂沟通，低资源消耗平衡首选",
+            bestForEn: "Daily chat, Chinglish conversation, low memory footprint",
             description: "极速轻量 · 推荐日常快速听写与中英混说，显存占用极低",
             descriptionEn: "Ultra-fast & lightweight · Recommended for daily dictation, minimal memory footprint"
         ),
@@ -26,7 +44,16 @@ public struct SpeechModelSpec: Identifiable, Hashable, Sendable {
             id: "qwen-asr-1.7b",
             name: "Qwen 3 ASR 1.7B",
             size: "1.7 GB",
-            quantization: "8-bit",
+            quantization: "MLX 8-bit",
+            latency: "500~900ms",
+            speedRating: 3,
+            languagesZh: "中英双语、专业术语、多国语种",
+            languagesEn: "Chinese, English, Jargon, Global",
+            accuracyScore: "99 分 · 专业术语与长句旗舰",
+            accuracyScoreEn: "99 / 100 · Flagship for Jargon & Complex Speech",
+            memoryUsage: "约 1.8 GB 统一内存",
+            bestForZh: "长篇正式讲座、编程代码术语、学术论文等严谨听写",
+            bestForEn: "Formal speeches, code dictation, academic and technical terms",
             description: "高精旗舰 · 复杂术语、长句及多语种识别更严谨细腻",
             descriptionEn: "Flagship precision · Highly accurate for complex terms, long sentences, and multilingual speech"
         ),
@@ -35,8 +62,51 @@ public struct SpeechModelSpec: Identifiable, Hashable, Sendable {
             name: "Whisper Large v3 Turbo",
             size: "980 MB",
             quantization: "CoreML",
+            latency: "300~600ms",
+            speedRating: 4,
+            languagesZh: "全球 90+ 语言全覆盖、专业纯英文",
+            languagesEn: "90+ Global Languages, Native English",
+            accuracyScore: "99 分 · 跨国语言与专业英文霸主",
+            accuracyScoreEn: "99 / 100 · SOTA for 90+ Global Languages",
+            memoryUsage: "约 1.0 GB 统一内存",
+            bestForZh: "国际跨国会议、多语种互译办公、纯英文与专业学术场景",
+            bestForEn: "Global meetings, multilingual dictation, and professional English",
             description: "多语旗舰 · 全球 90+ 语言高精听写，专业英文与跨国语种首选",
             descriptionEn: "Multilingual flagship · High accuracy across 90+ languages, ideal for English and global dictation"
+        ),
+        SpeechModelSpec(
+            id: "sensevoice-small",
+            name: "SenseVoice Small",
+            size: "230 MB",
+            quantization: "CoreML",
+            latency: "30~80ms (极速瞬时)",
+            speedRating: 5,
+            languagesZh: "普通话、粤语、英语、日语、韩语",
+            languagesEn: "Mandarin, Cantonese, English, Japanese, Korean",
+            accuracyScore: "96 分 · 毫秒级非自回归极速响应",
+            accuracyScoreEn: "96 / 100 · Sub-100ms ultra-fast non-autoregressive",
+            memoryUsage: "约 250 MB (超低显存)",
+            bestForZh: "说话松开按键秒上屏！8GB 内存设备与粤语、日韩语首选",
+            bestForEn: "Instant output on key release! Best for 8GB Macs, Cantonese, Japanese, and Korean",
+            description: "毫秒极速 · 阿里 FunASR 出品，中英粤日韩五语瞬时响应，显存占用极小",
+            descriptionEn: "Ultra-fast response · Alibaba FunASR non-autoregressive model for ZH/EN/YUE/JA/KO with tiny memory footprint"
+        ),
+        SpeechModelSpec(
+            id: "apple-speech",
+            name: "Apple Speech (系统内置)",
+            size: "0 MB (免下载)",
+            quantization: "系统原生",
+            latency: "100~200ms",
+            speedRating: 4,
+            languagesZh: "普通话、英语等系统语言",
+            languagesEn: "Mandarin, English & System Locales",
+            accuracyScore: "90 分 · 开箱即用免下载等待",
+            accuracyScoreEn: "90 / 100 · Built-in zero-wait dictation",
+            memoryUsage: "近乎 0 MB (系统共享)",
+            bestForZh: "免等待下载模型！首次安装即用、离线无网兜底、0 磁盘占用",
+            bestForEn: "Zero download waiting! Instant out-of-the-box dictation, zero disk footprint",
+            description: "开箱即用 · 0 下载免等待，占用 0 存储，macOS 原生系统语音引擎",
+            descriptionEn: "Instant ready · 0 MB download, 0 MB disk, native macOS speech engine"
         )
     ]
 }
@@ -72,6 +142,8 @@ public struct TextModelSpec: Identifiable, Hashable, Sendable {
 actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     private var asr: Qwen3ASRModel?
     private var whisper: WhisperASRModel?
+    private var senseVoice: SenseVoiceASRModel?
+    private var appleSpeech: AppleSpeechEngine?
     private var vad: SileroVADModel?
     private var editor: Qwen35MLXChat?
     private var selectedID = ""
@@ -82,6 +154,9 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     }
     private func directory(_ name: String) -> URL { root.appendingPathComponent(name, isDirectory: true) }
     private func speechDirectory(_ id: String) -> URL {
+        if id.contains("sensevoice") {
+            return directory("sensevoice-small")
+        }
         if id.contains("whisper") {
             return directory("whisper-large-v3-turbo")
         }
@@ -90,9 +165,15 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     private func textDirectory(_ id: String) -> URL { directory(id) }
 
     func isSpeechModelCached(id: String) -> Bool {
+        if id == "apple-speech" {
+            return true
+        }
         let dir = speechDirectory(id)
         let vadDir = directory("silero-vad")
         let vadCached = hasSafetensors(in: vadDir)
+        if id.contains("sensevoice") {
+            return SenseVoiceASRModel.hasCompleteBundle(in: dir) && vadCached
+        }
         if id.contains("whisper") {
             return hasWhisperBundle(in: dir) && vadCached
         }
@@ -154,9 +235,32 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
             throw VoiceBuddyError.modelUnavailable("Invalid speech model identifier")
         }
         let isCached = isSpeechModelCached(id: id)
-        if id.contains("whisper") {
+        if id == "apple-speech" {
+            if appleSpeech == nil || selectedID != id {
+                asr = nil
+                whisper = nil
+                senseVoice = nil
+                appleSpeech = AppleSpeechEngine()
+                selectedID = id
+            }
+            progress(0.9, "Apple Speech ready")
+        } else if id.contains("sensevoice") {
+            if senseVoice == nil || selectedID != id {
+                asr = nil
+                whisper = nil
+                appleSpeech = nil
+                senseVoice = try await SenseVoiceASRModel.fromPretrained(
+                    cacheDir: speechDirectory(id),
+                    offlineMode: isCached,
+                    progressHandler: { value, message in progress(value * 0.9, message) }
+                )
+                selectedID = id
+            }
+        } else if id.contains("whisper") {
             if whisper == nil || selectedID != id {
                 asr = nil
+                senseVoice = nil
+                appleSpeech = nil
                 whisper = try await WhisperASRModel.fromPretrained(
                     cacheDir: speechDirectory(id),
                     offlineMode: isCached,
@@ -168,6 +272,8 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
             let hfModelId = id.contains("1.7") ? "mlx-community/Qwen3-ASR-1.7B-8bit" : "mlx-community/Qwen3-ASR-0.6B-8bit"
             if asr == nil || selectedID != id {
                 whisper = nil
+                senseVoice = nil
+                appleSpeech = nil
                 asr = try await Qwen3ASRModel.fromPretrained(
                     modelId: hfModelId,
                     cacheDir: speechDirectory(id),
@@ -214,9 +320,15 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         guard SpeechModelSpec.allModels.contains(where: { $0.id == id }) else {
             throw VoiceBuddyError.modelUnavailable("Invalid speech model identifier")
         }
+        if id == "apple-speech" {
+            // Built-in system model, cannot be removed from disk
+            return
+        }
         if selectedID == id {
             asr = nil
             whisper = nil
+            senseVoice = nil
+            appleSpeech = nil
             selectedID = ""
         }
         let path = speechDirectory(id)
@@ -251,6 +363,14 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         return !vad.detectSpeech(audio: samples, sampleRate: 16000).isEmpty
     }
     func transcribe(samples: [Float], language: String) async throws -> String {
+        if selectedID == "apple-speech" {
+            guard let appleSpeech else { throw VoiceBuddyError.modelUnavailable("Apple Speech") }
+            return try await appleSpeech.transcribe(samples: samples, sampleRate: 16000, language: language)
+        }
+        if selectedID.contains("sensevoice") {
+            guard let senseVoice else { throw VoiceBuddyError.modelUnavailable("SenseVoice") }
+            return try await senseVoice.transcribe(audio: samples, sampleRate: 16000, language: language)
+        }
         if selectedID.contains("whisper") {
             guard let whisper else { throw VoiceBuddyError.modelUnavailable("Whisper") }
             let whisperLang = whisperLanguageCode(from: language)
@@ -265,8 +385,14 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         switch language.lowercased() {
         case "chinese", "zh", "zh-cn", "zh-hans", "zh-hant":
             return "zh"
+        case "cantonese", "yue":
+            return "yue"
         case "english", "en", "en-us", "en-gb":
             return "en"
+        case "japanese", "ja":
+            return "ja"
+        case "korean", "ko":
+            return "ko"
         case "french", "fr":
             return "fr"
         default:
