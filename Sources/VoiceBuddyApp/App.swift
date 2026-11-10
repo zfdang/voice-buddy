@@ -181,14 +181,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 self.cachedSpeechModelIDs = cachedSpeeches
                 self.cachedTextModelIDs = cachedTexts
 
-                if !cachedSpeeches.contains(self.preferences.speechModel), let first = SpeechModelSpec.allModels.first(where: { cachedSpeeches.contains($0.id) }) {
-                    self.preferences.speechModel = first.id
-                }
                 self.isSpeechDownloaded = self.cachedSpeechModelIDs.contains(self.preferences.speechModel)
 
-                if !cachedTexts.contains(self.preferences.textModel), let first = TextModelSpec.allModels.first(where: { cachedTexts.contains($0.id) }) {
-                    self.preferences.textModel = first.id
-                }
                 self.isEditorDownloaded = self.cachedTextModelIDs.contains(self.preferences.textModel)
 
                 completion?()
@@ -201,7 +195,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             if self.isSpeechDownloaded && !self.ready && !self.speechPreparing {
                 self.loadActiveSpeechModel()
             }
-            if self.isEditorDownloaded && !self.editorReady && !self.editorPreparing {
+            if self.preferences.refinement.needsModel && self.isEditorDownloaded && !self.editorReady && !self.editorPreparing {
                 self.loadActiveEditorModel()
             }
         }
