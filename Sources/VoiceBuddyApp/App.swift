@@ -99,10 +99,10 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     }
     private func setupKeyboardShortcuts() {
         KeyboardShortcuts.onKeyDown(for: .toggleDictation) { [weak self] in
-            Task { @MainActor in self?.hotkeyDown() }
+            self?.hotkeyDown()
         }
         KeyboardShortcuts.onKeyUp(for: .toggleDictation) { [weak self] in
-            Task { @MainActor in self?.hotkeyUp() }
+            self?.hotkeyUp()
         }
     }
     private func configureShortcutMode() {
@@ -626,13 +626,18 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     // The window button remains a toggle for accessibility and manual use.
     func toggle() { if recording { finish() } else { start(whileHeld: false) } }
     private func start(whileHeld: Bool) {
-        guard !busy && !recording else { DiagnosticLog.shared.record("session.start_ignored busy=\(busy) recording=\(recording)"); return }
+        guard !busy && !recording else {
+            DiagnosticLog.shared.record("session.start_ignored busy=\(busy) recording=\(recording)")
+            if !recording { gesture.reset() }
+            return
+        }
         diagnosticSession = UUID()
         DiagnosticLog.shared.record("session.start id=\(diagnosticSession) speech_ready=\(ready) editor_ready=\(editorReady) mode=\(preferences.refinement.rawValue) auto_insert=\(preferences.autoInsert)")
         // Invalidate any delayed insertion from the previous session.
         transcriptionGeneration = UUID()
         guard ready else {
             DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=speech_model_not_ready")
+            gesture.reset()
             status = label("Loading speech model…", "正在加载语音模型…")
             if !speechPreparing {
                 overlay.show(state: self)
