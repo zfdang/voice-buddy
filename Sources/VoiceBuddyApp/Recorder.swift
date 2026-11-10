@@ -45,7 +45,13 @@ final class Recorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         if deviceUID.isEmpty {
             device = AVCaptureDevice.default(for: .audio)
         } else {
-            device = AVCaptureDevice(uniqueID: deviceUID)
+            let selected = AVCaptureDevice(uniqueID: deviceUID)
+            if let selected, selected.hasMediaType(.audio), selected.isConnected {
+                device = selected
+            } else {
+                device = AVCaptureDevice.default(for: .audio)
+                DiagnosticLog.shared.record("recording.selected_microphone_unavailable fallback_to_default=\(device != nil)")
+            }
         }
         guard let device, device.hasMediaType(.audio), device.isConnected else {
             throw NSError(domain: "VoiceBuddy", code: 1, userInfo: [NSLocalizedDescriptionKey: "Selected microphone is unavailable."])

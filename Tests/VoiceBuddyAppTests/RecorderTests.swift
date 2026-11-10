@@ -2,8 +2,14 @@ import XCTest
 @testable import VoiceBuddyApp
 
 final class RecorderTests: XCTestCase {
-    func testUnavailableDeviceFailsWithoutStarting() {
-        XCTAssertThrowsError(try Recorder().start(deviceUID: "voice-buddy-nonexistent-test-device"))
+    func testUnavailableDeviceFallsBackToDefaultWhenRequested() throws {
+        guard ProcessInfo.processInfo.environment["VOICE_BUDDY_TEST_MICROPHONE"] != nil else {
+            throw XCTSkip("Set VOICE_BUDDY_TEST_MICROPHONE to test microphone fallback")
+        }
+        let recorder = Recorder()
+        let name = try recorder.start(deviceUID: "voice-buddy-nonexistent-test-device")
+        defer { _ = recorder.stop() }
+        XCTAssertFalse(name.isEmpty)
     }
 
     func testSelectedMicrophoneCaptureWhenRequested() throws {
