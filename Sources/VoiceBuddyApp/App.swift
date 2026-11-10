@@ -896,8 +896,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     DiagnosticLog.shared.record("result.review_mode id=\(logSession)")
                     overlay.hide()
                     liveTranscriptState.clear()
-                    copyResult()
-                    status = label("Edited text copied. Review it before pasting; open Result to compare the original.", "整理后的文字已复制，请检查后粘贴；可打开结果页查看原文。")
+                    if TargetAccessibility.isSensitiveDestination(element: boundElement) {
+                        status = label("Sensitive field detected. Open Result to review the text.", "检测到敏感输入框，请打开结果页查看文字。")
+                    } else {
+                        copyResult()
+                        status = label("Edited text copied. Review it before pasting; open Result to compare the original.", "整理后的文字已复制，请检查后粘贴；可打开结果页查看原文。")
+                    }
                     overlay.showStatus(state: self)
                     return
                 }
@@ -910,8 +914,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         if self.insertIfSafe(output.result, targetPID: boundPID, targetAppName: boundAppName, targetElement: boundElement, sessionID: id) {
                             self.status = self.label("Preparing to paste…", "正在准备粘贴…")
                         } else {
-                            self.copyResult()
-                            let tip = !self.insertFailure.isEmpty ? self.insertFailure : self.label("Content copied to clipboard. Press ⌘V to paste.", "内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
+                            let tip = !self.insertFailure.isEmpty ? self.insertFailure : self.label("Paste failed. Open Result to review the text.", "粘贴失败，请打开结果页查看文字。")
                             self.status = tip
                             self.overlay.showStatus(state: self)
                         }
@@ -935,7 +938,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 if let failure = error as? RefinementFailure {
                     original = failure.original
                     result = failure.original
-                    copyResult()
+                    if !TargetAccessibility.isSensitiveDestination(element: boundElement) { copyResult() }
                 }
                 if let voiceError = error as? VoiceBuddyError, voiceError == .noSpeech {
                     status = label("No speech detected. Please try again.", "没有检测到语音，请重试。")
@@ -971,25 +974,18 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         let focusMatches = initialElement.flatMap { initial in currentElem.map { CFEqual(initial, $0) } } ?? false
         DiagnosticLog.shared.record("insert.focus id=\(logSession) current_pid=\(currentFocus.pid) current_present=\(currentElem != nil) matches_initial=\(focusMatches)")
 
-        if TargetAccessibility.isSensitiveDestination(element: currentElem) || TargetAccessibility.isSensitiveDestination(element: initialElement) {
-            DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=sensitive_destination")
-            insertFailure = label("Sensitive field detected; content copied to clipboard. Press ⌘V to paste.", "检测到敏感输入框，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
-            copyResult()
-            return false
-        }
+        let sensitiveTarget = TargetAccessibility.isSensitiveDestination(element: currentElem) || TargetAccessibility.isSensitiveDestination(element: initialElement)
         // 2. Check if target was Voice Buddy itself (e.g. testing in Editor tab)
         let myPID = NSRunningApplication.current.processIdentifier
         if effPID == 0 || effPID == myPID {
             DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=no_external_target")
-            copyResult()
-            insertFailure = label("No external target; content copied to clipboard.", "没有外部目标，内容已复制到剪贴板。")
+            insertFailure = label("No external target; open Result to review the text.", "没有外部目标，请打开结果页查看文字。")
             return false
         }
         // 3. Ensure target application is still running
         guard let targetApp = NSRunningApplication(processIdentifier: effPID), !targetApp.isTerminated else {
             DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=target_not_running")
-            insertFailure = label("Target app not running; content copied to clipboard. Press ⌘V to paste.", "目标应用未在运行，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
-            copyResult()
+            insertFailure = label("Target app not running; open Result to review the text.", "目标应用未在运行，请打开结果页查看文字。")
             return false
         }
         // 4. Target Change Protection (prevent pasting into wrong app or different focus in same app)
@@ -997,22 +993,19 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         if let currentFrontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
            currentFrontPID != effPID && currentFrontPID != myPID {
             DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=frontmost_changed front_pid=\(currentFrontPID)")
-            insertFailure = label("Target application changed; content copied to clipboard. Press ⌘V to paste.", "目标应用已切换，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
-            copyResult()
+            insertFailure = label("Target application changed; open Result to review the text.", "目标应用已切换，请打开结果页查看文字。")
             return false
         }
         // 4b. Check if focused element switched within the same application
         guard let initial = initialElement, let current = currentElem, CFEqual(initial, current) else {
             DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=focus_unverified")
-            insertFailure = label("Cannot verify the focused input; content copied to clipboard. Press ⌘V to paste.", "无法确认输入框焦点，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
-            copyResult()
+            insertFailure = label("Cannot verify the focused input; open Result to review the text.", "无法确认输入框焦点，请打开结果页查看文字。")
             return false
         }
         // 5. Universal Insertion via Clipboard + Hardware-level Synthesized ⌘V (100% of apps supported)
         guard AXIsProcessTrusted() else {
             DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=accessibility_permission")
-            insertFailure = label("Accessibility access needed; content copied to clipboard. Press ⌘V to paste.", "需要辅助功能权限以自动上屏，内容已复制到剪贴板，直接按 ⌘V 即可粘贴。")
-            copyResult()
+            insertFailure = label("Accessibility access needed; open Result to review the text.", "需要辅助功能权限以自动上屏，请打开结果页查看文字。")
             return false
         }
         // Re-activate target app so it receives the paste event
@@ -1022,36 +1015,22 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             targetApp.activate(options: [.activateIgnoringOtherApps])
         }
 
-        // Backup current clipboard
-        let board = NSPasteboard.general
-        let savedItems: [[(NSPasteboard.PasteboardType, Data)]] = (board.pasteboardItems ?? []).map { item in
-            item.types.compactMap { type in
-                item.data(forType: type).map { (type, $0) }
-            }
-        }
-
-        // Put recognized text on pasteboard
-        board.clearContents()
-        let item = NSPasteboardItem()
-        item.setString(text, forType: .string)
-        // Mark as transient & autogenerated so clipboard managers don't permanently archive it
-        item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
-        item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.AutoGeneratedType"))
-        guard board.writeObjects([item]) else {
+        let temporaryClipboard = TemporaryPasteboard()
+        guard temporaryClipboard.write(text, sensitive: sensitiveTarget) else {
+            _ = temporaryClipboard.restore()
             DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=clipboard_write_failed")
-            insertFailure = label("Failed to write to clipboard.", "写入剪贴板失败。")
+            insertFailure = label("Failed to write to clipboard. Open Result to review the text.", "写入剪贴板失败，请打开结果页查看文字。")
             return false
         }
-        let count = board.changeCount
         DiagnosticLog.shared.record("insert.queued id=\(logSession)")
 
         // Avoid hardware modifier collisions (Shift, Ctrl, Alt) before sending ⌘V
         TargetAccessibility.waitForModifiersReleased(timeout: 0.25) { [weak self] in
             // Give target app's window server activation time to settle before posting ⌘V
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                guard let self, !self.recording else { DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=recording_or_shutdown"); return }
-                if let sid = sessionID, self.transcriptionGeneration != sid { DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=session_changed"); return }
-                guard board.changeCount == count, board.string(forType: .string) == text else {
+                guard let self, !self.recording else { _ = temporaryClipboard.restore(); DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=recording_or_shutdown"); return }
+                if let sid = sessionID, self.transcriptionGeneration != sid { _ = temporaryClipboard.restore(); DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=session_changed"); return }
+                guard temporaryClipboard.owns(text) else {
                     DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=clipboard_changed")
                     self.status = self.label("Clipboard changed; paste was cancelled.", "剪贴板已改变，已取消粘贴。")
                     self.overlay.showStatus(state: self)
@@ -1062,15 +1041,17 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 let focusMatches = liveFocus.map { CFEqual(initial, $0) } ?? false
                 let sensitive = TargetAccessibility.isSensitiveDestination(element: liveFocus)
                 DiagnosticLog.shared.record("insert.final_check id=\(logSession) front_pid=\(frontPID) focus_present=\(liveFocus != nil) focus_matches=\(focusMatches) sensitive=\(sensitive)")
-                guard frontPID == effPID, focusMatches, !sensitive else {
+                guard frontPID == effPID, focusMatches, (!sensitive || sensitiveTarget) else {
+                    _ = temporaryClipboard.restore()
                     DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=final_focus_unverified")
-                    self.status = self.label("Could not verify the target; text remains on the clipboard.", "无法确认目标输入框，文字仍在剪贴板中。")
+                    self.status = self.label("Could not verify the target. Open Result to review the text.", "无法确认目标输入框，请打开结果页查看文字。")
                     self.overlay.showStatus(state: self)
                     return
                 }
                 guard TargetAccessibility.postPasteShortcut() else {
+                    _ = temporaryClipboard.restore()
                     DiagnosticLog.shared.record("insert.failed id=\(logSession) reason=event_creation")
-                    self.status = self.label("Paste could not be sent; text remains on the clipboard.", "无法发送粘贴命令，文字仍在剪贴板中。")
+                    self.status = self.label("Paste could not be sent. Open Result to review the text.", "无法发送粘贴命令，请打开结果页查看文字。")
                     self.overlay.showStatus(state: self)
                     return
                 }
@@ -1079,18 +1060,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 // Restoring on a timer is still best-effort: AppKit does not report
                 // when the receiving app has consumed the clipboard.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                    guard board.changeCount == count else { DiagnosticLog.shared.record("clipboard.restore_skipped id=\(logSession) reason=ownership_changed"); return }
-                    board.clearContents()
-                    if !savedItems.isEmpty {
-                        let restored: [NSPasteboardItem] = savedItems.compactMap { entries in
-                            guard !entries.isEmpty else { return nil }
-                            let item = NSPasteboardItem()
-                            for (type, data) in entries { item.setData(data, forType: type) }
-                            return item
-                        }
-                        if !restored.isEmpty { board.writeObjects(restored) }
-                    }
-                    DiagnosticLog.shared.record("clipboard.restore_attempted id=\(logSession)")
+                    let restored = temporaryClipboard.restore()
+                    DiagnosticLog.shared.record("clipboard.restore id=\(logSession) restored=\(restored)")
                 }
             }
         }
