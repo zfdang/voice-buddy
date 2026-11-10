@@ -946,7 +946,28 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 if let failure = error as? RefinementFailure {
                     original = failure.original
                     result = failure.original
-                    if !TargetAccessibility.isSensitiveDestination(element: boundElement) { copyResult() }
+                    DiagnosticLog.shared.record("refinement.fallback_to_original id=\(logSession)")
+                    if settings.autoInsert {
+                        let targetPt = targetInsertionPoint()
+                        overlay.flyAndDismiss(to: targetPt) { [weak self] in
+                            guard let self else { return }
+                            guard self.transcriptionGeneration == id, !self.recording else { return }
+                            self.liveTranscriptState.clear()
+                            if self.insertIfSafe(failure.original, targetPID: boundPID, targetAppName: boundAppName, targetElement: boundElement, sessionID: id) {
+                                self.status = self.label("Refinement skipped; original text pasted.", "文本整理失败，已自动粘贴原文。")
+                            } else {
+                                self.copyResult()
+                                self.status = self.label("Refinement skipped; original text copied.", "文本整理失败，已复制原文到剪贴板。")
+                                self.overlay.showStatus(state: self)
+                            }
+                        }
+                        return
+                    } else {
+                        copyResult()
+                        status = label("Refinement skipped; original text copied.", "文本整理失败，已复制原文到剪贴板。")
+                        overlay.showStatus(state: self)
+                        return
+                    }
                 }
                 if let voiceError = error as? VoiceBuddyError, voiceError == .noSpeech {
                     status = label("No speech detected. Please try again.", "没有检测到语音，请重试。")

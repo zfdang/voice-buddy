@@ -498,8 +498,8 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     }
     func refine(_ text: String, mode: Refinement) async throws -> String {
         let instruction = mode == .rewrite
-            ? "Rewrite the dictated text clearly. Preserve facts. Output only the rewritten text."
-            : "Edit the dictated text lightly for clarity and punctuation. Preserve all facts, language and meaning. Output only the edited text."
+            ? "Rewrite the dictated text clearly. You MUST strictly preserve the original language (e.g. keep Chinese in Chinese, English in English). Do NOT translate. Preserve all facts and intent. Output ONLY the rewritten text without explanations or quotation marks."
+            : "Edit the dictated text lightly for grammar, fluency and punctuation. You MUST strictly preserve the original language (e.g. keep Chinese in Chinese, English in English). Do NOT translate. Preserve all facts, words and meaning. Output ONLY the edited text without explanations or quotation marks."
         let tokenBudget = max(512, min(text.count * 4 + 128, 2048))
         let messages: [ChatMessage] = [
             .init(role: .system, content: instruction),
@@ -527,7 +527,15 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         var trimmed = generated.trimmingCharacters(in: .whitespacesAndNewlines)
         if let thinkEnd = trimmed.range(of: "</think>") {
             trimmed = String(trimmed[thinkEnd.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if trimmed.hasPrefix("<think>") {
+            // Unclosed think tag: model ran out of token budget inside reasoning block
+            throw RefinementFailure(original: text, reason: "Model exceeded token budget inside reasoning block")
         }
+
+        if trimmed.hasPrefix("\"") && trimmed.hasSuffix("\"") && trimmed.count >= 2 {
+            trimmed = String(trimmed.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
         let tokenCount = tokenizer.encode(trimmed).count
         if tokenCount >= tokenBudget || (text.count >= 40 && trimmed.count < max(12, text.count / 3)) {
             throw RefinementFailure(original: text, reason: "Refinement output exceeded token budget or was truncated")
