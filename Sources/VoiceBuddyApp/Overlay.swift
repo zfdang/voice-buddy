@@ -235,7 +235,7 @@ final class OverlayAnimationModel: ObservableObject {
 
 @MainActor
 final class Overlay {
-    private var panel: NSPanel?
+    var panel: NSPanel?
     private let animModel = OverlayAnimationModel()
     private var presentationID = UUID()
     private var targetScreen: NSScreen?
