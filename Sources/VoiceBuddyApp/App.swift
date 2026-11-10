@@ -1510,22 +1510,27 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
             return
         }
 
-        let screen = targetScreen
-            ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
-            ?? NSScreen.main
+        let restoredSuccessfully = window.setFrameUsingName("VoiceBuddySettings")
+        let isOffscreen = !NSScreen.screens.contains(where: { $0.frame.intersects(window.frame) })
 
-        if let screen, !isSettingsWindowOpen || window.screen != screen {
-            let visibleFrame = screen.visibleFrame
-            var frame = window.frame
-            frame.origin = NSPoint(
-                x: visibleFrame.midX - frame.width / 2,
-                y: visibleFrame.midY - frame.height / 2
-            )
-            if frame.maxX > visibleFrame.maxX { frame.origin.x = visibleFrame.maxX - frame.width }
-            if frame.minX < visibleFrame.minX { frame.origin.x = visibleFrame.minX }
-            if frame.maxY > visibleFrame.maxY { frame.origin.y = visibleFrame.maxY - frame.height }
-            if frame.minY < visibleFrame.minY { frame.origin.y = visibleFrame.minY }
-            window.setFrame(frame, display: false)
+        if !restoredSuccessfully || isOffscreen {
+            let screen = targetScreen
+                ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
+                ?? NSScreen.main
+
+            if let screen {
+                let visibleFrame = screen.visibleFrame
+                var frame = window.frame
+                frame.origin = NSPoint(
+                    x: visibleFrame.midX - frame.width / 2,
+                    y: visibleFrame.midY - frame.height / 2
+                )
+                if frame.maxX > visibleFrame.maxX { frame.origin.x = visibleFrame.maxX - frame.width }
+                if frame.minX < visibleFrame.minX { frame.origin.x = visibleFrame.minX }
+                if frame.maxY > visibleFrame.maxY { frame.origin.y = visibleFrame.maxY - frame.height }
+                if frame.minY < visibleFrame.minY { frame.origin.y = visibleFrame.minY }
+                window.setFrame(frame, display: false)
+            }
         }
 
         isSettingsWindowOpen = true
