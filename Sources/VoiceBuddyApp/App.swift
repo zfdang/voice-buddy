@@ -347,6 +347,23 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
     }
 
+    func cancelTextDownload(id: String? = nil) {
+        let targetId = id ?? activeDownloadingTextModelID ?? preferences.textModel
+        guard activeDownloadingTextModelID == targetId || editorPreparing else { return }
+        editorGeneration = UUID()
+        editorTask?.cancel()
+        editorTask = nil
+        editorPreparing = false
+        activeDownloadingTextModelID = nil
+        editorProgress = 0
+        editorProgressMessage = ""
+        if preferences.textModel == targetId {
+            modelPreparing = false
+            modelProgress = 0
+            status = label("Ready", "就绪")
+        }
+    }
+
     func prepareSpeech(id: String? = nil, completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
         guard !speechPreparing && !recording else { completion?(false); return }
         speechPreparing = true
@@ -756,25 +773,11 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         liveTask?.cancel(); liveTask = nil; liveTranscript = ""; liveTranscriptState.clear(); tracker.reset()
         if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
         transcriptionGeneration = UUID()
-        speechGeneration = UUID()
-        editorGeneration = UUID()
         gesture.reset()
         transcriptionTask?.cancel(); transcriptionTask = nil
-        speechTask?.cancel(); speechTask = nil
-        editorTask?.cancel(); editorTask = nil
-        for (_, task) in speechDownloadTasks { task.cancel() }
-        speechDownloadTasks.removeAll()
-        downloadingSpeechModelIDs.removeAll()
-        speechDownloadProgress.removeAll()
-        speechDownloadMessages.removeAll()
         if recording { _ = recorder.stop() }
         recording = false
         busy = false
-        modelPreparing = false
-        speechPreparing = false
-        editorPreparing = false
-        activeDownloadingSpeechModelID = nil
-        activeDownloadingTextModelID = nil
         meter?.invalidate()
         level = 0
         overlay.hide(); if preferences.sounds { NSSound(named: "Basso")?.play() }
