@@ -1627,7 +1627,42 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
                 self?.allowTermination = true
             }
         }
-        workspaceObservers = [obs1, obs2, obs3]
+        let obsSleep = center.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                DiagnosticLog.shared.record("system.will_sleep")
+                self?.appState.cancel()
+            }
+        }
+        let obsSessionResign = center.addObserver(
+            forName: NSWorkspace.sessionDidResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                DiagnosticLog.shared.record("system.session_resigned")
+                self?.appState.cancel()
+            }
+        }
+        let obsScreensSleep = center.addObserver(
+            forName: NSWorkspace.screensDidSleepNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                DiagnosticLog.shared.record("system.screens_sleep")
+                self?.appState.cancel()
+            }
+        }
+        workspaceObservers = [obs1, obs2, obs3, obsSleep, obsSessionResign, obsScreensSleep]
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        workspaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
+        workspaceObservers.removeAll()
     }
 
     private func handleSystemSettingsEvent(notification: Notification) {
