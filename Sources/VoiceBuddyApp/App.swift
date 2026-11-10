@@ -1056,20 +1056,23 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     self.overlay.showStatus(state: self)
                     return
                 }
-                guard TargetAccessibility.postPasteShortcut() else {
-                    _ = temporaryClipboard.restore()
-                    DiagnosticLog.shared.record("insert.failed id=\(logSession) reason=event_creation")
-                    self.status = self.label("Paste could not be sent. Open Result to review the text.", "无法发送粘贴命令，请打开结果页查看文字。")
-                    self.overlay.showStatus(state: self)
-                    return
-                }
-                self.status = self.label("Paste command sent.", "已发送粘贴命令。")
-                DiagnosticLog.shared.record("insert.paste_posted id=\(logSession)")
-                // Restoring on a timer is still best-effort: AppKit does not report
-                // when the receiving app has consumed the clipboard.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                    let restored = temporaryClipboard.restore()
-                    DiagnosticLog.shared.record("clipboard.restore id=\(logSession) restored=\(restored)")
+                TargetAccessibility.postPasteShortcutAsync { [weak self] success in
+                    guard let self else { return }
+                    guard success else {
+                        _ = temporaryClipboard.restore()
+                        DiagnosticLog.shared.record("insert.failed id=\(logSession) reason=event_creation")
+                        self.status = self.label("Paste could not be sent. Open Result to review the text.", "无法发送粘贴命令，请打开结果页查看文字。")
+                        self.overlay.showStatus(state: self)
+                        return
+                    }
+                    self.status = self.label("Paste command sent.", "已发送粘贴命令。")
+                    DiagnosticLog.shared.record("insert.paste_posted id=\(logSession)")
+                    // Restoring on a timer is still best-effort: AppKit does not report
+                    // when the receiving app has consumed the clipboard.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        let restored = temporaryClipboard.restore()
+                        DiagnosticLog.shared.record("clipboard.restore id=\(logSession) restored=\(restored)")
+                    }
                 }
             }
         }
