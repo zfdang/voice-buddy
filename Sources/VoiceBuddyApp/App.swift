@@ -979,7 +979,13 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         // 1. Password & Sensitive Field Protection (Check BOTH current actual focus and initial focus)
         let currentFocus = TargetAccessibility.captureTargetFocus()
         let currentElem: AXUIElement? = (effPID != 0 ? focusedElement(pid: effPID) : nil) ?? (currentFocus.pid == effPID ? currentFocus.element : nil)
-        let focusMatches = initialElement.flatMap { initial in currentElem.map { CFEqual(initial, $0) } } ?? false
+        let focusMatches: Bool
+        if let initial = initialElement {
+            focusMatches = currentElem.map { CFEqual(initial, $0) } ?? false
+        } else {
+            // Target app does not expose accessibility element (e.g. Terminal, Electron canvas)
+            focusMatches = (effPID == currentFocus.pid || effPID == NSWorkspace.shared.frontmostApplication?.processIdentifier)
+        }
         DiagnosticLog.shared.record("insert.focus id=\(logSession) current_pid=\(currentFocus.pid) current_present=\(currentElem != nil) matches_initial=\(focusMatches)")
 
         let sensitiveTarget = TargetAccessibility.isSensitiveDestination(element: currentElem) || TargetAccessibility.isSensitiveDestination(element: initialElement)
@@ -998,16 +1004,19 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
         // 4. Target Change Protection (prevent pasting into wrong app or different focus in same app)
         // 4a. Check if frontmost application switched
-        if let currentFrontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+        let currentFrontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        if let currentFrontPID,
            currentFrontPID != effPID && currentFrontPID != myPID {
+            copyResult()
             DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=frontmost_changed front_pid=\(currentFrontPID)")
-            insertFailure = label("Target application changed; open Result to review the text.", "目标应用已切换，请打开结果页查看文字。")
+            insertFailure = label("Target application changed; text copied to clipboard.", "目标应用已切换，已复制到剪贴板。")
             return false
         }
         // 4b. Check if focused element switched within the same application
-        guard let initial = initialElement, let current = currentElem, CFEqual(initial, current) else {
+        guard focusMatches else {
+            copyResult()
             DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=focus_unverified")
-            insertFailure = label("Cannot verify the focused input; open Result to review the text.", "无法确认输入框焦点，请打开结果页查看文字。")
+            insertFailure = label("Cannot verify the focused input; text copied to clipboard.", "无法确认输入框焦点，已复制到剪贴板。")
             return false
         }
         // 5. Universal Insertion via Clipboard + Hardware-level Synthesized ⌘V (100% of apps supported)
@@ -1046,13 +1055,19 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 }
                 let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
                 let liveFocus = self.focusedElement(pid: effPID)
-                let focusMatches = liveFocus.map { CFEqual(initial, $0) } ?? false
+                let focusMatches: Bool
+                if let initial = initialElement {
+                    focusMatches = liveFocus.map { CFEqual(initial, $0) } ?? (frontPID == effPID && liveFocus == nil)
+                } else {
+                    focusMatches = (frontPID == effPID)
+                }
                 let sensitive = TargetAccessibility.isSensitiveDestination(element: liveFocus)
                 DiagnosticLog.shared.record("insert.final_check id=\(logSession) front_pid=\(frontPID) focus_present=\(liveFocus != nil) focus_matches=\(focusMatches) sensitive=\(sensitive)")
                 guard frontPID == effPID, focusMatches, (!sensitive || sensitiveTarget) else {
                     _ = temporaryClipboard.restore()
+                    self.copyResult()
                     DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=final_focus_unverified")
-                    self.status = self.label("Could not verify the target. Open Result to review the text.", "无法确认目标输入框，请打开结果页查看文字。")
+                    self.status = self.label("Could not verify target; text copied to clipboard.", "无法确认目标输入框，已复制到剪贴板。")
                     self.overlay.showStatus(state: self)
                     return
                 }
