@@ -171,7 +171,7 @@ import VoiceBuddyCore
     nonisolated private static func findMenuBarControl(app: AXUIElement) -> (element: AXUIElement, isPlaying: Bool)? {
         var menuBarValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(app, kAXMenuBarAttribute as CFString, &menuBarValue) == .success,
-              let menuBar = menuBarValue else { return nil }
+              let menuBar = menuBarValue, CFGetTypeID(menuBar) == AXUIElementGetTypeID() else { return nil }
 
         var barItemsValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(menuBar as! AXUIElement, kAXChildrenAttribute as CFString, &barItemsValue) == .success,
