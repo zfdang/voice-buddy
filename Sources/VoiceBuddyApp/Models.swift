@@ -307,11 +307,19 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
         if vad == nil {
             let vadCached = hasSafetensors(in: directory("silero-vad"))
-            vad = try await SileroVADModel.fromPretrained(
-                cacheDir: directory("silero-vad"),
-                offlineMode: vadCached,
-                progressHandler: { value, message in progress(0.9 + value * 0.1, message) }
-            )
+            do {
+                vad = try await SileroVADModel.fromPretrained(
+                    cacheDir: directory("silero-vad"),
+                    offlineMode: vadCached,
+                    progressHandler: { value, message in progress(0.9 + value * 0.1, message) }
+                )
+            } catch {
+                if id == "apple-speech" {
+                    DiagnosticLog.shared.record("vad.offline_fallback error=\(error.localizedDescription)")
+                } else {
+                    throw error
+                }
+            }
         }
     }
 
@@ -442,9 +450,14 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
     }
     func containsSpeech(_ samples: [Float]) async throws -> Bool {
-        guard let vad else { throw VoiceBuddyError.modelUnavailable("VAD") }
-        vad.resetState()
-        return !vad.detectSpeech(audio: samples, sampleRate: 16000).isEmpty
+        if let vad {
+            vad.resetState()
+            return !vad.detectSpeech(audio: samples, sampleRate: 16000).isEmpty
+        }
+        guard !samples.isEmpty else { return false }
+        let sumSquares = samples.reduce(0.0) { $0 + Double($1 * $1) }
+        let rms = sqrt(sumSquares / Double(samples.count))
+        return rms > 0.005
     }
     func transcribe(samples: [Float], language: String) async throws -> String {
         if selectedID == "apple-speech" {
