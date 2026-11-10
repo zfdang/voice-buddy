@@ -259,6 +259,7 @@ final class Overlay {
             panel.isOpaque = false
             panel.backgroundColor = .clear
             panel.hasShadow = false
+            panel.ignoresMouseEvents = true
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             let hostingView = NSHostingView(rootView: OverlayView(state: state, animModel: animModel))
             hostingView.wantsLayer = true
