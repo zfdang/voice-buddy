@@ -26,6 +26,9 @@ final class AppleSpeechEngine: @unchecked Sendable {
         guard recognizer.isAvailable else {
             throw VoiceBuddyError.modelUnavailable("Apple Speech recognizer is unavailable. Please enable 'Dictation' in macOS System Settings -> Keyboard. (macOS 系统听写或 Siri 未开启，请前往「系统设置 ➔ 键盘 ➔ 听写」开启听写功能，或切换至 SenseVoice/Qwen 独立模型)")
         }
+        guard recognizer.supportsOnDeviceRecognition else {
+            throw VoiceBuddyError.modelUnavailable("On-device Apple Speech recognition is unavailable for \(locale.identifier). Download the required language resources or choose another speech model. (此语言的 Apple Speech 本地识别不可用，请下载所需语言资源或选择其他语音模型。)")
+        }
 
         // 3. Audio file writing
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("apple_speech_\(UUID().uuidString).wav")
@@ -34,9 +37,7 @@ final class AppleSpeechEngine: @unchecked Sendable {
 
         // 4. Request configuration
         let request = SFSpeechURLRecognitionRequest(url: tempURL)
-        if recognizer.supportsOnDeviceRecognition {
-            request.requiresOnDeviceRecognition = true
-        }
+        request.requiresOnDeviceRecognition = true
 
         return try await withCheckedThrowingContinuation { continuation in
             var hasResumed = false
