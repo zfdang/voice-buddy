@@ -837,12 +837,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             var sizeVal: CFTypeRef?
             if AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &posVal) == .success,
                AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeVal) == .success,
-               let pos = posVal, let size = sizeVal {
+               let pos = posVal, let size = sizeVal,
+               CFGetTypeID(pos) == AXValueGetTypeID(), CFGetTypeID(size) == AXValueGetTypeID() {
                 var pt = CGPoint.zero
                 var sz = CGSize.zero
-                AXValueGetValue(pos as! AXValue, .cgPoint, &pt)
-                AXValueGetValue(size as! AXValue, .cgSize, &sz)
-                if sz.width > 20 && sz.height > 10 {
+                if AXValueGetValue(pos as! AXValue, .cgPoint, &pt),
+                   AXValueGetValue(size as! AXValue, .cgSize, &sz), sz.width > 20 && sz.height > 10 {
                     let mouse = NSEvent.mouseLocation
                     let cocoaY = primaryHeight - pt.y - sz.height
                     let elementCocoaRect = CGRect(x: pt.x, y: cocoaY, width: sz.width, height: sz.height)
