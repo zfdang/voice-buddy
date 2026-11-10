@@ -1082,9 +1082,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     }
                     self.status = self.label("Paste command sent.", "已发送粘贴命令。")
                     DiagnosticLog.shared.record("insert.paste_posted id=\(logSession)")
-                    // Restoring on a timer is still best-effort: AppKit does not report
-                    // when the receiving app has consumed the clipboard.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    // Restoring on a short delay allows target app to consume pasteboard
+                    // while preventing prolonged exposure or collision with rapid dictations.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                         let restored = temporaryClipboard.restore()
                         DiagnosticLog.shared.record("clipboard.restore id=\(logSession) restored=\(restored)")
                     }
