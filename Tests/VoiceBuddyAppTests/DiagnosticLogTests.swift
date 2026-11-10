@@ -20,4 +20,17 @@ final class DiagnosticLogTests: XCTestCase {
         let permissions = try XCTUnwrap(try FileManager.default.attributesOfItem(atPath: log.fileURL.path)[.posixPermissions] as? NSNumber)
         XCTAssertEqual(permissions.intValue, 0o600)
     }
+
+    func testRotationOverwritesPreexistingTargetFilesWithoutError() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try "stale1".write(to: root.appendingPathComponent("diagnostics.1.log"), atomically: true, encoding: .utf8)
+        try "stale2".write(to: root.appendingPathComponent("diagnostics.2.log"), atomically: true, encoding: .utf8)
+
+        let log = DiagnosticLog(directory: root, limit: 60)
+        for index in 0..<5 { log.record("event_\(index) " + String(repeating: "x", count: 20)) }
+        let current = try log.readyFile()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: current.path))
+    }
 }

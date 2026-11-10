@@ -46,9 +46,15 @@ final class DiagnosticLog {
                     if fm.fileExists(atPath: self.previousURL(6).path) { try fm.removeItem(at: self.previousURL(6)) }
                     for index in stride(from: 5, through: 1, by: -1) {
                         let source = self.previousURL(index)
-                        if fm.fileExists(atPath: source.path) { try fm.moveItem(at: source, to: self.previousURL(index + 1)) }
+                        let target = self.previousURL(index + 1)
+                        if fm.fileExists(atPath: source.path) {
+                            if fm.fileExists(atPath: target.path) { try? fm.removeItem(at: target) }
+                            try fm.moveItem(at: source, to: target)
+                        }
                     }
-                    try fm.moveItem(at: self.fileURL, to: self.previousURL(1))
+                    let target1 = self.previousURL(1)
+                    if fm.fileExists(atPath: target1.path) { try? fm.removeItem(at: target1) }
+                    try fm.moveItem(at: self.fileURL, to: target1)
                     try self.prepare()
                 }
                 let handle = try FileHandle(forWritingTo: self.fileURL)
@@ -63,7 +69,6 @@ final class DiagnosticLog {
     /// Flush pending writes before revealing the files in Finder.
     func readyFile() throws -> URL {
         try queue.sync {
-            if let lastError { throw lastError }
             try prepare()
             return fileURL
         }
