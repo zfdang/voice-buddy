@@ -240,9 +240,19 @@ final class Overlay {
     private let animModel = OverlayAnimationModel()
     private var presentationID = UUID()
     private var targetScreen: NSScreen?
+    private var escMonitor: Any?
 
     func show(state: AppState, screenPoint: CGPoint? = nil) {
         presentationID = UUID()
+        if escMonitor == nil {
+            escMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                if event.keyCode == 53 { // ESC key dismiss
+                    Task { @MainActor [weak self] in
+                        self?.hide()
+                    }
+                }
+            }
+        }
         if let screenPoint {
             targetScreen = NSScreen.screens.first { $0.frame.contains(screenPoint) }
                 ?? NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
@@ -294,6 +304,10 @@ final class Overlay {
     }
 
     func hide() {
+        if let monitor = escMonitor {
+            NSEvent.removeMonitor(monitor)
+            escMonitor = nil
+        }
         presentationID = UUID()
         animModel.reset()
         panel?.orderOut(nil)

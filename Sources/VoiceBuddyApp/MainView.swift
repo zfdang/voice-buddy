@@ -242,24 +242,27 @@ struct MainView: View {
     private var general: some View {
         let permReady = state.micAuthorized && state.axAuthorized
         let speechReady = state.asrReady || state.isSpeechDownloaded
-        let textReady = state.editorReady || state.isEditorDownloaded
+        let textReady = !state.preferences.refinement.needsModel || state.editorReady || state.isEditorDownloaded
         let allReady = permReady && speechReady && textReady
+
+        let isCurrentSpeechDownloading = state.downloadingSpeechModelIDs.contains(state.preferences.speechModel)
+        let isCurrentTextDownloading = state.downloadingTextModelIDs.contains(state.preferences.textModel)
 
         let speechSubtitle: String = {
             if state.isActivatingSpeechModel { return t("Loading into memory…", "载入内存中…") }
-            if !state.downloadingSpeechModelIDs.isEmpty { return t("Downloading…", "下载中…") }
+            if isCurrentSpeechDownloading { return t("Downloading…", "下载中…") }
             if state.asrReady { return t("Ready", "已就绪") }
             if state.isSpeechDownloaded { return t("Downloaded", "已下载") }
             return t("Not downloaded", "尚未下载")
         }()
 
         let textSubtitle: String = {
-            if state.isActivatingTextModel { return t("Loading into memory…", "载入内存中…") }
-            if !state.downloadingTextModelIDs.isEmpty { return t("Downloading…", "下载中…") }
-            if state.editorReady { return t("Ready", "已就绪") }
-            if !state.preferences.refinement.needsModel && state.isEditorDownloaded {
-                return t("Standby (Light mode active)", "待命 (轻度整理无需模型)")
+            if !state.preferences.refinement.needsModel {
+                return t("Light mode (No LLM needed)", "轻度调整 (无需大模型)")
             }
+            if state.isActivatingTextModel { return t("Loading into memory…", "载入内存中…") }
+            if isCurrentTextDownloading { return t("Downloading…", "下载中…") }
+            if state.editorReady { return t("Ready", "已就绪") }
             if state.isEditorDownloaded { return t("Downloaded", "已下载") }
             return t("Not downloaded", "尚未下载")
         }()
@@ -283,7 +286,7 @@ struct MainView: View {
                             title: t("Speech Model", "语音识别"),
                             subtitle: speechSubtitle,
                             isReady: speechReady,
-                            isPreparing: state.isActivatingSpeechModel || !state.downloadingSpeechModelIDs.isEmpty,
+                            isPreparing: state.isActivatingSpeechModel || isCurrentSpeechDownloading,
                             targetTab: .speech
                         )
 
@@ -292,7 +295,7 @@ struct MainView: View {
                             title: t("Text Model", "文本模型"),
                             subtitle: textSubtitle,
                             isReady: textReady,
-                            isPreparing: state.isActivatingTextModel || !state.downloadingTextModelIDs.isEmpty,
+                            isPreparing: state.preferences.refinement.needsModel && (state.isActivatingTextModel || isCurrentTextDownloading),
                             targetTab: .editor
                         )
                     }
@@ -314,6 +317,18 @@ struct MainView: View {
                                 .foregroundStyle(.orange)
                         }
                         Spacer()
+                    }
+
+                    let hasBackgroundDownloads = (!isCurrentSpeechDownloading && !state.downloadingSpeechModelIDs.isEmpty) || (!isCurrentTextDownloading && !state.downloadingTextModelIDs.isEmpty)
+                    if hasBackgroundDownloads {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.mini)
+                            Text(t("Background models are downloading. This does not affect active dictation.", "后台正在下载其他模型，不影响当前快捷键听写。"))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.top, 2)
                     }
                 }
             }
@@ -687,16 +702,28 @@ struct MainView: View {
                                         }
                                         .frame(width: 80, alignment: .trailing)
 
-                                        Button {
-                                            state.downloadSpeechModel(id: spec.id)
-                                        } label: {
-                                            Text(t("Download", "下载"))
+                                        if isDownloadingThis {
+                                            Button(role: .destructive) {
+                                                state.cancelSpeechDownload(id: spec.id)
+                                            } label: {
+                                                Text(t("Cancel", "取消"))
+                                            }
+                                            .controlSize(.small)
+                                            .buttonStyle(.bordered)
+                                            .frame(minWidth: 90)
+                                            .accessibilityLabel(t("Cancel Download", "取消下载"))
+                                        } else {
+                                            Button {
+                                                state.downloadSpeechModel(id: spec.id)
+                                            } label: {
+                                                Text(t("Download", "下载"))
+                                            }
+                                            .controlSize(.small)
+                                            .buttonStyle(.borderedProminent)
+                                            .disabled(state.busy || state.recording)
+                                            .frame(minWidth: 90)
+                                            .accessibilityLabel(t("Download", "下载"))
                                         }
-                                        .controlSize(.small)
-                                        .buttonStyle(.borderedProminent)
-                                        .disabled(state.busy || state.recording)
-                                        .frame(minWidth: 90)
-                                        .accessibilityLabel(t("Download", "下载"))
                                     }
                                 }
                                 .fixedSize(horizontal: true, vertical: false)
@@ -987,16 +1014,28 @@ struct MainView: View {
                                         }
                                         .frame(width: 80, alignment: .trailing)
 
-                                        Button {
-                                            state.downloadTextModel(id: spec.id)
-                                        } label: {
-                                            Text(t("Download", "下载"))
+                                        if isDownloadingThis {
+                                            Button(role: .destructive) {
+                                                state.cancelTextDownload(id: spec.id)
+                                            } label: {
+                                                Text(t("Cancel", "取消"))
+                                            }
+                                            .controlSize(.small)
+                                            .buttonStyle(.bordered)
+                                            .frame(minWidth: 90)
+                                            .accessibilityLabel(t("Cancel Download", "取消下载"))
+                                        } else {
+                                            Button {
+                                                state.downloadTextModel(id: spec.id)
+                                            } label: {
+                                                Text(t("Download", "下载"))
+                                            }
+                                            .controlSize(.small)
+                                            .buttonStyle(.borderedProminent)
+                                            .disabled(state.busy || state.recording)
+                                            .frame(minWidth: 90)
+                                            .accessibilityLabel(t("Download", "下载"))
                                         }
-                                        .controlSize(.small)
-                                        .buttonStyle(.borderedProminent)
-                                        .disabled(state.busy || state.recording || isDownloadingThis)
-                                        .frame(minWidth: 90)
-                                        .accessibilityLabel(t("Download", "下载"))
                                     }
                                 }
                                 .fixedSize(horizontal: true, vertical: false)
@@ -1073,7 +1112,7 @@ struct MainView: View {
                         } else if !state.preferences.refinement.needsModel {
                             Image(systemName: "info.circle")
                                 .foregroundStyle(.secondary)
-                            Text(t("Current mode is Light/Original (no LLM required) · Model not loaded to save unified memory.", "当前选择的是轻微整理/原文模式，无需使用大模型，故未载入统一内存以节省显存。"))
+                            Text(t("Current mode is Light/Original (no text model required, so not loaded into memory).", "当前选择的是轻微整理/原文模式，不需要使用 text 模型，所以没有加载。"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()

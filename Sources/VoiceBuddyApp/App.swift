@@ -722,46 +722,24 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         guard ready else {
             DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=speech_model_not_ready")
             gesture.reset()
-            status = label("Loading speech model into memory…", "正在载入语音识别模型至统一内存…")
-            overlay.show(state: self)
+            status = isActivatingSpeechModel
+                ? label("Speech model is compiling into unified memory. Please wait…", "语音识别模型正在载入统一内存（首次编译需1-2分钟），请稍候…")
+                : label("Loading speech model into memory…", "正在载入语音识别模型至统一内存…")
+            overlay.showStatus(state: self)
             if !isActivatingSpeechModel {
-                prepareSpeech { [weak self] success in
-                    guard let self else { return }
-                    if success {
-                        self.status = self.label("Speech model ready. Press hotkey to talk.", "语音模型已就绪，请按快捷键说话。")
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                            if !self.recording { self.overlay.hide() }
-                        }
-                    } else {
-                        self.status = self.label("Speech model failed to load. Please check Settings.", "语音识别模型载入失败，请在设置中查看。")
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            if !self.recording { self.overlay.hide() }
-                        }
-                    }
-                }
+                prepareSpeech()
             }
             return
         }
         if preferences.refinement.needsModel && !editorReady {
             DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=text_model_not_ready")
-            status = label("Loading text model into memory…", "正在载入文本润色模型至统一内存…")
+            status = isActivatingTextModel
+                ? label("Text model is loading into unified memory. Please wait…", "文本模型正在载入统一内存，请稍候…")
+                : label("Loading text model into memory…", "正在载入文本润色模型至统一内存…")
             gesture.reset()
-            overlay.show(state: self)
+            overlay.showStatus(state: self)
             if !isActivatingTextModel {
-                prepareEditor { [weak self] success in
-                    guard let self else { return }
-                    if success {
-                        self.status = self.label("Text model ready. Press hotkey to talk.", "文本模型已就绪，请按快捷键说话。")
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                            if !self.recording { self.overlay.hide() }
-                        }
-                    } else {
-                        self.status = self.label("Text model failed to load. Please check Settings.", "文本模型载入失败，请在设置中查看。")
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            if !self.recording { self.overlay.hide() }
-                        }
-                    }
-                }
+                prepareEditor()
             }
             return
         }
