@@ -257,6 +257,9 @@ struct MainView: View {
             if state.isActivatingTextModel { return t("Loading into memory…", "载入内存中…") }
             if !state.downloadingTextModelIDs.isEmpty { return t("Downloading…", "下载中…") }
             if state.editorReady { return t("Ready", "已就绪") }
+            if !state.preferences.refinement.needsModel && state.isEditorDownloaded {
+                return t("Standby (Light mode active)", "待命 (轻度整理无需模型)")
+            }
             if state.isEditorDownloaded { return t("Downloaded", "已下载") }
             return t("Not downloaded", "尚未下载")
         }()
@@ -1067,17 +1070,30 @@ struct MainView: View {
                             Text(t("Loading model into unified memory…", "正在载入统一内存…"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                        } else if !state.preferences.refinement.needsModel {
+                            Image(systemName: "info.circle")
+                                .foregroundStyle(.secondary)
+                            Text(t("Current mode is Light/Original (no LLM required) · Model not loaded to save unified memory.", "当前选择的是轻微整理/原文模式，无需使用大模型，故未载入统一内存以节省显存。"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button(t("Load Anyway", "按需预载入")) {
+                                state.loadActiveEditorModel()
+                            }
+                            .controlSize(.small)
+                            .buttonStyle(.bordered)
+                            .accessibilityLabel(t("Load Anyway", "按需预载入"))
                         } else {
                             Image(systemName: "pause.circle")
                                 .foregroundStyle(.orange)
-                            Text(t("Model not loaded into unified memory.", "模型尚未载入统一内存。"))
+                            Text(t("Model not loaded into unified memory.", "当前润色模式需要大模型，但尚未载入统一内存。"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Button(t("Load into Memory", "载入内存")) {
                                 state.loadActiveEditorModel()
                             }
                             .controlSize(.small)
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.borderedProminent)
                             .accessibilityLabel(t("Load into Memory", "载入内存"))
                         }
                         Spacer()
@@ -1122,19 +1138,88 @@ struct MainView: View {
     }
 
     private var recovery: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(t("Review before copying or inserting.", "请检查后复制或插入。 ")).foregroundStyle(.secondary)
-            TextEditor(text: $state.result).frame(minHeight: 160).border(.quaternary)
-            HStack(spacing: 12) {
-                Button(t("Copy", "复制")) { state.copyResult() }.accessibilityLabel(t("Copy", "复制"))
-                Button(t("Show original", "查看原文")) { state.result = state.original }.accessibilityLabel(t("Show original", "查看原文"))
-                Button(t("Insert", "插入")) {
-                    if !state.insertIfSafe(state.result) {
-                        state.status = state.insertFailure
+        VStack(alignment: .leading, spacing: 20) {
+            // 1. Direct Speech Recognition Output (Raw)
+            settingsCard(title: t("Direct Speech Recognition (Original)", "原始识别结果 (未修饰原文)")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(t("Raw transcript directly produced by the speech recognition model without post-processing.", "由语音识别模型直接输出的初始文本，未经过标点规整或大模型润色。"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    ScrollView {
+                        Text(state.original.isEmpty ? t("No speech input recorded yet.", "尚未录制任何语音输入。") : state.original)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(state.original.isEmpty ? .secondary : .primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding(10)
                     }
-                }.accessibilityLabel(t("Insert", "插入"))
-                if !state.status.isEmpty {
-                    Text(state.status).font(.callout).foregroundStyle(.secondary)
+                    .frame(minHeight: 80, maxHeight: 140)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .cornerRadius(6)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2), lineWidth: 1))
+
+                    HStack {
+                        Spacer()
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(state.original, forType: .string)
+                            state.status = t("Original text copied", "原文已复制")
+                        } label: {
+                            Label(t("Copy Original", "复制原文"), systemImage: "doc.on.doc")
+                        }
+                        .controlSize(.small)
+                        .disabled(state.original.isEmpty)
+                        .accessibilityLabel(t("Copy Original", "复制原文"))
+                    }
+                }
+            }
+
+            // 2. Refined & Optimized Output
+            settingsCard(title: t("Refined & Optimized Output", "优化润色结果 (最终文本)")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(t("Final text polished by punctuation rules or on-device LLM.", "经口语消除、标点符号自动规整或端侧大语言模型重构润色后的最终文本。"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    TextEditor(text: $state.result)
+                        .font(.system(.body, design: .default))
+                        .frame(minHeight: 110, maxHeight: 180)
+                        .padding(4)
+                        .background(Color(nsColor: .textBackgroundColor))
+                        .cornerRadius(6)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2), lineWidth: 1))
+
+                    HStack(spacing: 12) {
+                        Button {
+                            state.copyResult()
+                        } label: {
+                            Label(t("Copy Result", "复制润色结果"), systemImage: "doc.on.clipboard")
+                        }
+                        .controlSize(.small)
+                        .disabled(state.result.isEmpty)
+                        .accessibilityLabel(t("Copy Result", "复制润色结果"))
+
+                        Button {
+                            if !state.insertIfSafe(state.result) {
+                                state.status = state.insertFailure
+                            }
+                        } label: {
+                            Label(t("Insert into Active App", "直接插入光标处"), systemImage: "arrow.down.doc")
+                        }
+                        .controlSize(.small)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(state.result.isEmpty)
+                        .accessibilityLabel(t("Insert into Active App", "直接插入光标处"))
+
+                        Spacer()
+
+                        if !state.status.isEmpty {
+                            Text(state.status)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
         }

@@ -221,15 +221,21 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
 
     func isEditorModelCached(id: String? = nil) -> Bool {
         let targetId = id ?? "qwen35-text-0.8b-int5"
-        let dir = textDirectory(targetId)
-        if hasSafetensors(in: dir) {
-            return true
-        }
-        if targetId == "qwen35-text-0.8b-int5" {
+        var dir = textDirectory(targetId)
+        if targetId == "qwen35-text-0.8b-int5" && !FileManager.default.fileExists(atPath: dir.path) {
             let legacy = directory("qwen35-text-0.8b")
-            return hasSafetensors(in: legacy)
+            if FileManager.default.fileExists(atPath: legacy.path) {
+                dir = legacy
+            }
         }
-        return false
+        if targetId.hasPrefix("qwen35-text-0.8b") {
+            let q = targetId.contains("int8") ? "int8" : "int5"
+            let variantDir = dir.appendingPathComponent(q)
+            if FileManager.default.fileExists(atPath: variantDir.appendingPathComponent("model.safetensors").path) {
+                return true
+            }
+        }
+        return hasSafetensors(in: dir)
     }
 
     private func hasSafetensors(in dir: URL) -> Bool {
@@ -412,28 +418,44 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
                     dir = legacy
                 }
             }
+            let variantDir = dir.appendingPathComponent(q.rawValue)
+            let isLocalVariantCached = FileManager.default.fileExists(atPath: variantDir.appendingPathComponent("model.safetensors").path)
+
             if qwen35Editor == nil || selectedEditorID != targetId {
                 denseEditor = nil
-                qwen35Editor = try await Qwen35MLXChat.fromPretrained(
-                    quantization: q,
-                    cacheDir: dir,
-                    offlineMode: isCached,
-                    progressHandler: progress
-                )
+                if isLocalVariantCached {
+                    qwen35Editor = try await Qwen35MLXChat.fromLocal(
+                        directory: variantDir,
+                        progressHandler: progress
+                    )
+                } else {
+                    qwen35Editor = try await Qwen35MLXChat.fromPretrained(
+                        quantization: q,
+                        cacheDir: dir,
+                        offlineMode: isCached,
+                        progressHandler: progress
+                    )
+                }
                 selectedEditorID = targetId
             }
         } else {
             let hfModelId = (targetId == "qwen3-text-4b-4bit")
                 ? "aufklarer/Qwen3-4B-Instruct-2507-MLX-4bit"
                 : "mlx-community/Qwen3-1.7B-4bit"
+            let isDenseLocalCached = FileManager.default.fileExists(atPath: dir.appendingPathComponent("model.safetensors").path)
+
             if denseEditor == nil || selectedEditorID != targetId {
                 qwen35Editor = nil
-                denseEditor = try await Qwen3DenseChat.fromPretrained(
-                    modelId: hfModelId,
-                    cacheDir: dir,
-                    offlineMode: isCached,
-                    progressHandler: progress
-                )
+                if isDenseLocalCached {
+                    denseEditor = try Qwen3DenseChat.fromDirectory(dir, progressHandler: { progress(0.5 + $0 * 0.5, $1) })
+                } else {
+                    denseEditor = try await Qwen3DenseChat.fromPretrained(
+                        modelId: hfModelId,
+                        cacheDir: dir,
+                        offlineMode: isCached,
+                        progressHandler: progress
+                    )
+                }
                 selectedEditorID = targetId
             }
         }
