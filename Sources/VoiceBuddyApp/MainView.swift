@@ -48,6 +48,7 @@ struct MainView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .frame(minWidth: 720, minHeight: 560)
         .onAppear {
             state.refreshPermissions()
         }
@@ -240,9 +241,35 @@ struct MainView: View {
 
     private var general: some View {
         let permReady = state.micAuthorized && state.axAuthorized
-        let speechReady = state.ready || state.isSpeechDownloaded
-        let textReady = state.editorReady || state.isEditorDownloaded
+        let speechReady = state.asrReady || state.isSpeechDownloaded
+        let textReady = !state.preferences.refinement.needsModel || state.editorReady || state.isEditorDownloaded
         let allReady = permReady && speechReady && textReady
+
+        let isCurrentSpeechDownloading = state.downloadingSpeechModelIDs.contains(state.preferences.speechModel)
+        let isCurrentTextDownloading = state.downloadingTextModelIDs.contains(state.preferences.textModel)
+
+        let speechSubtitle: String = {
+            if state.isActivatingSpeechModel {
+                return state.preferences.speechModel.contains("whisper")
+                    ? t("Loading (1-2 mins on first run)…", "载入中 (首次编译约1~2分钟)…")
+                    : t("Loading into memory…", "载入内存中…")
+            }
+            if isCurrentSpeechDownloading { return t("Downloading…", "下载中…") }
+            if state.asrReady { return t("Ready", "已就绪") }
+            if state.isSpeechDownloaded { return t("Downloaded", "已下载") }
+            return t("Not downloaded", "尚未下载")
+        }()
+
+        let textSubtitle: String = {
+            if !state.preferences.refinement.needsModel {
+                return t("Light mode (No LLM needed)", "轻度调整 (无需大模型)")
+            }
+            if state.isActivatingTextModel { return t("Loading into memory…", "载入内存中…") }
+            if isCurrentTextDownloading { return t("Downloading…", "下载中…") }
+            if state.editorReady { return t("Ready", "已就绪") }
+            if state.isEditorDownloaded { return t("Downloaded", "已下载") }
+            return t("Not downloaded", "尚未下载")
+        }()
 
         return VStack(alignment: .leading, spacing: 20) {
             // 0. System Readiness Check
@@ -261,18 +288,18 @@ struct MainView: View {
                         statusModule(
                             number: 2,
                             title: t("Speech Model", "语音识别"),
-                            subtitle: state.speechPreparing ? t("Preparing…", "加载中…") : (speechReady ? t("Ready", "已就绪") : t("Not downloaded", "尚未下载")),
+                            subtitle: speechSubtitle,
                             isReady: speechReady,
-                            isPreparing: state.speechPreparing,
+                            isPreparing: state.isActivatingSpeechModel || isCurrentSpeechDownloading,
                             targetTab: .speech
                         )
 
                         statusModule(
                             number: 3,
                             title: t("Text Model", "文本模型"),
-                            subtitle: state.editorPreparing ? t("Preparing…", "加载中…") : (textReady ? t("Ready", "已就绪") : t("Not downloaded", "尚未下载")),
+                            subtitle: textSubtitle,
                             isReady: textReady,
-                            isPreparing: state.editorPreparing,
+                            isPreparing: state.preferences.refinement.needsModel && (state.isActivatingTextModel || isCurrentTextDownloading),
                             targetTab: .editor
                         )
                     }
@@ -294,6 +321,18 @@ struct MainView: View {
                                 .foregroundStyle(.orange)
                         }
                         Spacer()
+                    }
+
+                    let hasBackgroundDownloads = (!isCurrentSpeechDownloading && !state.downloadingSpeechModelIDs.isEmpty) || (!isCurrentTextDownloading && !state.downloadingTextModelIDs.isEmpty)
+                    if hasBackgroundDownloads {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.mini)
+                            Text(t("Background models are downloading. This does not affect active dictation.", "后台正在下载其他模型，不影响当前快捷键听写。"))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.top, 2)
                     }
                 }
             }
@@ -667,16 +706,28 @@ struct MainView: View {
                                         }
                                         .frame(width: 80, alignment: .trailing)
 
-                                        Button {
-                                            state.downloadSpeechModel(id: spec.id)
-                                        } label: {
-                                            Text(t("Download", "下载"))
+                                        if isDownloadingThis {
+                                            Button(role: .destructive) {
+                                                state.cancelSpeechDownload(id: spec.id)
+                                            } label: {
+                                                Text(t("Cancel", "取消"))
+                                            }
+                                            .controlSize(.small)
+                                            .buttonStyle(.bordered)
+                                            .frame(minWidth: 90)
+                                            .accessibilityLabel(t("Cancel Download", "取消下载"))
+                                        } else {
+                                            Button {
+                                                state.downloadSpeechModel(id: spec.id)
+                                            } label: {
+                                                Text(t("Download", "下载"))
+                                            }
+                                            .controlSize(.small)
+                                            .buttonStyle(.borderedProminent)
+                                            .disabled(state.busy || state.recording)
+                                            .frame(minWidth: 90)
+                                            .accessibilityLabel(t("Download", "下载"))
                                         }
-                                        .controlSize(.small)
-                                        .buttonStyle(.borderedProminent)
-                                        .disabled(state.busy || state.recording)
-                                        .frame(minWidth: 90)
-                                        .accessibilityLabel(t("Download", "下载"))
                                     }
                                 }
                                 .fixedSize(horizontal: true, vertical: false)
@@ -790,6 +841,17 @@ struct MainView: View {
                                         .foregroundStyle(.primary)
                                 }
                             }
+                            if activeSpec.id.contains("whisper") {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "info.circle")
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                    Text(t("First load compiles to Apple Neural Engine (~1–2 mins, once only). Instant thereafter.", "提示：首次加载需系统神经引擎编译（约需 1~2 分钟，仅执行一次），后续启动即可秒开。"))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.top, 2)
+                            }
                         }
                         .padding(10)
                         .background(Color.secondary.opacity(0.08))
@@ -799,18 +861,29 @@ struct MainView: View {
                     Divider()
 
                     HStack(spacing: 8) {
-                        if state.ready {
+                        if state.asrReady {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
                             Text(t("Model & VAD are loaded in unified memory · Ready for instant dictation.", "声学识别与语音检测模型已载入统一内存 · 随时可用 (快捷键即刻听写)"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                        } else if state.speechPreparing {
+                        } else if state.isActivatingSpeechModel {
                             ProgressView()
                                 .controlSize(.small)
-                            Text(t("Loading model into unified memory…", "正在载入统一内存…"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(t("Loading model into unified memory…", "正在载入统一内存…"))
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.primary)
+                                if state.preferences.speechModel.contains("whisper") {
+                                    Text(t("First-time load requires Neural Engine compilation (~1–2 minutes, one-time only). Subsequent launches will be instant.", "首次加载需经由 Apple Neural Engine 硬件编译（约需 1~2 分钟，仅需编译一次），后续秒开，请稍候…"))
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                } else {
+                                    Text(t("Allocating memory and initializing neural weights…", "正在分配统一内存并初始化权重…"))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         } else {
                             Image(systemName: "pause.circle")
                                 .foregroundStyle(.orange)
@@ -895,7 +968,9 @@ struct MainView: View {
                         }
 
                         let isCached = state.cachedTextModelIDs.contains(spec.id)
-                        let isDownloadingThis = state.editorPreparing && state.activeDownloadingTextModelID == spec.id && !isCached
+                        let isDownloadingThis = state.downloadingTextModelIDs.contains(spec.id)
+                        let progressVal = state.textDownloadProgress[spec.id] ?? 0
+                        let progressMsg = state.textDownloadMessages[spec.id] ?? ""
 
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .center, spacing: 10) {
@@ -925,7 +1000,7 @@ struct MainView: View {
                                     if isDownloadingThis {
                                         HStack(spacing: 4) {
                                             ProgressView().controlSize(.small)
-                                            Text("\(Int(state.editorProgress * 100))%")
+                                            Text("\(Int(progressVal * 100))%")
                                                 .font(.caption.monospacedDigit())
                                                 .foregroundStyle(.secondary)
                                         }
@@ -965,16 +1040,28 @@ struct MainView: View {
                                         }
                                         .frame(width: 80, alignment: .trailing)
 
-                                        Button {
-                                            state.downloadTextModel(id: spec.id)
-                                        } label: {
-                                            Text(t("Download", "下载"))
+                                        if isDownloadingThis {
+                                            Button(role: .destructive) {
+                                                state.cancelTextDownload(id: spec.id)
+                                            } label: {
+                                                Text(t("Cancel", "取消"))
+                                            }
+                                            .controlSize(.small)
+                                            .buttonStyle(.bordered)
+                                            .frame(minWidth: 90)
+                                            .accessibilityLabel(t("Cancel Download", "取消下载"))
+                                        } else {
+                                            Button {
+                                                state.downloadTextModel(id: spec.id)
+                                            } label: {
+                                                Text(t("Download", "下载"))
+                                            }
+                                            .controlSize(.small)
+                                            .buttonStyle(.borderedProminent)
+                                            .disabled(state.busy || state.recording)
+                                            .frame(minWidth: 90)
+                                            .accessibilityLabel(t("Download", "下载"))
                                         }
-                                        .controlSize(.small)
-                                        .buttonStyle(.borderedProminent)
-                                        .disabled(state.busy || state.recording)
-                                        .frame(minWidth: 90)
-                                        .accessibilityLabel(t("Download", "下载"))
                                     }
                                 }
                                 .fixedSize(horizontal: true, vertical: false)
@@ -982,9 +1069,9 @@ struct MainView: View {
 
                             if isDownloadingThis {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    ProgressView(value: state.editorProgress)
-                                    if !state.editorProgressMessage.isEmpty {
-                                        Text(state.editorProgressMessage)
+                                    ProgressView(value: progressVal)
+                                    if !progressMsg.isEmpty {
+                                        Text(progressMsg)
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                     }
@@ -1042,23 +1129,41 @@ struct MainView: View {
                             Text(t("Model is loaded in unified memory · Ready for instant zero-latency refinement.", "模型已载入统一内存 · 随时可用 (毫秒级零延迟润色)"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                        } else if state.editorPreparing {
+                        } else if state.isActivatingTextModel {
                             ProgressView()
                                 .controlSize(.small)
-                            Text(t("Loading model into unified memory…", "正在载入统一内存…"))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(t("Loading model into unified memory…", "正在载入统一内存…"))
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.primary)
+                                Text(t("Mapping unified memory weights, please wait…", "正在映射统一内存权重，请稍候…"))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if !state.preferences.refinement.needsModel {
+                            Image(systemName: "info.circle")
+                                .foregroundStyle(.secondary)
+                            Text(t("Current mode is Light/Original (no text model required, so not loaded into memory).", "当前选择的是轻微整理/原文模式，不需要使用 text 模型，所以没有加载。"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            Spacer()
+                            Button(t("Load Anyway", "按需预载入")) {
+                                state.loadActiveEditorModel()
+                            }
+                            .controlSize(.small)
+                            .buttonStyle(.bordered)
+                            .accessibilityLabel(t("Load Anyway", "按需预载入"))
                         } else {
                             Image(systemName: "pause.circle")
                                 .foregroundStyle(.orange)
-                            Text(t("Model not loaded into unified memory.", "模型尚未载入统一内存。"))
+                            Text(t("Model not loaded into unified memory.", "当前润色模式需要大模型，但尚未载入统一内存。"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Button(t("Load into Memory", "载入内存")) {
                                 state.loadActiveEditorModel()
                             }
                             .controlSize(.small)
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.borderedProminent)
                             .accessibilityLabel(t("Load into Memory", "载入内存"))
                         }
                         Spacer()
@@ -1103,19 +1208,88 @@ struct MainView: View {
     }
 
     private var recovery: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(t("Review before copying or inserting.", "请检查后复制或插入。 ")).foregroundStyle(.secondary)
-            TextEditor(text: $state.result).frame(minHeight: 160).border(.quaternary)
-            HStack(spacing: 12) {
-                Button(t("Copy", "复制")) { state.copyResult() }.accessibilityLabel(t("Copy", "复制"))
-                Button(t("Show original", "查看原文")) { state.result = state.original }.accessibilityLabel(t("Show original", "查看原文"))
-                Button(t("Insert", "插入")) {
-                    if !state.insertIfSafe(state.result) {
-                        state.status = state.insertFailure
+        VStack(alignment: .leading, spacing: 20) {
+            // 1. Direct Speech Recognition Output (Raw)
+            settingsCard(title: t("Direct Speech Recognition (Original)", "原始识别结果 (未修饰原文)")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(t("Raw transcript directly produced by the speech recognition model without post-processing.", "由语音识别模型直接输出的初始文本，未经过标点规整或大模型润色。"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    ScrollView {
+                        Text(state.original.isEmpty ? t("No speech input recorded yet.", "尚未录制任何语音输入。") : state.original)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(state.original.isEmpty ? .secondary : .primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding(10)
                     }
-                }.accessibilityLabel(t("Insert", "插入"))
-                if !state.status.isEmpty {
-                    Text(state.status).font(.callout).foregroundStyle(.secondary)
+                    .frame(minHeight: 80, maxHeight: 140)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .cornerRadius(6)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2), lineWidth: 1))
+
+                    HStack {
+                        Spacer()
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(state.original, forType: .string)
+                            state.status = t("Original text copied", "原文已复制")
+                        } label: {
+                            Label(t("Copy Original", "复制原文"), systemImage: "doc.on.doc")
+                        }
+                        .controlSize(.small)
+                        .disabled(state.original.isEmpty)
+                        .accessibilityLabel(t("Copy Original", "复制原文"))
+                    }
+                }
+            }
+
+            // 2. Refined & Optimized Output
+            settingsCard(title: t("Refined & Optimized Output", "优化润色结果 (最终文本)")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(t("Final text polished by punctuation rules or on-device LLM.", "经口语消除、标点符号自动规整或端侧大语言模型重构润色后的最终文本。"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    TextEditor(text: $state.result)
+                        .font(.system(.body, design: .default))
+                        .frame(minHeight: 110, maxHeight: 180)
+                        .padding(4)
+                        .background(Color(nsColor: .textBackgroundColor))
+                        .cornerRadius(6)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2), lineWidth: 1))
+
+                    HStack(spacing: 12) {
+                        Button {
+                            state.copyResult()
+                        } label: {
+                            Label(t("Copy Result", "复制润色结果"), systemImage: "doc.on.clipboard")
+                        }
+                        .controlSize(.small)
+                        .disabled(state.result.isEmpty)
+                        .accessibilityLabel(t("Copy Result", "复制润色结果"))
+
+                        Button {
+                            if !state.insertIfSafe(state.result) {
+                                state.status = state.insertFailure
+                            }
+                        } label: {
+                            Label(t("Insert into Active App", "直接插入光标处"), systemImage: "arrow.down.doc")
+                        }
+                        .controlSize(.small)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(state.result.isEmpty)
+                        .accessibilityLabel(t("Insert into Active App", "直接插入光标处"))
+
+                        Spacer()
+
+                        if !state.status.isEmpty {
+                            Text(state.status)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
         }
@@ -1213,15 +1387,21 @@ struct MainView: View {
 
                     VStack(spacing: 8) {
                         HStack {
-                            Label("GitHub Repository", systemImage: "link")
+                            Label(t("Official Website", "官方网站与发布页"), systemImage: "globe")
                             Spacer()
-                            Link("github.com/zfdang/voice-buddy", destination: URL(string: "https://github.com/zfdang/voice-buddy")!)
+                            Link("myvoicebuddy.com", destination: URL(string: "https://myvoicebuddy.com")!)
                         }
                         Divider()
                         HStack {
-                            Label(t("Releases & Downloads", "版本发布与下载"), systemImage: "shippingbox")
+                            Label(t("Releases & Downloads", "最新发布与下载"), systemImage: "shippingbox")
                             Spacer()
-                            Link(t("View Releases", "查看发布页"), destination: URL(string: "https://github.com/zfdang/voice-buddy/releases")!)
+                            Link(t("Visit Website", "访问主页"), destination: URL(string: "https://myvoicebuddy.com")!)
+                        }
+                        Divider()
+                        HStack {
+                            Label("GitHub Repository", systemImage: "link")
+                            Spacer()
+                            Link("github.com/zfdang/voice-buddy", destination: URL(string: "https://github.com/zfdang/voice-buddy")!)
                         }
                         Divider()
                         HStack {

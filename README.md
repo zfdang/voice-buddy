@@ -33,7 +33,7 @@ Voice Buddy 是一个专为 macOS 设计的**离线优先、跨应用语音输�
 > [!IMPORTANT]
 > 本项目遵循严格的**双仓库物理隔离机制**：
 > - **`voice-buddy-private`（当前仓库）**：**私有研发中心与唯一代码库**。包含 100% 核心源码（`Sources/`）、自动化测试（`Tests/`）、构建脚本（`scripts/`）、包配置（`Package.swift`）与私有设计文档。
-> - **`voice-buddy`（公开分发仓库）**：**仅作为对外 Releases 下载与 Sparkle 升级分发渠道**。**严禁包含任何源码**！仅承载面向最终用户的 `README.md`、Sparkle 更新 feed `appcast.xml` 以及 GitHub Releases 页面挂载的编译安装包（`.dmg` / `.zip`）。
+> - **`voice-buddy`（公开分发仓库与发布网站）**：**仅作为对外 Releases 下载与 Sparkle 升级分发渠道**（官方发布主页：[https://myvoicebuddy.com](https://myvoicebuddy.com)）。**严禁包含任何源码**！仅承载面向最终用户的 `README.md`、Sparkle 更新 feed `appcast.xml` 以及 GitHub Releases 页面挂载的编译安装包（`.dmg` / `.zip`）。
 >
 > 完整规范与红线要求详见：
 > - [`AGENTS.md`](./AGENTS.md)：AI 助手与自动化脚本强约束指令
