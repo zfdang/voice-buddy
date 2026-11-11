@@ -7,7 +7,7 @@ let package = Package(
     platforms: [.macOS("15.0")],
     products: [.executable(name: "VoiceBuddy", targets: ["VoiceBuddyApp"])],
     dependencies: [
-        .package(url: "https://github.com/soniqo/speech-swift.git", revision: "a57702e6f523fa36ac5532d2bdc5f35f701a052c"),
+        .package(url: "https://github.com/zfdang/speech-swift.git", revision: "d4b9b9a67863bafcf60e37e06e6ffcb324a53407"),
         .package(url: "https://github.com/sindresorhus/LaunchAtLogin.git", from: "5.0.0"),
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts.git", from: "1.9.0"),
         .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0")

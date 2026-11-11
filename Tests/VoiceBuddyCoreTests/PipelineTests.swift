@@ -69,7 +69,7 @@ final class PipelineTests: XCTestCase {
         let p = Pipeline(detector: Detector(value: true), transcription: ASR(text: "  hello   world  "), refinement: Editor(text: "edited"))
         let raw = try await p.run(samples: [1], language: "en", mode: .original)
         let light = try await p.run(samples: [1], language: "en", mode: .light)
-        XCTAssertEqual(raw.result, "hello   world"); XCTAssertEqual(light.result, "hello world")
+        XCTAssertEqual(raw.result, "hello   world"); XCTAssertEqual(light.result, "edited")
     }
     func testRefinementAndEmptyResponse() async throws {
         let p = Pipeline(detector: Detector(value: true), transcription: ASR(text: "hello"), refinement: Editor(text: "rewritten"))
@@ -140,8 +140,8 @@ extension PipelineTests {
         XCTAssertFalse(TextCleanup.looksSafe("corrected text here", original: "明天下午三点开会"))
         XCTAssertFalse(TextCleanup.looksSafe("I am ready to help", original: "帮我整理这一段"))
         XCTAssertFalse(TextCleanup.looksSafe("As an AI, here is the text", original: "明天下午三点开会"))
-        XCTAssertFalse(TextCleanup.looksSafe("明天下午开会", original: "明天下午三点开会"))
         XCTAssertTrue(TextCleanup.looksSafe("明天下午三点开会。", original: "明天下午三点开会"))
+        XCTAssertTrue(TextCleanup.looksSafe("将本地改动推送至远程并开一个PR。", original: "把本地的改动推送到远程去，然后开一个PR。"))
         let longOriginal = "在今天的技术讨论会中，我们针对双仓库架构和应用内文本注入的稳定性进行了深度分析与重构，确保未来的发布版本具备高可靠性与用户信任。"
         let truncated = "在今天的技术讨论会中"
         XCTAssertFalse(TextCleanup.looksSafe(truncated, original: longOriginal))

@@ -560,16 +560,23 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
     }
     func refine(_ text: String, mode: Refinement) async throws -> String {
-        let instruction = mode == .rewrite
-            ? "Rewrite the dictated text clearly. You MUST strictly preserve the original language (e.g. keep Chinese in Chinese, English in English). Do NOT translate. Preserve all facts and intent. Output ONLY the rewritten text without explanations or quotation marks."
-            : "Edit the dictated text lightly for grammar, fluency and punctuation. You MUST strictly preserve the original language (e.g. keep Chinese in Chinese, English in English). Do NOT translate. Preserve all facts, words and meaning. Output ONLY the edited text without explanations or quotation marks."
+        guard let instruction = RefinementPrompts.prompt(for: mode) else {
+            return text
+        }
+        let userMessage = "<asr_text>\(text)</asr_text>"
         let tokenBudget = max(512, min(text.count * 4 + 128, 2048))
         let messages: [ChatMessage] = [
             .init(role: .system, content: instruction),
-            .init(role: .user, content: text)
+            .init(role: .user, content: userMessage),
+            .init(role: .assistant, content: "<polished_text>")
         ]
-        let sampling = ChatSamplingConfig(temperature: 0, maxTokens: tokenBudget)
+        let sampling = ChatSamplingConfig(
+            temperature: 0.15,
+            maxTokens: tokenBudget,
+            repetitionPenalty: 1.05
+        )
 
+        let startTime = CFAbsoluteTimeGetCurrent()
         let generated: String
         let tokenizer: ChatTokenizer
 
@@ -587,6 +594,8 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
             throw VoiceBuddyError.modelUnavailable("Text model")
         }
 
+        let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000)
+
         var trimmed = generated.trimmingCharacters(in: .whitespacesAndNewlines)
         if let thinkEnd = trimmed.range(of: "</think>") {
             trimmed = String(trimmed[thinkEnd.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -595,14 +604,28 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
             throw RefinementFailure(original: text, reason: "Model exceeded token budget inside reasoning block")
         }
 
+        // Clean <polished_text> tags (both standard </polished_text> and quantized variant </p>)
+        if let endTag = trimmed.range(of: "</polished_text>") {
+            trimmed = String(trimmed[..<endTag.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if let endP = trimmed.range(of: "</p>") {
+            trimmed = String(trimmed[..<endP.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let startTag = trimmed.range(of: "<polished_text>") {
+            trimmed = String(trimmed[startTag.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // Clean any echoed <asr_text> or <asr_input> tags
+        trimmed = trimmed.replacingOccurrences(of: "</?asr_(?:text|input)>", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+
         if trimmed.hasPrefix("\"") && trimmed.hasSuffix("\"") && trimmed.count >= 2 {
             trimmed = String(trimmed.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
         let tokenCount = tokenizer.encode(trimmed).count
         if tokenCount >= tokenBudget || (text.count >= 40 && trimmed.count < max(12, text.count / 3)) {
-            throw RefinementFailure(original: text, reason: "Refinement output exceeded token budget or was truncated")
+            throw RefinementFailure(original: text, reason: "Refinement output exceeded token budget (\(tokenCount)/\(tokenBudget)) or was truncated (\(trimmed.count) chars)")
         }
+        DiagnosticLog.shared.record("model.text.refine_completed mode=\(mode.rawValue) duration_ms=\(elapsedMs) in_chars=\(text.count) out_chars=\(trimmed.count)")
         return trimmed
     }
 }
