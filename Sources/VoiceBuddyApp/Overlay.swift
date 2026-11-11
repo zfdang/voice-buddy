@@ -235,7 +235,8 @@ final class OverlayAnimationModel: ObservableObject {
 
 @MainActor
 final class Overlay {
-    var panel: NSPanel?
+    private var panel: NSPanel?
+    var isIgnoringMouseEvents: Bool { panel?.ignoresMouseEvents ?? false }
     private let animModel = OverlayAnimationModel()
     private var presentationID = UUID()
     private var targetScreen: NSScreen?

@@ -25,12 +25,17 @@ final class DiagnosticLogTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        try "stale1".write(to: root.appendingPathComponent("diagnostics.1.log"), atomically: true, encoding: .utf8)
-        try "stale2".write(to: root.appendingPathComponent("diagnostics.2.log"), atomically: true, encoding: .utf8)
+        let stale1URL = root.appendingPathComponent("diagnostics.1.log")
+        let stale2URL = root.appendingPathComponent("diagnostics.2.log")
+        try "stale_content_1".write(to: stale1URL, atomically: true, encoding: .utf8)
+        try "stale_content_2".write(to: stale2URL, atomically: true, encoding: .utf8)
 
         let log = DiagnosticLog(directory: root, limit: 60)
         for index in 0..<5 { log.record("event_\(index) " + String(repeating: "x", count: 20)) }
-        let current = try log.readyFile()
-        XCTAssertTrue(FileManager.default.fileExists(atPath: current.path))
+        _ = try log.readyFile()
+
+        let content1 = try String(contentsOf: stale1URL, encoding: .utf8)
+        XCTAssertFalse(content1.contains("stale_content_1"), "Rotation must overwrite stale diagnostics.1.log content")
+        XCTAssertTrue(content1.contains("event_"), "diagnostics.1.log must contain rotated log events")
     }
 }

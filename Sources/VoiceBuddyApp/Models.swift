@@ -305,21 +305,18 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
                 selectedID = id
             }
         }
+        if id == "apple-speech" {
+            // Apple Speech is completely built into macOS and handles its own speech detection.
+            // Do NOT attempt to download or load Silero VAD.
+            return
+        }
         if vad == nil {
             let vadCached = hasSafetensors(in: directory("silero-vad"))
-            do {
-                vad = try await SileroVADModel.fromPretrained(
-                    cacheDir: directory("silero-vad"),
-                    offlineMode: vadCached,
-                    progressHandler: { value, message in progress(0.9 + value * 0.1, message) }
-                )
-            } catch {
-                if id == "apple-speech" {
-                    DiagnosticLog.shared.record("vad.offline_fallback error=\(error.localizedDescription)")
-                } else {
-                    throw error
-                }
-            }
+            vad = try await SileroVADModel.fromPretrained(
+                cacheDir: directory("silero-vad"),
+                offlineMode: vadCached,
+                progressHandler: { value, message in progress(0.9 + value * 0.1, message) }
+            )
         }
     }
 
@@ -454,10 +451,11 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
             vad.resetState()
             return !vad.detectSpeech(audio: samples, sampleRate: 16000).isEmpty
         }
-        guard !samples.isEmpty else { return false }
-        let sumSquares = samples.reduce(0.0) { $0 + Double($1 * $1) }
-        let rms = sqrt(sumSquares / Double(samples.count))
-        return rms > 0.005
+        if selectedID == "apple-speech" {
+            // Apple Speech includes native speech and silence detection.
+            return !samples.isEmpty
+        }
+        throw VoiceBuddyError.modelUnavailable("VAD")
     }
     func transcribe(samples: [Float], language: String) async throws -> String {
         if selectedID == "apple-speech" {

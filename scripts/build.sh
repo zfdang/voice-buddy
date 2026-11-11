@@ -272,12 +272,16 @@ if [ "${SIGN_IDENTITY}" = "-" ]; then
     codesign --force --deep --sign - "${APP_BUNDLE}"
 else
     SIGN_FLAGS=(--force --deep)
+    ENTITLEMENTS_PATH="${ROOT_DIR}/VoiceBuddy.entitlements"
+    if [ -f "${ENTITLEMENTS_PATH}" ]; then
+        SIGN_FLAGS+=(--entitlements "${ENTITLEMENTS_PATH}")
+    fi
     if [[ "${SIGN_IDENTITY}" == *"Developer ID Application"* ]] || [ "${HARDENED_RUNTIME:-false}" = "true" ]; then
         SIGN_FLAGS+=(--options runtime)
     fi
     if ! codesign "${SIGN_FLAGS[@]}" --timestamp --sign "${SIGN_IDENTITY}" "${APP_BUNDLE}" 2>/dev/null; then
         echo "Note: Secure timestamp signing failed; falling back to timestamp=none."
-        codesign --force --deep --timestamp=none --sign "${SIGN_IDENTITY}" "${APP_BUNDLE}"
+        codesign "${SIGN_FLAGS[@]}" --timestamp=none --sign "${SIGN_IDENTITY}" "${APP_BUNDLE}"
     fi
 fi
 

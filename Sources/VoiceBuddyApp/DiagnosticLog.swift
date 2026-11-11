@@ -6,7 +6,6 @@ final class DiagnosticLog {
     private let queue = DispatchQueue(label: "VoiceBuddy.diagnostics")
     private let directory: URL
     private let limit: UInt64
-    private var lastError: Error?
 
     init(directory: URL = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Logs/VoiceBuddy", isDirectory: true), limit: UInt64 = 1_000_000) {
@@ -43,17 +42,17 @@ final class DiagnosticLog {
                 let size = (try FileManager.default.attributesOfItem(atPath: self.fileURL.path)[.size] as? NSNumber)?.uint64Value ?? 0
                 if size > 0 && size + UInt64(data.count) > self.limit {
                     let fm = FileManager.default
-                    if fm.fileExists(atPath: self.previousURL(6).path) { try fm.removeItem(at: self.previousURL(6)) }
+                    if fm.fileExists(atPath: self.previousURL(6).path) { try? fm.removeItem(at: self.previousURL(6)) }
                     for index in stride(from: 5, through: 1, by: -1) {
                         let source = self.previousURL(index)
                         let target = self.previousURL(index + 1)
                         if fm.fileExists(atPath: source.path) {
-                            if fm.fileExists(atPath: target.path) { try? fm.removeItem(at: target) }
+                            if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
                             try fm.moveItem(at: source, to: target)
                         }
                     }
                     let target1 = self.previousURL(1)
-                    if fm.fileExists(atPath: target1.path) { try? fm.removeItem(at: target1) }
+                    if fm.fileExists(atPath: target1.path) { try fm.removeItem(at: target1) }
                     try fm.moveItem(at: self.fileURL, to: target1)
                     try self.prepare()
                 }
@@ -61,8 +60,9 @@ final class DiagnosticLog {
                 defer { try? handle.close() }
                 try handle.seekToEnd()
                 try handle.write(contentsOf: data)
-                self.lastError = nil
-            } catch { self.lastError = error }
+            } catch {
+                // Fail-safe: do not crash application on log write failures
+            }
         }
     }
 

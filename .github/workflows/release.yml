@@ -161,7 +161,6 @@ jobs:
             # Recreate zip, dmg, and checksums with stapled app ticket
             (cd dist && rm -f "$(basename "$zip_file")" && ditto -c -k --keepParent "Voice Buddy.app" "$(basename "$zip_file")")
             (cd dist && rm -f "$(basename "$dmg_file")" && hdiutil create -volname "Voice Buddy" -srcfolder "Voice Buddy.app" -ov -format UDZO "$(basename "$dmg_file")")
-            (cd dist && xcrun stapler staple "$(basename "$dmg_file")" || true)
             (cd dist && shasum -a 256 "$(basename "$dmg_file")" "$(basename "$zip_file")" > SHA256SUMS.txt)
             echo "Notarization and stapling succeeded."
           elif [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
@@ -175,7 +174,6 @@ jobs:
             # Recreate zip, dmg, and checksums with stapled app ticket
             (cd dist && rm -f "$(basename "$zip_file")" && ditto -c -k --keepParent "Voice Buddy.app" "$(basename "$zip_file")")
             (cd dist && rm -f "$(basename "$dmg_file")" && hdiutil create -volname "Voice Buddy" -srcfolder "Voice Buddy.app" -ov -format UDZO "$(basename "$dmg_file")")
-            (cd dist && xcrun stapler staple "$(basename "$dmg_file")" || true)
             (cd dist && shasum -a 256 "$(basename "$dmg_file")" "$(basename "$zip_file")" > SHA256SUMS.txt)
             echo "Notarization and stapling succeeded."
           else
