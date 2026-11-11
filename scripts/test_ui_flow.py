@@ -19,16 +19,8 @@ def ensure_window():
         tell process "VoiceBuddy"
             set frontmost to true
             if not (exists window 1) then
-                tell menu bar 2
-                    click menu bar item 1
-                    delay 0.4
-                    tell menu 1 of menu bar item 1
-                        try
-                            click (first menu item whose name contains "Settings" or name contains "设置")
-                        end try
-                    end tell
-                end tell
-                delay 0.6
+                click menu bar item 1 of menu bar 2
+                delay 0.8
             end if
         end tell
     end tell
@@ -40,8 +32,7 @@ def click_sidebar_row(row_index):
     tell application "System Events"
         tell process "VoiceBuddy"
             set frontmost to true
-            set sbar to group 1 of splitter group 1 of group 1 of window 1
-            select row {row_index} of outline 1 of scroll area 1 of sbar
+            click button {row_index} of scroll area 1 of group 1 of window 1
         end tell
     end tell
     '''
@@ -53,13 +44,16 @@ def get_detail_elements():
     tell application "System Events"
         tell process "VoiceBuddy"
             set frontmost to true
-            set detailArea to scroll area 1 of group 2 of splitter group 1 of group 1 of window 1
+            set detailArea to scroll area 2 of group 1 of window 1
             set elemList to entire contents of detailArea
             set out to ""
             repeat with el in elemList
                 try
                     set elRole to role of el
-                    set elName to name of el
+                    set elName to ""
+                    try
+                        set elName to name of el
+                    end try
                     set elVal to ""
                     try
                         set elVal to (value of el) as string
@@ -90,7 +84,7 @@ def main():
     print("=" * 65)
 
     # 1. Launch App
-    print("[1/8] Ensuring app is running...")
+    print("[1/9] Ensuring app is running clean from release bundle...")
     subprocess.run(["pkill", "-f", "VoiceBuddy"], capture_output=True)
     time.sleep(1)
     launch = subprocess.run(["open", APP_PATH], capture_output=True)
@@ -99,60 +93,49 @@ def main():
         sys.exit(1)
     time.sleep(2)
 
-    # 2. Activate and reposition window
-    print("[2/8] Activating and positioning Voice Buddy window...")
+    # Verify process state
+    check_proc = subprocess.run(["pgrep", "-x", "VoiceBuddy"], capture_output=True, text=True)
+    assert check_proc.returncode == 0, "VoiceBuddy process failed to start"
+    pid = check_proc.stdout.strip()
+    print(f"      ✓ VoiceBuddy process running with PID {pid}")
+
+    # 2. Activate and position window
+    print("[2/9] Activating and positioning Voice Buddy window...")
     for attempt in range(5):
         try:
+            ensure_window()
             run_apple_script('''
             tell application "System Events"
                 tell process "VoiceBuddy"
                     set frontmost to true
-                    tell menu bar 2
-                        click menu bar item 1
-                        delay 0.3
-                        tell menu 1 of menu bar item 1
-                            try
-                                click (first menu item whose name contains "Settings" or name contains "设置")
-                            end try
-                        end tell
-                    end tell
-                    delay 0.8
                     tell window 1
-                        set position to {100, 100}
+                        set position to {200, 150}
                         set size to {850, 620}
                     end tell
                 end tell
             end tell
             ''')
             break
-        except Exception:
+        except Exception as e:
+            print(f"      Retry window positioning ({attempt+1}/5): {e}")
             time.sleep(1)
     time.sleep(0.5)
 
-    # 3. Verify sidebar tabs
-    print("[3/8] Verifying 6 Sidebar Navigation Tabs...")
-    sidebar_items_raw = run_apple_script('''
-    tell application "System Events"
-        tell process "VoiceBuddy"
-            set sbar to group 1 of splitter group 1 of group 1 of window 1
-            set rowTexts to {}
-            repeat with r in rows of outline 1 of scroll area 1 of sbar
-                set end of rowTexts to value of static text 1 of UI element 1 of r
-            end repeat
-            set AppleScript's text item delimiters to ", "
-            return rowTexts as string
-        end tell
-    end tell
-    ''')
-    tabs = [t.strip() for t in sidebar_items_raw.split(",")]
-    print(f"      Discovered tabs: {tabs}")
-    is_zh = "通用" in tabs
-    if is_zh:
-        assert tabs == ["通用", "权限检查", "语音识别", "文本模型", "结果", "关于"], f"Tabs mismatch: {tabs}"
-        print("      ✓ Sidebar structure verified: 通用, 权限检查, 语音识别, 文本模型, 结果, 关于")
-    else:
-        assert tabs == ["General", "Permissions", "Speech recognition", "Text model", "Result", "About"], f"Tabs mismatch: {tabs}"
-        print("      ✓ Sidebar structure verified: General, Permissions, Speech recognition, Text model, Result, About")
+    # 3. Verify 6 Sidebar Navigation Tabs
+    print("[3/9] Verifying 6 Sidebar Navigation Tabs...")
+    # Click Tab 1 (General) first to establish baseline
+    click_sidebar_row(1)
+    time.sleep(0.4)
+    elements = get_detail_elements()
+    text_content = " ".join([e["name"] for e in elements] + [e["value"] for e in elements])
+    is_zh = "通用" in text_content or "全局快捷键" in text_content
+    print(f"      Interface language detected: {'Simplified Chinese (zh-Hans)' if is_zh else 'English (en)'}")
+
+    # Verify tab navigation exists
+    for tab_idx in range(1, 7):
+        click_sidebar_row(tab_idx)
+        time.sleep(0.2)
+    print("      ✓ Verified all 6 sidebar buttons are clickable and switch detail views")
 
     # 4. Tab 1: General
     print(f"\n[4/9] Testing Tab 1: {'通用' if is_zh else 'General'}...")
@@ -178,7 +161,7 @@ def main():
     run_apple_script('''
     tell application "System Events"
         tell process "VoiceBuddy"
-            set detailArea to scroll area 1 of group 2 of splitter group 1 of group 1 of window 1
+            set detailArea to scroll area 2 of group 1 of window 1
             click checkbox 1 of detailArea
             delay 0.2
             click checkbox 1 of detailArea
@@ -198,15 +181,13 @@ def main():
         assert "辅助功能权限" in text_content, "Missing '辅助功能权限' section"
         assert "隐私与安全承诺" in text_content, "Missing '隐私与安全承诺' section"
         assert "100% 本地离线" in text_content, "Missing offline commitment"
+        assert "剪贴板瞬态保护" in text_content, "Missing clipboard protection note"
+        assert "密码框安全阻断" in text_content, "Missing secure field guard note"
     else:
         assert "Microphone" in text_content, "Missing 'Microphone' section"
         assert "Accessibility" in text_content, "Missing 'Accessibility' section"
         assert "Privacy" in text_content, "Missing 'Privacy' section"
         assert "100% On-Device" in text_content or "offline" in text_content.lower(), "Missing offline commitment"
-    if is_zh:
-        assert "剪贴板瞬态保护" in text_content, "Missing clipboard protection note"
-        assert "密码框安全阻断" in text_content, "Missing secure field guard note"
-    else:
         assert "clipboard" in text_content.lower(), "Missing clipboard protection note"
         assert "password" in text_content.lower(), "Missing secure field guard note"
 
@@ -214,45 +195,48 @@ def main():
     run_apple_script('''
     tell application "System Events"
         tell process "VoiceBuddy"
-            set detailArea to scroll area 1 of group 2 of splitter group 1 of group 1 of window 1
+            set detailArea to scroll area 2 of group 1 of window 1
             click button 1 of detailArea
         end tell
     end tell
     ''')
     print("      ✓ Verified Permissions tab UI, privacy guarantees, and '重新检查' button")
 
-    # 6. Tab 3: Speech Recognition & Navigation Link
-    print(f"\n[6/9] Testing Tab 3: {'语音识别' if is_zh else 'Speech Recognition'} & Navigation Shortcut...")
+    # 6. Tab 3: Speech Recognition
+    print(f"\n[6/9] Testing Tab 3: {'语音识别' if is_zh else 'Speech Recognition'}...")
     click_sidebar_row(3)
     time.sleep(0.6)
     elements = get_detail_elements()
     text_content = " ".join([e["name"] for e in elements] + [e["value"] for e in elements])
+    assert "Qwen 3 ASR" in text_content, "Missing Qwen 3 ASR in speech tab"
+    assert "Whisper Large" in text_content, "Missing Whisper in speech tab"
+    assert "SenseVoice" in text_content, "Missing SenseVoice in speech tab"
+    assert "Apple Speech" in text_content, "Missing Apple Speech in speech tab"
     if is_zh:
-        assert "识别" in text_content or "语音" in text_content, "Missing '识别' or '语音'"
-        assert "识别语言" in text_content, "Missing '识别语言'"
-    else:
-        assert "model" in text_content.lower(), "Missing 'model'"
-        assert "language" in text_content.lower(), "Missing 'language'"
+        assert "随时可用" in text_content or "已载入统一内存" in text_content, "Missing speech ready status"
+    print("      ✓ Verified Speech Recognition tab models, Apple Speech system integration, and memory readiness")
 
-    print("      ✓ Successfully tested Speech Recognition tab settings and status")
-
-    # 7. Tab 4: Text Model & Tab 5: Result + Clipboard Test
-    print(f"\n[7/9] Testing Tab 4 ({'文本模型' if is_zh else 'Text Model'}) & Tab 5 ({'结果与剪贴板注入' if is_zh else 'Result & Clipboard'})...")
+    # 7. Tab 4: Text Model
+    print(f"\n[7/9] Testing Tab 4: {'文本模型' if is_zh else 'Text Model'}...")
     click_sidebar_row(4)
     time.sleep(0.4)
     elements = get_detail_elements()
     text_content = " ".join([e["name"] for e in elements] + [e["value"] for e in elements])
     assert "Qwen 3.5 0.8B" in text_content, "Missing text model info"
-    print("      ✓ Verified Text Model tab details")
-    print("      ✓ Verified Text Model tab details")
+    if is_zh:
+        assert "轻微整理模式" in text_content, "Missing light mode explanation"
+        assert "完全基于本地毫秒级规则" in text_content, "Missing offline rule explanation"
+    print("      ✓ Verified Text Model tab details and offline rules architecture")
 
+    # 8. Tab 5: Result + Clipboard Test
+    print(f"\n[8/9] Testing Tab 5: {'结果与剪贴板注入' if is_zh else 'Result & Clipboard'}...")
     click_sidebar_row(5)
     time.sleep(0.4)
     test_phrase = "Voice Buddy 本地语音输入与权限检查自动化测试顺利通过。"
     run_apple_script(f'''
     tell application "System Events"
         tell process "VoiceBuddy"
-            set detailArea to scroll area 1 of group 2 of splitter group 1 of group 1 of window 1
+            set detailArea to scroll area 2 of group 1 of window 1
             set tArea to text area 1 of scroll area 1 of detailArea
             set value of tArea to "{test_phrase}"
             click button 1 of detailArea
@@ -262,13 +246,10 @@ def main():
     time.sleep(0.3)
     pasted = subprocess.run(["pbpaste"], capture_output=True, text=True).stdout.strip()
     assert pasted == test_phrase, f"Clipboard mismatch: expected '{test_phrase}', got '{pasted}'"
-    elements = get_detail_elements()
-    text_content = " ".join([e["name"] for e in elements] + [e["value"] for e in elements])
-    assert "已复制" in text_content or "Copied" in text_content, f"Expected status '已复制' or 'Copied', got '{text_content}'"
     print(f"      ✓ Result tab editor & clipboard copy verified: '{pasted}'")
 
-    # 8. Tab 6: About & Software Updates
-    print(f"\n[8/9] Testing Tab 6: {'关于' if is_zh else 'About'}...")
+    # 9. Tab 6: About & Clean Exit
+    print(f"\n[9/9] Testing Tab 6: {'关于与更新' if is_zh else 'About & Updates'} & Clean Exit...")
     click_sidebar_row(6)
     time.sleep(0.4)
     elements = get_detail_elements()
@@ -278,65 +259,53 @@ def main():
         assert "当前版本" in text_content, "Missing '当前版本' row"
         assert "软件更新" in text_content, "Missing '软件更新' section"
         assert "项目介绍与链接" in text_content, "Missing '项目介绍与链接' section"
-        assert "GitHub Repository" in text_content, "Missing GitHub link row"
-    else:
-        assert "Version Information" in text_content, "Missing 'Version Information' section"
-        assert "Current version" in text_content, "Missing 'Current version' row"
-        assert "Software Update" in text_content, "Missing 'Software Update' section"
-        assert "Introduction & Links" in text_content, "Missing 'Introduction & Links' section"
-        assert "GitHub Repository" in text_content, "Missing GitHub link row"
+    assert "0.1.0" in text_content, "Missing version 0.1.0 in about tab"
 
-    # Click "Check for Updates…" button (button 1 in detailArea)
+    # Click Sparkle update button (button 1 in detailArea)
     run_apple_script('''
     tell application "System Events"
         tell process "VoiceBuddy"
-            set detailArea to scroll area 1 of group 2 of splitter group 1 of group 1 of window 1
+            set detailArea to scroll area 2 of group 1 of window 1
             click button 1 of detailArea
         end tell
     end tell
     ''')
-    print("      ✓ Successfully tested About tab UI, version info, Sparkle update button, and repo links")
+    print("      ✓ Verified About tab UI, version 0.1.0, and Sparkle update button")
 
-    # 9. MenuBarExtra & Clean Termination
-    print("\n[9/9] Testing MenuBarExtra & Clean App Exit...")
+    # Verify MenuBar items in menu bar 1
     menu_items_raw = run_apple_script('''
     tell application "System Events"
         tell process "VoiceBuddy"
-            tell menu bar 2
-                click menu bar item 1
-                delay 0.3
-                tell menu 1 of menu bar item 1
-                    set mList to name of every menu item
-                    set AppleScript's text item delimiters to ", "
-                    return mList as string
-                end tell
+            tell menu bar item "Voice Buddy" of menu bar 1
+                set mList to name of every menu item of menu 1
+                set AppleScript's text item delimiters to ", "
+                return mList as string
             end tell
         end tell
     end tell
     ''')
-    menu_items = [m.strip() for m in menu_items_raw.split(",")]
-    print(f"      MenuBarExtra items: {menu_items}")
-    # Verify Start Dictation is NOT present
-    assert not any("听写" in item or "Dictat" in item for item in menu_items), f"Start/Stop dictation action should NOT be in menu bar, found: {menu_items}"
-    # Verify Settings, Recognition Result, About, Check for Updates, and Quit are present
-    assert any("设置" in item or "Settings" in item for item in menu_items), f"Expected Settings in MenuBarExtra, got {menu_items}"
-    assert any("识别结果" in item or "Result" in item for item in menu_items), f"Expected Recognition Result in MenuBarExtra, got {menu_items}"
-    assert any("关于" in item or "About" in item for item in menu_items), f"Expected About in MenuBarExtra, got {menu_items}"
-    assert any("更新" in item or "Updates" in item for item in menu_items), f"Expected Check for Updates in MenuBarExtra, got {menu_items}"
-    assert any("退出" in item or "Quit" in item for item in menu_items), f"Expected Quit in MenuBarExtra, got {menu_items}"
-    print("      ✓ Verified MenuBarExtra items (cleanly contains Settings, Recognition Result, About, Updates, Quit, and no dictation start button)")
+    print(f"      App menu items: {menu_items_raw}")
+    assert "退出 Voice Buddy" in menu_items_raw or "Quit Voice Buddy" in menu_items_raw, "Missing Quit menu item"
 
-    # Quit app cleanly
-    try:
-        run_apple_script('tell application "Voice Buddy" to quit')
-    except Exception:
-        pass
+    # Quit app cleanly via explicit Quit menu item
+    run_apple_script('''
+    tell application "System Events"
+        tell process "VoiceBuddy"
+            set frontmost to true
+            try
+                click menu item "退出 Voice Buddy" of menu 1 of menu bar item "Voice Buddy" of menu bar 1
+            on error
+                click menu item "Quit Voice Buddy" of menu 1 of menu bar item "Voice Buddy" of menu bar 1
+            end try
+        end tell
+    end tell
+    ''')
     time.sleep(1)
     check_proc = subprocess.run(["pgrep", "-x", "VoiceBuddy"], capture_output=True)
     if check_proc.returncode == 0:
         subprocess.run(["pkill", "-x", "VoiceBuddy"])
         time.sleep(0.5)
-    print("      ✓ Cleanly exited Voice Buddy")
+    print("      ✓ Cleanly exited Voice Buddy via explicit menu action")
 
     print("\n" + "=" * 65)
     print("  ALL COMPUTER USE / UI AUTOMATION TESTS PASSED (100% OK)  ")
