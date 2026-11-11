@@ -44,7 +44,7 @@ flowchart LR
 - **内部资产管理**：包含未公开的设计原稿、UI 方案概念图、技术调研与竞品逆向分析等敏感研发资料。
 
 ### 1.2 为什么需要公开仓库（`voice-buddy`）？
-- **公开分发渠道**：为终端用户提供稳定、免登录的安装包下载入口（GitHub Releases）。
+- **官方发布主页与分发渠道**：通过公开仓库绑定的官方域名 `https://myvoicebuddy.com`（GitHub Pages DNS）与 GitHub Releases 为终端用户提供稳定、免登录的安装包下载入口。
 - **Sparkle 自动更新源**：macOS 客户端启动时通过 Sparkle 框架向 `https://raw.githubusercontent.com/zfdang/voice-buddy/main/appcast.xml` 请求检查是否有新版本。该链接必须公开可匿名访问，用户更新才能无缝生效。
 - **公开文档与社区连接**：对外展示产品功能、截图、系统要求及接收用户反馈/问题反馈（Issues）。
 

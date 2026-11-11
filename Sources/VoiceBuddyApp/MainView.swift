@@ -251,7 +251,7 @@ struct MainView: View {
         let speechSubtitle: String = {
             if state.isActivatingSpeechModel {
                 return state.preferences.speechModel.contains("whisper")
-                    ? t("Compiling (1-2 mins on 1st run)…", "载入中 (首次编译约1~2分钟)…")
+                    ? t("Loading (1-2 mins on first run)…", "载入中 (首次编译约1~2分钟)…")
                     : t("Loading into memory…", "载入内存中…")
             }
             if isCurrentSpeechDownloading { return t("Downloading…", "下载中…") }
@@ -1387,15 +1387,21 @@ struct MainView: View {
 
                     VStack(spacing: 8) {
                         HStack {
-                            Label("GitHub Repository", systemImage: "link")
+                            Label(t("Official Website", "官方网站与发布页"), systemImage: "globe")
                             Spacer()
-                            Link("github.com/zfdang/voice-buddy", destination: URL(string: "https://github.com/zfdang/voice-buddy")!)
+                            Link("myvoicebuddy.com", destination: URL(string: "https://myvoicebuddy.com")!)
                         }
                         Divider()
                         HStack {
-                            Label(t("Releases & Downloads", "版本发布与下载"), systemImage: "shippingbox")
+                            Label(t("Releases & Downloads", "最新发布与下载"), systemImage: "shippingbox")
                             Spacer()
-                            Link(t("View Releases", "查看发布页"), destination: URL(string: "https://github.com/zfdang/voice-buddy/releases")!)
+                            Link(t("Visit Website", "访问主页"), destination: URL(string: "https://myvoicebuddy.com")!)
+                        }
+                        Divider()
+                        HStack {
+                            Label("GitHub Repository", systemImage: "link")
+                            Spacer()
+                            Link("github.com/zfdang/voice-buddy", destination: URL(string: "https://github.com/zfdang/voice-buddy")!)
                         }
                         Divider()
                         HStack {
