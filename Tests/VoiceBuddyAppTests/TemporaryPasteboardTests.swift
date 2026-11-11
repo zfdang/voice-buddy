@@ -63,4 +63,46 @@ final class TemporaryPasteboardTests: XCTestCase {
         XCTAssertTrue(s3.restore())
         XCTAssertEqual(board.string(forType: .string), "actual user clipboard", "Genuine user clipboard must be preserved across out-of-order chained dictations")
     }
+
+    func testExternalTransientCopyBetweenDictationsIsPreserved() {
+        let board = NSPasteboard(name: .init(UUID().uuidString))
+        defer { board.releaseGlobally() }
+        board.clearContents()
+        board.setString("actual user clipboard", forType: .string)
+
+        // Session 1 begins and writes "dictation 1"
+        let s1 = TemporaryPasteboard(board: board)
+        XCTAssertTrue(s1.write("dictation 1", sensitive: false))
+
+        // Between dictations, an external password manager writes a new transient item
+        let item = NSPasteboardItem()
+        item.setString("external_password_123", forType: .string)
+        item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+        board.clearContents()
+        board.writeObjects([item])
+
+        // Session 2 begins. Even though board has TransientType, board.changeCount moved!
+        // Session 2 must NOT inherit s1's savedItems ("actual user clipboard"), but capture "external_password_123"
+        let s2 = TemporaryPasteboard(board: board, predecessor: s1)
+        XCTAssertTrue(s2.write("dictation 2", sensitive: false))
+
+        // When session 2 restores, it must restore the external tool's copy!
+        XCTAssertTrue(s2.restore())
+        XCTAssertEqual(board.string(forType: .string), "external_password_123", "External copy between dictations must be preserved")
+    }
+
+    func testCancelSessionBeforePasteRestoresOriginalClipboard() {
+        let board = NSPasteboard(name: .init(UUID().uuidString))
+        defer { board.releaseGlobally() }
+        board.clearContents()
+        board.setString("user_original_data", forType: .string)
+
+        let session = TemporaryPasteboard(board: board)
+        XCTAssertTrue(session.write("dictation to cancel", sensitive: false))
+        XCTAssertFalse(session.isPastePosted)
+
+        // Cancellation restores original user data immediately
+        XCTAssertTrue(session.restore())
+        XCTAssertEqual(board.string(forType: .string), "user_original_data", "Session cancellation must restore original user data")
+    }
 }

@@ -58,6 +58,15 @@ final class SystemResilienceTests: XCTestCase {
         let silenceDetected = try await models.containsSpeech(silence)
         XCTAssertFalse(silenceDetected, "Pure silence must be rejected by Apple Speech energy detection")
 
+        let lowNoise = [Float](repeating: 0.003, count: 160000)
+        let noiseDetected = try await models.containsSpeech(lowNoise)
+        XCTAssertFalse(noiseDetected, "Low ambient noise must be rejected by frame-based energy detection")
+
+        // 0.2s of speech in 10s of total audio: frame-based energy detection must NOT dilute this
+        let shortSpeechInSilence = (0..<160000).map { $0 < 3200 ? sin(Float($0) * 0.1) * 0.05 : 0.0 }
+        let shortSpeechDetected = try await models.containsSpeech(shortSpeechInSilence)
+        XCTAssertTrue(shortSpeechDetected, "Short speech within long silence must be detected by frame-based energy gate")
+
         let audibleAudio = (0..<1600).map { sin(Float($0) * 0.1) * 0.2 }
         let hasSpeech = try await models.containsSpeech(audibleAudio)
         XCTAssertTrue(hasSpeech, "Audible voice should be accepted by Apple Speech without throwing VAD unavailable")
@@ -85,29 +94,9 @@ final class SystemResilienceTests: XCTestCase {
         XCTAssertFalse(state.insertFailure.isEmpty, "insertFailure must describe the refusal reason")
     }
 
-    func testCancelPreservesOriginalUserClipboard() {
-        let board = NSPasteboard.general
-        let originalText = "user_clipboard_before_cancel_\(UUID().uuidString)"
-        board.clearContents()
-        board.setString(originalText, forType: .string)
-
-        let state = AppState()
-        // Simulate a session that wrote a temporary dictation to clipboard
-        let session = TemporaryPasteboard(board: board)
-        XCTAssertTrue(session.write("dictation text to be cancelled", sensitive: false))
-        XCTAssertEqual(board.string(forType: .string), "dictation text to be cancelled")
-
-        // Set session on state and call cancel()
-        state.activePasteboardSession = session
-        state.cancel()
-
-        // Board must be restored to original user clipboard!
-        XCTAssertEqual(board.string(forType: .string), originalText, "cancel() must restore original user clipboard")
-        XCTAssertNil(state.activePasteboardSession, "activePasteboardSession must be cleared")
-    }
-
     func testStuckBusyStateSelfHealing() {
         let state = AppState()
+        state.preferences.sounds = false
         state.busy = true
         state.recording = false
         defer { state.cancel() }

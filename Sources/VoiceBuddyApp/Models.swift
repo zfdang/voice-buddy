@@ -449,9 +449,25 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     func containsSpeech(_ samples: [Float]) async throws -> Bool {
         if selectedID == "apple-speech" {
             guard !samples.isEmpty else { return false }
-            let sumSquares = samples.reduce(0.0) { $0 + Double($1 * $1) }
-            let rms = sqrt(sumSquares / Double(samples.count))
-            return rms > 0.01
+            // Analyze 50ms frames (800 samples at 16kHz) to avoid diluting short utterances in long silence
+            let frameSize = 800
+            var i = 0
+            while i < samples.count {
+                let end = min(i + frameSize, samples.count)
+                let count = end - i
+                var sumSquares: Double = 0
+                for j in i..<end {
+                    let s = Double(samples[j])
+                    sumSquares += s * s
+                }
+                let frameRMS = sqrt(sumSquares / Double(count))
+                // If any 50ms frame contains voice-level energy (> 0.012), accept audio
+                if frameRMS > 0.012 {
+                    return true
+                }
+                i += frameSize
+            }
+            return false
         }
         if let vad {
             vad.resetState()

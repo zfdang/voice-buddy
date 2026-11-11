@@ -78,7 +78,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private var liveTask: Task<Void, Never>?
     private var meter: Timer?
     private var gesture = HotkeyGesture()
-    var activePasteboardSession: TemporaryPasteboard?
+    private var activePasteboardSession: TemporaryPasteboard?
     private var fnGesture = FnKeyGesture()
     private var fnOtherModifiers: NSEvent.ModifierFlags = []
     private var fnStartedRecording = false
@@ -349,14 +349,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             speechGeneration = UUID()
             speechTask?.cancel()
             speechTask = nil
+            speechPreparing = false
+            activeDownloadingSpeechModelID = nil
             modelPreparing = false
             modelProgress = 0
-            ready = cachedSpeechModelIDs.contains(id)
+            ready = false
             status = label("Ready", "就绪")
-            checkModelCacheStatus { [weak self] in
-                guard let self else { return }
-                self.ready = self.cachedSpeechModelIDs.contains(self.preferences.speechModel)
-            }
         }
     }
 
@@ -410,10 +408,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 DiagnosticLog.shared.record("model.speech.prepared id=\(operation)")
                 guard speechGeneration == operation else {
                     await MainActor.run {
-                        if self.speechGeneration == operation {
-                            self.speechPreparing = false
-                            self.activeDownloadingSpeechModelID = nil
-                        }
                         completion?(false)
                     }
                     return
@@ -436,10 +430,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 DiagnosticLog.shared.record("model.speech.failed id=\(operation) error_type=\(String(describing: type(of: error))) code=\((error as NSError).code)")
                 guard speechGeneration == operation else {
                     await MainActor.run {
-                        if self.speechGeneration == operation {
-                            self.speechPreparing = false
-                            self.activeDownloadingSpeechModelID = nil
-                        }
                         completion?(false)
                     }
                     return
@@ -802,7 +792,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         gesture.reset()
         transcriptionTask?.cancel(); transcriptionTask = nil
         if let session = activePasteboardSession {
-            _ = session.restore()
+            if !session.isPastePosted {
+                _ = session.restore()
+            }
             activePasteboardSession = nil
         }
         if recording { _ = recorder.stop() }
@@ -917,8 +909,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
         transcriptionTask = Task {
             defer {
-                self.transcriptionTask = nil
                 if self.transcriptionGeneration == id {
+                    self.transcriptionTask = nil
                     self.busy = false
                 }
             }
@@ -1127,6 +1119,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self.overlay.showStatus(state: self)
                         return
                     }
+                    temporaryClipboard.isPastePosted = true
                     self.status = self.label("Paste command sent.", "已发送粘贴命令。")
                     DiagnosticLog.shared.record("insert.paste_posted id=\(logSession)")
                     // Restoring on a short delay allows target app to consume pasteboard
@@ -1561,8 +1554,9 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
             return
         }
 
-        let restored = targetScreen == nil && window.setFrameUsingName("VoiceBuddySettings")
+        let restored = window.setFrameUsingName("VoiceBuddySettings")
         let screen = targetScreen
+            ?? window.screen
             ?? NSScreen.screens.first(where: { $0.frame.intersects(window.frame) })
             ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
             ?? NSScreen.main
@@ -1575,6 +1569,13 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
                     x: visibleFrame.midX - frame.width / 2,
                     y: visibleFrame.midY - frame.height / 2
                 )
+            } else if let target = targetScreen, target != window.screen {
+                if !target.frame.intersects(frame) {
+                    frame.origin = NSPoint(
+                        x: visibleFrame.midX - frame.width / 2,
+                        y: visibleFrame.midY - frame.height / 2
+                    )
+                }
             }
             if frame.maxX > visibleFrame.maxX { frame.origin.x = visibleFrame.maxX - frame.width }
             if frame.minX < visibleFrame.minX { frame.origin.x = visibleFrame.minX }

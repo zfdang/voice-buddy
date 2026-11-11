@@ -282,8 +282,33 @@ sign_component() {
         codesign --force --sign - ${extra_args[@]+"${extra_args[@]}"} "${target}"
     else
         local flags=(--force ${RUNTIME_FLAGS[@]+"${RUNTIME_FLAGS[@]}"} ${extra_args[@]+"${extra_args[@]}"})
-        if ! codesign "${flags[@]}" --timestamp --sign "${SIGN_IDENTITY}" "${target}" 2>/dev/null; then
-            echo "Note: Secure timestamp signing failed for $(basename "${target}"); falling back to timestamp=none."
+        local is_release_signing=false
+        if [[ "${SIGN_IDENTITY}" == *"Developer ID"* ]] || [ "${STRICT_SIGNING:-false}" = "true" ]; then
+            is_release_signing=true
+        fi
+
+        local attempt=1
+        local max_attempts=1
+        if [ "${is_release_signing}" = "true" ]; then
+            max_attempts=3
+        fi
+
+        while [ "${attempt}" -le "${max_attempts}" ]; do
+            if codesign "${flags[@]}" --timestamp --sign "${SIGN_IDENTITY}" "${target}" 2>/dev/null; then
+                return 0
+            fi
+            if [ "${attempt}" -lt "${max_attempts}" ]; then
+                echo "Warning: Secure timestamp signing failed for $(basename "${target}") (attempt ${attempt}/${max_attempts}); retrying in 2s..."
+                sleep 2
+            fi
+            attempt=$((attempt + 1))
+        done
+
+        if [ "${is_release_signing}" = "true" ]; then
+            echo "Error: Secure timestamp signing failed for $(basename "${target}") after ${max_attempts} attempts. Strict/Developer ID signing requires a secure timestamp for notarization." >&2
+            exit 1
+        else
+            echo "Note: Secure timestamp signing failed for $(basename "${target}"); falling back to timestamp=none for local development."
             codesign "${flags[@]}" --timestamp=none --sign "${SIGN_IDENTITY}" "${target}"
         fi
     fi
