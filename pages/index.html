@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-lang="en">
+<html lang="zh-CN" data-lang="zh">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -9,7 +9,11 @@
   <script>
     (function() {
       try {
-        var savedLang = localStorage.getItem('vb_lang') || 'en';
+        var savedLang = localStorage.getItem('vb_lang');
+        if (!savedLang) {
+          var navLang = (navigator.language || navigator.userLanguage || '').toLowerCase();
+          savedLang = navLang.indexOf('zh') !== -1 ? 'zh' : 'en';
+        }
         document.documentElement.setAttribute('data-lang', savedLang);
         document.documentElement.lang = savedLang === 'zh' ? 'zh-CN' : 'en';
         if (savedLang === 'zh') {
