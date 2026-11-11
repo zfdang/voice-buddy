@@ -5,92 +5,86 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Voice Buddy (语音搭子) — 100% 纯本地 macOS AI 语音输入与智能润色工具</title>
   <meta name="description" content="想说的，说出来就写好了。100% 纯端侧运行的 macOS 语音识别与本地大模型润色工具，零数据上云、零录音留存、零 API 费用。" />
-  <link rel="icon" type="image/png" href="assets/voice_buddy_color_512.png" />
+
+  <!-- Canonical & Multilingual Alternate Hreflang -->
+  <link rel="canonical" href="https://myvoicebuddy.com/" />
+  <link rel="alternate" hreflang="zh-CN" href="https://myvoicebuddy.com/" />
+  <link rel="alternate" hreflang="en" href="https://myvoicebuddy.com/en.html" />
+  <link rel="alternate" hreflang="x-default" href="https://myvoicebuddy.com/" />
+
+  <!-- Social Graph & Meta Cards -->
+  <meta property="og:title" content="Voice Buddy (语音搭子) — 100% 纯本地 macOS AI 语音输入与智能润色工具" />
+  <meta property="og:description" content="想说的，说出来就写好了。100% 纯端侧运行的 macOS 语音识别与本地大语言模型润色工具，零数据上云、零录音留存、零 API 费用。" />
+  <meta property="og:url" content="https://myvoicebuddy.com/" />
+  <meta property="og:image" content="https://myvoicebuddy.com/assets/dictation.png" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Voice Buddy (语音搭子)" />
+  <meta name="twitter:description" content="100% 纯本地端侧 macOS 语音识别与 AI 智能润色工具。" />
+  <meta name="twitter:image" content="https://myvoicebuddy.com/assets/dictation.png" />
+
+  <!-- Lightweight Vector Favicon & Touch Icon -->
+  <link rel="icon" type="image/svg+xml" href="assets/icon.svg" />
   <link rel="apple-touch-icon" href="assets/voice_buddy_color_512.png" />
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+
+  <!-- Pre-compiled Standalone Production Stylesheet -->
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Instant Language Preference Route (Prevents Flash) -->
   <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            cream: '#F8F7F3',
-            ink: '#16161A',
-            limeAccent: '#CCFF7C',
-            sage: '#78A860',
-            sageDark: '#2E4F27',
-            lavender: '#EFEAFF'
-          },
-          fontFamily: {
-            sans: ['-apple-system', 'BlinkMacSystemFont', '"PingFang SC"', '"Noto Sans SC"', '"Inter"', 'sans-serif'],
-            mono: ['"SF Mono"', 'Menlo', 'Monaco', 'Consolas', 'monospace']
-          }
+    (function() {
+      try {
+        var pref = localStorage.getItem('vb_lang');
+        var navLang = (navigator.language || '').toLowerCase();
+        var shouldBeEn = pref === 'en' || (!pref && navLang.startsWith('en') && !navLang.startsWith('zh'));
+        if (shouldBeEn) {
+          window.location.replace('en.html' + (window.location.hash || ''));
         }
-      }
-    };
+      } catch(e) {}
+    })();
   </script>
-  <style>
-    @keyframes wavePulse {
-      0%, 100% { transform: scaleY(0.28); opacity: 0.65; }
-      50% { transform: scaleY(1); opacity: 1; }
-    }
-    .wave-bar {
-      animation: wavePulse 0.9s ease-in-out infinite;
-      transform-origin: center;
-    }
-    .glass-nav {
-      background: rgba(248, 247, 243, 0.85);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-    }
-    .hud-glass {
-      background: rgba(20, 21, 28, 0.92);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.12);
-    }
-  </style>
 </head>
 <body id="top" class="bg-cream text-ink font-sans antialiased selection:bg-limeAccent selection:text-ink">
 
-  <!-- 顶部公告栏 (Top Announcement Banner: 左侧核心定位，右侧遥控搭子) -->
+  <!-- 顶部公告栏 -->
   <div class="bg-ink text-white text-xs sm:text-sm py-2 px-4 border-b border-white/10">
     <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
       <div class="flex items-center gap-2">
         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-limeAccent text-ink">LOCAL</span>
-        <span data-i18n="banner_tagline">100% 本地端侧 AI 语音输入搭子</span>
+        <span>100% 本地端侧 AI 语音输入搭子</span>
       </div>
-      <a href="https://remote.zfdang.com/" target="_blank" rel="noopener" class="text-limeAccent hover:underline font-medium inline-flex items-center gap-1" data-i18n="banner_remote">
+      <a href="https://remote.zfdang.com/" target="_blank" rel="noopener" class="text-limeAccent hover:underline font-medium inline-flex items-center gap-1">
         寻找「遥控搭子 Remote Buddy」？前往 remote.zfdang.com →
       </a>
     </div>
   </div>
 
-  <!-- 顶部导航栏 (Sticky Header) -->
+  <!-- 顶部导航栏 -->
   <header class="sticky top-0 z-50 glass-nav border-b border-black/5">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-      <!-- Brand Logo -->
+      <!-- 品牌 Logo -->
       <a href="#top" class="flex items-center gap-2.5 group">
         <div class="w-10 h-10 rounded-xl bg-white border border-black/10 shadow-sm flex items-center justify-center overflow-hidden p-1 group-hover:scale-105 transition">
-          <img src="assets/voice_buddy_color_512.png" alt="Voice Buddy Mascot" class="w-full h-full object-contain" />
+          <img src="assets/voice_buddy_color_512.png" width="32" height="32" alt="Voice Buddy Mascot" class="w-full h-full object-contain" />
         </div>
         <div class="flex flex-col">
           <span class="font-extrabold text-lg tracking-tight leading-none">voice buddy<span class="text-sage">.</span></span>
-          <span class="text-[11px] text-neutral-500 font-medium" data-i18n="brand_sub">语音搭子 · macOS</span>
+          <span class="text-[11px] text-neutral-500 font-medium">语音搭子 · macOS</span>
         </div>
       </a>
 
-      <!-- Nav Links -->
+      <!-- 导航链接 -->
       <nav class="hidden md:flex items-center gap-6 text-sm font-medium text-neutral-700">
-        <a href="#privacy" class="hover:text-ink transition" data-i18n="nav_privacy">隐私安全</a>
-        <a href="#ai-refine" class="hover:text-ink transition" data-i18n="nav_refine">AI 智能润色</a>
-        <a href="#how" class="hover:text-ink transition" data-i18n="nav_how">使用方式</a>
-        <a href="#models" class="hover:text-ink transition" data-i18n="nav_models">端侧模型</a>
-        <a href="#download" class="hover:text-ink transition" data-i18n="nav_download">下载</a>
+        <a href="#privacy" class="hover:text-ink transition">隐私安全</a>
+        <a href="#ai-refine" class="hover:text-ink transition">AI 智能润色</a>
+        <a href="#how" class="hover:text-ink transition">使用方式</a>
+        <a href="#models" class="hover:text-ink transition">端侧模型</a>
+        <a href="#download" class="hover:text-ink transition">下载</a>
       </nav>
 
-      <!-- Language Toggle + CTA -->
+      <!-- 语言切换与下载 CTA -->
       <div class="flex items-center gap-2.5">
-        <a href="en.html" class="px-3 py-1.5 rounded-lg border border-black/15 bg-white hover:bg-neutral-100 text-xs font-semibold transition flex items-center gap-1.5 text-neutral-800" title="Switch to English">
+        <a href="en.html" id="langSwitchBtn" class="px-3 py-1.5 rounded-lg border border-black/15 bg-white hover:bg-neutral-100 text-xs font-semibold transition flex items-center gap-1.5 text-neutral-800 shadow-sm" title="Switch to English version">
           <span>🌐</span>
           <span>EN</span>
         </a>
@@ -104,30 +98,30 @@
   <!-- Hero 首屏区域 -->
   <section class="relative pt-10 pb-16 sm:pt-16 sm:pb-24 overflow-hidden">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
-      <!-- Left Column: Copy & Download CTAs -->
+      <!-- 左栏：文案与下载引导 -->
       <div class="lg:col-span-6 space-y-6">
         <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-black/10 shadow-sm text-xs font-semibold text-neutral-700">
           <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span data-i18n="hero_badge">100% 本地端侧推理 · 零云端 API 费用 · 支持中英混说</span>
+          <span>100% 本地端侧推理 · 零云端 API 费用 · 支持中英混说</span>
         </div>
 
-        <h1 class="text-4xl sm:text-5xl lg:text-[54px] font-black tracking-tight leading-[1.12] text-ink" data-i18n="hero_title">
+        <h1 class="text-4xl sm:text-5xl lg:text-[54px] font-black tracking-tight leading-[1.12] text-ink">
           想说的，<br/><span class="underline decoration-limeAccent decoration-[10px] underline-offset-4">说出来</span>就写好了。
         </h1>
 
-        <p class="text-base sm:text-lg text-neutral-600 leading-relaxed" data-i18n="hero_desc">
+        <p class="text-base sm:text-lg text-neutral-600 leading-relaxed">
           不必停下来打字。在任意应用中按住快捷键说话，松手瞬间，端侧声学模型与本地大语言模型协同工作，自动过滤口癖、修整语法、润色标点，文字直接飞入当前光标处。
         </p>
 
-        <!-- Primary Download Buttons -->
+        <!-- 主下载按钮组 -->
         <div class="pt-2 flex flex-wrap items-center gap-3">
           <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.dmg" class="px-6 py-3.5 rounded-2xl bg-ink text-white hover:bg-neutral-800 font-bold text-sm sm:text-base flex items-center gap-2.5 shadow-lg shadow-black/10 transition transform hover:-translate-y-0.5">
             <span>↓</span>
-            <span data-i18n="btn_dmg">下载 macOS 安装包 (.DMG)</span>
+            <span>下载 macOS 安装包 (.dmg)</span>
             <span class="text-xs px-2 py-0.5 rounded-md bg-limeAccent text-ink font-mono font-bold">v1.1.1</span>
           </a>
-          <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.zip" class="px-5 py-3.5 rounded-2xl bg-white hover:bg-neutral-100 text-ink border border-black/15 font-semibold text-sm sm:text-base transition" data-i18n="btn_zip">
-            ZIP 绿色版
+          <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.zip" class="px-5 py-3.5 rounded-2xl bg-white hover:bg-neutral-100 text-ink border border-black/15 font-semibold text-sm sm:text-base transition">
+            ZIP 绿色便携版
           </a>
           <a href="https://github.com/zfdang/voice-buddy" target="_blank" rel="noopener" class="px-4 py-3.5 rounded-2xl text-neutral-600 hover:text-ink font-medium text-sm flex items-center gap-1 transition">
             <span>GitHub</span>
@@ -136,51 +130,51 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-neutral-500 font-medium pt-1">
-          <span data-i18n="sys_req">💻 适用于 Apple Silicon (M1 / M2 / M3 / M4) · macOS 15.0+</span>
-          <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.1.1" target="_blank" rel="noopener" class="underline hover:text-ink" data-i18n="release_notes_link">查看 v1.1.1 发行说明 →</a>
+          <span>💻 适用于 Apple Silicon (M 系列芯片) · macOS 15.0+</span>
+          <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.1.1" target="_blank" rel="noopener" class="underline hover:text-ink">查看 v1.1.1 发行说明 →</a>
         </div>
       </div>
 
-      <!-- Right Column: Authentic Program HUD View -->
+      <!-- 右栏：真实程序悬浮窗实机演示 -->
       <div class="lg:col-span-6">
         <div class="relative rounded-3xl bg-gradient-to-br from-[#EDE7FF] via-[#F5F2FF] to-[#E5F6DF] p-5 sm:p-8 border border-black/10 shadow-xl flex flex-col items-center justify-center overflow-hidden">
-          <!-- Ambient decorative circles -->
+          <!-- 装饰氛围光圈 -->
           <div class="absolute -top-20 -right-20 w-80 h-80 rounded-full border border-purple-500/15 pointer-events-none"></div>
           <div class="absolute -top-32 -right-32 w-96 h-96 rounded-full border border-purple-500/10 pointer-events-none"></div>
 
-          <!-- Top status label -->
+          <!-- 顶部状态指示栏 -->
           <div class="w-full flex items-center justify-between text-xs font-bold text-neutral-600 mb-4 z-10">
             <div class="flex items-center gap-2">
               <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span data-i18n="hud_label">正在听你说 · 本地统一内存实时推理</span>
+              <span>正在听你说 · 本地统一内存实时推理</span>
             </div>
-            <span class="font-mono text-[11px] text-neutral-500 px-2 py-0.5 rounded-md bg-white/70 border border-black/5 shadow-sm">Style C 悬浮窗</span>
+            <span class="font-mono text-[11px] text-neutral-500 px-2 py-0.5 rounded-md bg-white/70 border border-black/5 shadow-sm">实时增改动态悬浮窗</span>
           </div>
 
-          <!-- Centered Real App Dictation Screenshot -->
+          <!-- 悬浮窗 Retina 高清截图 -->
           <div class="relative z-10 w-full max-w-[500px] my-2 transform hover:scale-[1.02] transition duration-300 filter drop-shadow-[0_20px_35px_rgba(30,20,50,0.22)]">
-            <img src="assets/dictation.png" alt="Voice Buddy 悬浮听写窗口" class="w-full h-auto rounded-2xl block" />
+            <img src="assets/dictation.png" width="500" height="227" alt="Voice Buddy 实时语音动态悬浮窗" class="w-full h-auto rounded-2xl block" loading="eager" decoding="async" />
           </div>
 
-          <!-- Feature badges below screenshot -->
+          <!-- 悬浮窗下方特性胶囊 -->
           <div class="relative z-10 flex flex-wrap items-center justify-center gap-2 pt-4 text-xs font-semibold">
             <span class="px-3 py-1.5 rounded-full bg-white/90 border border-black/10 shadow-sm text-neutral-700 flex items-center gap-1.5">
               <span>🛡️</span>
-              <span data-i18n="hud_b1">音频绝不上云</span>
+              <span>音频绝不上云</span>
             </span>
             <span class="px-3 py-1.5 rounded-full bg-white/90 border border-black/10 shadow-sm text-neutral-700 flex items-center gap-1.5">
               <span>🧠</span>
-              <span data-i18n="hud_b2">本地大模型整理</span>
+              <span>本地大模型整理</span>
             </span>
             <span class="px-3 py-1.5 rounded-full bg-white/90 border border-black/10 shadow-sm text-neutral-700 flex items-center gap-1.5">
               <span>⚡</span>
-              <span data-i18n="hud_b3">毫秒级极速响应</span>
+              <span>毫秒级极速响应</span>
             </span>
           </div>
 
-          <!-- Bottom caption -->
+          <!-- 底部小字标注 -->
           <div class="mt-5 pt-3 border-t border-black/5 flex items-center justify-between w-full text-[11px] text-neutral-500 font-mono z-10">
-            <span>✳ <span data-i18n="hud_note">思路不打断，文字自然来。</span></span>
+            <span>✳ 思路不打断，文字自然来。</span>
             <span class="font-bold">纯本地端侧 AI <span class="text-lime-600">v1.1.1</span></span>
           </div>
         </div>
@@ -188,23 +182,23 @@
     </div>
   </section>
 
-  <!-- 特性亮眼横幅 (Highlights Bar) -->
+  <!-- 特性亮眼横幅 -->
   <section class="bg-ink text-white py-4 border-y border-black">
     <div class="max-w-6xl mx-auto px-4 flex flex-wrap items-center justify-around gap-4 text-xs sm:text-sm font-semibold tracking-wide">
-      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> <span data-i18n="hl_1">100% 纯端侧计算</span></span>
-      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> <span data-i18n="hl_2">零云端 API 费用</span></span>
-      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> <span data-i18n="hl_3">纯离线无网可用</span></span>
-      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> <span data-i18n="hl_4">口癖智能过滤</span></span>
-      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> <span data-i18n="hl_5">密码框防误触与剪贴板保护</span></span>
+      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> 100% 纯端侧计算</span>
+      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> 零云端 API 费用</span>
+      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> 纯离线无网可用</span>
+      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> 口癖智能过滤</span>
+      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> 密码框防误触与剪贴板保护</span>
     </div>
   </section>
 
-  <!-- 隐私与安全核心板块 (Privacy & Security) -->
-  <section id="privacy" class="py-16 sm:py-24 max-w-6xl mx-auto px-4 sm:px-6">
-    <div class="max-w-3xl space-y-3 mb-12">
+  <!-- 00 / 隐私与安全第一 -->
+  <section id="privacy" class="py-16 sm:py-24 max-w-6xl mx-auto px-4 sm:px-6 space-y-12">
+    <div class="space-y-3 max-w-3xl">
       <div class="text-xs font-mono uppercase tracking-widest text-sageDark font-bold">00 / 隐私与安全第一</div>
-      <h2 class="text-3xl sm:text-4xl font-black tracking-tight" data-i18n="priv_title">你的声音，永远只属于你。</h2>
-      <p class="text-neutral-600 text-base sm:text-lg" data-i18n="priv_sub">
+      <h2 class="text-3xl sm:text-4xl font-black tracking-tight">你的声音，永远只属于你。</h2>
+      <p class="text-neutral-600 text-base sm:text-lg leading-relaxed">
         所有声学转写与大语言模型润色均在 Mac 本地统一内存中完成，无需联网，从物理底层杜绝隐私泄露。
       </p>
     </div>
@@ -212,39 +206,39 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div class="p-6 sm:p-8 rounded-3xl bg-white border border-black/10 shadow-sm hover:shadow-md transition space-y-3">
         <div class="w-11 h-11 rounded-2xl bg-limeAccent/40 flex items-center justify-center text-xl">🛡️</div>
-        <h3 class="text-xl font-bold" data-i18n="priv_1_t">零数据上云</h3>
-        <p class="text-sm sm:text-base text-neutral-600 leading-relaxed" data-i18n="priv_1_d">
+        <h3 class="text-xl font-bold">零数据上云</h3>
+        <p class="text-sm sm:text-base text-neutral-600 leading-relaxed">
           麦克风音频流仅在 Apple Silicon 统一内存中处理，绝不上传到任何远程服务器。拔掉网线、开启飞行模式，依旧流畅打字。
         </p>
       </div>
 
       <div class="p-6 sm:p-8 rounded-3xl bg-white border border-black/10 shadow-sm hover:shadow-md transition space-y-3">
         <div class="w-11 h-11 rounded-2xl bg-limeAccent/40 flex items-center justify-center text-xl">🔥</div>
-        <h3 class="text-xl font-bold" data-i18n="priv_2_t">零录音留存</h3>
-        <p class="text-sm sm:text-base text-neutral-600 leading-relaxed" data-i18n="priv_2_d">
+        <h3 class="text-xl font-bold">零录音留存</h3>
+        <p class="text-sm sm:text-base text-neutral-600 leading-relaxed">
           音频处理完毕后即刻从内存中释放，从不在本地磁盘写入录音文件或音频缓存，从物理底层杜绝任何泄露可能。
         </p>
       </div>
 
       <div class="p-6 sm:p-8 rounded-3xl bg-white border border-black/10 shadow-sm hover:shadow-md transition space-y-3">
         <div class="w-11 h-11 rounded-2xl bg-limeAccent/40 flex items-center justify-center text-xl">💎</div>
-        <h3 class="text-xl font-bold" data-i18n="priv_3_t">零 API 费用与额度焦虑</h3>
-        <p class="text-sm sm:text-base text-neutral-600 leading-relaxed" data-i18n="priv_3_d">
-          无需注册账号，无需配置 OpenAI、DeepSeek 等第三方 API Key，没有按字扣费的后顾之忧，下载即可免费使用。
+        <h3 class="text-xl font-bold">零 API 费用与额度焦虑</h3>
+        <p class="text-sm sm:text-base text-neutral-600 leading-relaxed">
+          无需注册账号，无需配置第三方 API Key，没有按字扣费的后顾之忧，下载即可免费使用。
         </p>
       </div>
 
       <div class="p-6 sm:p-8 rounded-3xl bg-white border border-black/10 shadow-sm hover:shadow-md transition space-y-3">
         <div class="w-11 h-11 rounded-2xl bg-limeAccent/40 flex items-center justify-center text-xl">🔒</div>
-        <h3 class="text-xl font-bold" data-i18n="priv_4_t">安全保护与剪贴板防护</h3>
-        <p class="text-sm sm:text-base text-neutral-600 leading-relaxed" data-i18n="priv_4_d">
+        <h3 class="text-xl font-bold">安全保护与剪贴板防护</h3>
+        <p class="text-sm sm:text-base text-neutral-600 leading-relaxed">
           遇到密码输入框时自动拦截，杜绝敏感密码误听写；支持 Transient 瞬态剪贴板标记，不被任何历史剪贴板工具偷录。
         </p>
       </div>
     </div>
 
     <div class="mt-6 text-right">
-      <a href="https://github.com/zfdang/voice-buddy#%E9%9A%90%E7%A7%81%E4%B8%8E%E5%AE%89%E5%85%A8%E6%89%BF%E8%AF%BA" target="_blank" rel="noopener" class="text-sm font-semibold text-neutral-700 hover:text-ink underline" data-i18n="priv_link">
+      <a href="https://github.com/zfdang/voice-buddy#%E9%9A%90%E7%A7%81%E4%B8%8E%E5%AE%89%E5%85%A8%E6%89%BF%E8%AF%BA" target="_blank" rel="noopener" class="text-sm font-semibold text-neutral-700 hover:text-ink underline">
         阅读 GitHub 完整隐私与安全承诺 ↗
       </a>
     </div>
@@ -256,47 +250,47 @@
       <div class="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div class="space-y-3 max-w-2xl">
           <div class="text-xs font-mono uppercase tracking-widest text-sageDark font-bold">01 / 双阶段智能润色</div>
-          <h2 class="text-3xl sm:text-4xl font-black tracking-tight" data-i18n="refine_title">语音识别 + 大模型整理，双重效果一目了然。</h2>
-          <p class="text-neutral-600 text-base sm:text-lg" data-i18n="refine_sub">
+          <h2 class="text-3xl sm:text-4xl font-black tracking-tight">语音识别 + 大模型整理，双重效果一目了然。</h2>
+          <p class="text-neutral-600 text-base sm:text-lg leading-relaxed">
             日常说话不可避免地会有口癖、倒装、语气词和犹豫。Voice Buddy 让声学转录与大语言模型接力，将口语一键整理为得体书面文稿。
           </p>
         </div>
 
-        <!-- 4 Refinement Level Interactive Tabs -->
+        <!-- 4 档整理力度切换标签 -->
         <div class="flex flex-col gap-1.5">
-          <span class="text-xs text-neutral-500 font-semibold" data-i18n="refine_level_label">点击体验 4 档文字整理力度：</span>
-          <div class="inline-flex p-1 rounded-2xl bg-cream border border-black/10 text-xs sm:text-sm font-semibold">
-            <button type="button" data-level="raw" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition" data-i18n="lvl_raw">原文 (无整理)</button>
-            <button type="button" data-level="light" class="level-tab px-3 py-1.5 rounded-xl bg-ink text-white shadow-sm transition" data-i18n="lvl_light">轻度整理 (Level 1 · 默认)</button>
-            <button type="button" data-level="moderate" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition" data-i18n="lvl_mod">深度优化 (Level 2)</button>
-            <button type="button" data-level="rewrite" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition" data-i18n="lvl_rew">专业重构 (Level 3)</button>
+          <span class="text-xs text-neutral-500 font-semibold">点击体验 4 档文字整理力度：</span>
+          <div class="inline-flex p-1 rounded-2xl bg-cream border border-black/10 text-xs sm:text-sm font-semibold" role="tablist" aria-label="文字整理力度">
+            <button type="button" role="tab" id="tab-raw" aria-controls="polishedTextBox" aria-selected="false" data-level="raw" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">原文 (无整理)</button>
+            <button type="button" role="tab" id="tab-light" aria-controls="polishedTextBox" aria-selected="true" data-level="light" class="level-tab px-3 py-1.5 rounded-xl bg-ink text-white shadow-sm transition">轻度整理 (Level 1 · 默认)</button>
+            <button type="button" role="tab" id="tab-moderate" aria-controls="polishedTextBox" aria-selected="false" data-level="moderate" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">深度优化 (Level 2)</button>
+            <button type="button" role="tab" id="tab-rewrite" aria-controls="polishedTextBox" aria-selected="false" data-level="rewrite" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">专业重构 (Level 3)</button>
           </div>
         </div>
       </div>
 
-      <!-- Comparison Cards (Voice Buddy v1.1.1 Results Center) -->
+      <!-- 对比卡片区 -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Raw ASR Card -->
+        <!-- 声学直出卡片 -->
         <div class="p-6 sm:p-8 rounded-3xl bg-cream border border-black/10 flex flex-col justify-between space-y-4">
           <div class="space-y-3">
             <div class="flex items-center justify-between">
-              <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-neutral-200 text-neutral-700" data-i18n="raw_card_badge">原始语音识别</span>
+              <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-neutral-200 text-neutral-700">原始语音识别</span>
               <span class="text-xs font-mono text-neutral-500">Qwen3-ASR / Whisper Turbo</span>
             </div>
             <blockquote id="rawTranscriptBox" class="text-base sm:text-lg text-neutral-600 leading-relaxed italic">
               “呃李经理那个关于下周排期计划我们下午两点开个短会过一下然后测试同学记得把用例准备好就这样”
             </blockquote>
           </div>
-          <div class="pt-3 border-t border-black/5 text-xs text-neutral-500" data-i18n="raw_card_foot">
+          <div class="pt-3 border-t border-black/5 text-xs text-neutral-500">
             声学模型直出 · 包含口癖“呃/那个/然后”与标点缺失
           </div>
         </div>
 
-        <!-- Polished LLM Card -->
+        <!-- 大模型润色卡片 -->
         <div class="p-6 sm:p-8 rounded-3xl bg-ink text-white border border-black flex flex-col justify-between space-y-4 shadow-xl">
           <div class="space-y-3">
             <div class="flex items-center justify-between">
-              <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-limeAccent text-ink" id="polCardBadge" data-i18n="pol_card_badge">AI 智能整理结果</span>
+              <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-limeAccent text-ink" id="polCardBadge">AI 智能整理结果</span>
               <span id="activeLevelTag" class="text-xs font-mono text-limeAccent">本地 Qwen 模型 · 轻度整理 (Level 1 · 默认)</span>
             </div>
             <blockquote id="polishedTextBox" class="text-lg sm:text-xl text-white font-semibold leading-relaxed">
@@ -304,7 +298,7 @@
             </blockquote>
           </div>
           <div class="pt-3 border-t border-white/10 flex items-center justify-between text-xs text-emerald-300">
-            <span id="polCardFoot" data-i18n="pol_card_foot">✓ 基础清洁 · 剔除语气废话与口癖 · 补全标点并保持原意原调</span>
+            <span id="polCardFoot">✓ 基础清洁 · 剔除语气废话与口癖 · 补全标点并保持原意原调</span>
             <span class="font-mono">v1.1.1 结果中心实测</span>
           </div>
         </div>
@@ -312,8 +306,8 @@
 
       <div class="p-4 sm:p-5 rounded-2xl bg-lavender/60 border border-indigo-200 text-xs sm:text-sm text-neutral-700 flex items-center gap-3">
         <span class="text-lg">✨</span>
-        <p data-i18n="refine_note">
-          <strong>设置中的 4 档整理力度：</strong>你可以在客户端「通用设置 → 文字整理力度」中按需选择：<strong>原文 (无整理)</strong>、<strong>轻度整理 (Level 1)</strong>、<strong>深度优化 (Level 2)</strong> 或 <strong>专业重构 (Level 3)</strong>。在结果面板中，更可随时一键对比两版并重新插入！
+        <p>
+          <strong>客户端中的 4 档整理力度：</strong>你可以在客户端「通用设置 → 文字整理力度」中按需选择：<strong>原文 (无整理)</strong>、<strong>轻度整理 (Level 1)</strong>、<strong>深度优化 (Level 2)</strong> 或 <strong>专业重构 (Level 3)</strong>。在结果面板中，更可随时一键对比两版并重新插入！
         </p>
       </div>
     </div>
@@ -323,8 +317,8 @@
   <section id="how" class="py-16 sm:py-24 max-w-6xl mx-auto px-4 sm:px-6 space-y-12">
     <div class="space-y-3 max-w-2xl">
       <div class="text-xs font-mono uppercase tracking-widest text-sageDark font-bold">02 / 使用方式</div>
-      <h2 class="text-3xl sm:text-4xl font-black tracking-tight" data-i18n="how_title">自然输入，就这么简单。</h2>
-      <p class="text-neutral-600 text-base sm:text-lg" data-i18n="how_sub">
+      <h2 class="text-3xl sm:text-4xl font-black tracking-tight">自然输入，就这么简单。</h2>
+      <p class="text-neutral-600 text-base sm:text-lg leading-relaxed">
         全局光标即时注入，彻底告别繁琐的窗口切换。
       </p>
     </div>
@@ -332,8 +326,8 @@
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
       <div class="p-6 sm:p-8 rounded-3xl bg-white border border-black/10 space-y-3">
         <div class="text-xs font-mono font-bold text-sageDark">步骤 01</div>
-        <h3 class="text-xl font-bold" data-i18n="step_1_t">放好光标</h3>
-        <p class="text-sm sm:text-base text-neutral-600 leading-relaxed" data-i18n="step_1_d">
+        <h3 class="text-xl font-bold">放好光标</h3>
+        <p class="text-sm sm:text-base text-neutral-600 leading-relaxed">
           微信、飞书、Slack、Notion、VS Code 或 Terminal 终端，光标在何处，文字就写在何处。
         </p>
       </div>
@@ -343,16 +337,16 @@
           <span class="text-xs font-mono font-bold text-sageDark">步骤 02</span>
           <kbd class="px-2 py-0.5 text-xs font-mono bg-cream border border-black/15 rounded-md">Fn / 🌐</kbd>
         </div>
-        <h3 class="text-xl font-bold" data-i18n="step_2_t">长按，说话</h3>
-        <p class="text-sm sm:text-base text-neutral-600 leading-relaxed" data-i18n="step_2_d">
+        <h3 class="text-xl font-bold">长按，说话</h3>
+        <p class="text-sm sm:text-base text-neutral-600 leading-relaxed">
           单手轻按 Fn / 地球键或 ^⌥Space 即可自由倾诉。支持「长按说话」或「按键启停」两种触发方式。
         </p>
       </div>
 
       <div class="p-6 sm:p-8 rounded-3xl bg-white border border-black/10 space-y-3">
         <div class="text-xs font-mono font-bold text-sageDark">步骤 03</div>
-        <h3 class="text-xl font-bold" data-i18n="step_3_t">松手，上屏</h3>
-        <p class="text-sm sm:text-base text-neutral-600 leading-relaxed" data-i18n="step_3_d">
+        <h3 class="text-xl font-bold">松手，上屏</h3>
+        <p class="text-sm sm:text-base text-neutral-600 leading-relaxed">
           松开按键瞬间，声学识别与 AI 整理完成，文字直接打入光标处，背景音乐自动智能恢复（按 Esc 可快捷撤销）。
         </p>
       </div>
@@ -365,18 +359,18 @@
       <div class="space-y-6">
         <div class="space-y-3 max-w-3xl">
           <div class="text-xs font-mono uppercase tracking-widest text-sageDark font-bold">03 / 本地端侧模型</div>
-          <h2 class="text-3xl sm:text-4xl font-black tracking-tight" data-i18n="mod_title">多模型自由切换，适配多样算力与语言场景。</h2>
-          <p class="text-neutral-600 text-base sm:text-lg" data-i18n="mod_sub">
+          <h2 class="text-3xl sm:text-4xl font-black tracking-tight">多模型自由切换，适配多样算力与语言场景。</h2>
+          <p class="text-neutral-600 text-base sm:text-lg leading-relaxed">
             针对不同 Mac 配置与语种偏好，内置 5 大主流端侧声学模型。
           </p>
         </div>
 
-        <!-- Scenario Filter Buttons (独立整行展示，告别拥挤换行) -->
-        <div class="flex flex-wrap gap-2.5 text-xs sm:text-sm font-semibold">
-          <button type="button" data-mfilter="all" class="model-filter px-3.5 py-2 rounded-xl bg-ink text-white transition">全部引擎 (5)</button>
-          <button type="button" data-mfilter="fast" class="model-filter px-3.5 py-2 rounded-xl bg-cream hover:bg-neutral-200 text-neutral-700 border border-black/10 transition">⚡ 8GB/16GB 极速首选</button>
-          <button type="button" data-mfilter="code" class="model-filter px-3.5 py-2 rounded-xl bg-cream hover:bg-neutral-200 text-neutral-700 border border-black/10 transition">💻 程序员中英混说 (0.6B / 1.7B)</button>
-          <button type="button" data-mfilter="multi" class="model-filter px-3.5 py-2 rounded-xl bg-cream hover:bg-neutral-200 text-neutral-700 border border-black/10 transition">🌍 90+ 跨国多语种</button>
+        <!-- 分类筛选按钮 -->
+        <div class="flex flex-wrap gap-2.5 text-xs sm:text-sm font-semibold" role="group" aria-label="模型分类筛选">
+          <button type="button" data-mfilter="all" aria-pressed="true" class="model-filter px-3.5 py-2 rounded-xl bg-ink text-white transition">全部引擎 (5)</button>
+          <button type="button" data-mfilter="fast" aria-pressed="false" class="model-filter px-3.5 py-2 rounded-xl bg-cream hover:bg-neutral-200 text-neutral-700 border border-black/10 transition">⚡ 8GB/16GB 极速首选</button>
+          <button type="button" data-mfilter="code" aria-pressed="false" class="model-filter px-3.5 py-2 rounded-xl bg-cream hover:bg-neutral-200 text-neutral-700 border border-black/10 transition">💻 程序员中英混说 (0.6B / 1.7B)</button>
+          <button type="button" data-mfilter="multi" aria-pressed="false" class="model-filter px-3.5 py-2 rounded-xl bg-cream hover:bg-neutral-200 text-neutral-700 border border-black/10 transition">🌍 90+ 跨国多语种</button>
         </div>
       </div>
 
@@ -390,11 +384,11 @@
             </div>
             <span class="px-2.5 py-1 rounded-lg bg-white border border-black/10 text-xs font-mono font-bold">⚡ 300~600ms</span>
           </div>
-          <p class="text-sm font-semibold text-neutral-800" data-i18n="m1_desc">全球 90+ 语言高精听写，跨国多语互译与纯英文首选。</p>
+          <p class="text-sm font-semibold text-neutral-800">全球 90+ 语言高精听写，跨国多语互译与纯英文首选。</p>
           <ul class="text-xs sm:text-sm text-neutral-600 space-y-1.5 list-disc list-inside">
-            <li data-i18n="m1_b1">全球主流多语言、小语种全覆盖</li>
-            <li data-i18n="m1_b2">搭载 Apple Neural Engine (ANE) 硬件加速</li>
-            <li data-i18n="m1_b3">初次载入自动编译优化，常驻极速调用</li>
+            <li>全球主流多语言、小语种全覆盖</li>
+            <li>搭载 Apple Neural Engine (ANE) 硬件加速</li>
+            <li>初次载入自动编译优化，常驻极速调用</li>
           </ul>
         </div>
 
@@ -407,15 +401,15 @@
             </div>
             <span class="px-2.5 py-1 rounded-lg bg-limeAccent text-ink text-xs font-mono font-bold">⚡⚡ 30~80ms 极速</span>
           </div>
-          <p class="text-sm font-semibold text-neutral-800" data-i18n="m2_desc">毫秒级极速响应，中英粤日韩五语首选，超低显存开销。</p>
+          <p class="text-sm font-semibold text-neutral-800">毫秒级极速响应，中英粤日韩五语首选，超低显存开销。</p>
           <ul class="text-xs sm:text-sm text-neutral-600 space-y-1.5 list-disc list-inside">
-            <li data-i18n="m2_b1">阿里 FunASR 经典力作，松键秒级上屏</li>
-            <li data-i18n="m2_b2">低内存占用，8GB / 16GB Mac 畅快运行</li>
-            <li data-i18n="m2_b3">极速捕捉短句，日常对话与即时通讯神器</li>
+            <li>阿里 FunASR 经典力作，松键秒级上屏</li>
+            <li>低内存占用，8GB / 16GB Mac 畅快运行</li>
+            <li>极速捕捉短句，日常对话与即时通讯神器</li>
           </ul>
         </div>
 
-        <!-- 3. Qwen 3 ASR 0.6B (程序员中英混说 · 推荐首选) -->
+        <!-- 3. Qwen 3 ASR 0.6B -->
         <div data-mtags="all code fast" class="model-card p-6 sm:p-7 rounded-3xl bg-cream border border-black/10 space-y-4 transition">
           <div class="flex items-start justify-between gap-2">
             <div>
@@ -427,15 +421,15 @@
             </div>
             <span class="px-2.5 py-1 rounded-lg bg-limeAccent text-ink text-xs font-mono font-bold">⚡ 200~400ms</span>
           </div>
-          <p class="text-sm font-semibold text-neutral-800" data-i18n="m3_06_desc">极速轻量 · 推荐日常快速听写与中英混说，显存占用极低，平衡首选。</p>
+          <p class="text-sm font-semibold text-neutral-800">极速轻量 · 推荐日常快速听写与中英混说，显存占用极低，平衡首选。</p>
           <ul class="text-xs sm:text-sm text-neutral-600 space-y-1.5 list-disc list-inside">
-            <li data-i18n="m3_06_b1">程序员写代码、日常技术交流与中英夹杂沟通推荐</li>
-            <li data-i18n="m3_06_b2">极低内存开销，8GB / 16GB Apple Silicon 流畅无压</li>
-            <li data-i18n="m3_06_b3">毫秒级低延迟响应，中英混合词汇精准识别</li>
+            <li>程序员写代码、日常技术交流与中英夹杂沟通推荐</li>
+            <li>极低内存开销，8GB / 16GB Apple Silicon 流畅无压</li>
+            <li>毫秒级低延迟响应，中英混合词汇精准识别</li>
           </ul>
         </div>
 
-        <!-- 4. Qwen 3 ASR 1.7B (程序员中英混说 · 高精旗舰) -->
+        <!-- 4. Qwen 3 ASR 1.7B -->
         <div data-mtags="all code multi" class="model-card p-6 sm:p-7 rounded-3xl bg-cream border border-black/10 space-y-4 transition">
           <div class="flex items-start justify-between gap-2">
             <div>
@@ -447,11 +441,11 @@
             </div>
             <span class="px-2.5 py-1 rounded-lg bg-white border border-black/10 text-xs font-mono font-bold">⚡ 500~900ms</span>
           </div>
-          <p class="text-sm font-semibold text-neutral-800" data-i18n="m3_17_desc">高精旗舰 · 适合长句、专业学术与深度编程代码术语，多语种更严谨细腻。</p>
+          <p class="text-sm font-semibold text-neutral-800">高精旗舰 · 适合长句、专业学术与深度编程代码术语，多语种更严谨细腻。</p>
           <ul class="text-xs sm:text-sm text-neutral-600 space-y-1.5 list-disc list-inside">
-            <li data-i18n="m3_17_b1">长篇正式讲座、代码评审与复杂算法术语严谨听写</li>
-            <li data-i18n="m3_17_b2">旗舰级高精度，技术术语与长难句识别标杆</li>
-            <li data-i18n="m3_17_b3">深度融合 Apple Silicon Metal GPU 统一内存</li>
+            <li>长篇正式讲座、代码评审与复杂算法术语严谨听写</li>
+            <li>旗舰级高精度，技术术语与长难句识别标杆</li>
+            <li>深度融合 Apple Silicon Metal GPU 统一内存</li>
           </ul>
         </div>
 
@@ -464,19 +458,19 @@
             </div>
             <span class="px-2.5 py-1 rounded-lg bg-white border border-black/10 text-xs font-mono font-bold">⚡ 100~200ms</span>
           </div>
-          <p class="text-sm font-semibold text-neutral-800" data-i18n="m4_desc">macOS 系统内置听写服务，0 磁盘占用，免下载即刻可用。</p>
+          <p class="text-sm font-semibold text-neutral-800">macOS 系统内置听写服务，0 磁盘占用，免下载即刻可用。</p>
           <ul class="text-xs sm:text-sm text-neutral-600 space-y-1.5 list-disc list-inside">
-            <li data-i18n="m4_b1">即装即用，无需额外下载任何模型文件</li>
-            <li data-i18n="m4_b2">原生系统级支持，极简轻快</li>
-            <li data-i18n="m4_b3">低功耗，全天候长效待机</li>
+            <li>即装即用，无需额外下载任何模型文件</li>
+            <li>原生系统级支持，极简轻快</li>
+            <li>低功耗，全天候长效待机</li>
           </ul>
         </div>
       </div>
 
       <div class="p-5 rounded-2xl bg-cream border border-black/10 text-xs sm:text-sm text-neutral-700 flex items-center gap-3">
         <span class="text-xl">🧠</span>
-        <p data-i18n="llm_note">
-          <strong>本地语言模型：</strong>搭配内置的端侧 Qwen 大模型 (0.5B / 1.5B / 3.5 0.8B)，无论使用哪款声学引擎，都能畅享无缝的本地大模型智能润色与书面重构。
+        <p>
+          <strong>本地大语言模型：</strong>搭配内置的端侧 Qwen 大模型矩阵（Qwen 3.5 0.8B INT5/INT8 · Qwen 3 1.7B · Qwen 3 4B），无论使用哪款声学引擎，都能畅享无缝的本地大模型智能润色与书面重构。
         </p>
       </div>
     </div>
@@ -487,12 +481,12 @@
     <div class="rounded-3xl bg-gradient-to-r from-[#EBF5FF] to-[#F3F8FF] border border-sky-200 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6">
       <div class="flex items-center gap-4">
         <div class="w-14 h-14 rounded-2xl bg-white border border-sky-200 shadow-sm flex items-center justify-center p-2 shrink-0 overflow-hidden">
-          <img src="assets/remote_buddy_color_512.png" alt="Remote Buddy Logo" class="w-full h-full object-contain" />
+          <img src="assets/remote_buddy_color_512.png" width="48" height="48" alt="Remote Buddy Logo" class="w-full h-full object-contain" loading="lazy" decoding="async" />
         </div>
         <div class="space-y-1">
           <div class="inline-flex items-center gap-1.5 text-xs font-bold text-sky-700 uppercase tracking-wider">姊妹项目 · 黄金搭档</div>
-          <h3 class="text-xl font-extrabold text-ink" data-i18n="rb_title">搭配「Remote Buddy 遥控搭子」一起使用</h3>
-          <p class="text-xs sm:text-sm text-neutral-600 max-w-xl" data-i18n="rb_desc">
+          <h3 class="text-xl font-extrabold text-ink">搭配「Remote Buddy 遥控搭子」一起使用</h3>
+          <p class="text-xs sm:text-sm text-neutral-600 max-w-xl">
             把小米蓝牙语音遥控器、Chromecast 遥控器变成 Mac 的无线虚拟麦克风与快捷键控制器，靠在椅背上单手按键即可唤醒 Voice Buddy 轻松语音打字。
           </p>
         </div>
@@ -508,58 +502,68 @@
     </div>
   </section>
 
-  <!-- 底部下载区域 (Download CTA) -->
+  <!-- 底部下载区域 -->
   <section id="download" class="py-16 sm:py-24 max-w-6xl mx-auto px-4 sm:px-6">
     <div class="rounded-[32px] bg-ink text-white p-8 sm:p-14 text-center space-y-6 relative overflow-hidden">
       <div class="flex items-center justify-center">
         <div class="w-20 h-20 rounded-2xl bg-white/10 p-2.5 border border-white/15 shadow-2xl backdrop-blur-sm">
-          <img src="assets/voice_buddy_color_512.png" alt="Voice Buddy Mascot" class="w-full h-full object-contain" />
+          <img src="assets/voice_buddy_color_512.png" width="64" height="64" alt="Voice Buddy Mascot" class="w-full h-full object-contain" loading="lazy" decoding="async" />
         </div>
       </div>
       <div class="text-xs font-mono uppercase tracking-widest text-limeAccent font-bold">立即体验 · 释放双手</div>
-      <h2 class="text-3xl sm:text-5xl font-black tracking-tight" data-i18n="dl_title">让好思路，顺畅流淌。</h2>
-      <p class="text-neutral-300 text-sm sm:text-lg max-w-xl mx-auto" data-i18n="dl_sub">
+      <h2 class="text-3xl sm:text-5xl font-black tracking-tight">让好思路，顺畅流淌。</h2>
+      <p class="text-neutral-300 text-sm sm:text-lg max-w-xl mx-auto">
         100% 纯本地运行 · 极致隐私安全 · 零云端费用 · 立即下载开始体验。
       </p>
 
       <div class="pt-2 flex flex-wrap items-center justify-center gap-4">
         <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.dmg" class="px-7 py-4 rounded-2xl bg-limeAccent text-ink hover:brightness-95 font-extrabold text-sm sm:text-base transition shadow-lg">
-          <span data-i18n="dl_btn_dmg">↓ 下载 Voice Buddy v1.1.1 (DMG)</span>
+          <span>↓ 下载 Voice Buddy v1.1.1 (DMG)</span>
         </a>
-        <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.zip" class="px-6 py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white border border-white/15 font-semibold text-sm sm:text-base transition" data-i18n="dl_btn_zip">
-          ZIP 绿色版
+        <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.zip" class="px-6 py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white border border-white/15 font-semibold text-sm sm:text-base transition">
+          ZIP 绿色便携版
         </a>
-        <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.1.1" target="_blank" rel="noopener" class="px-5 py-4 rounded-2xl text-neutral-300 hover:text-white text-sm font-medium underline" data-i18n="dl_btn_notes">
+        <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.1.1" target="_blank" rel="noopener" class="px-5 py-4 rounded-2xl text-neutral-300 hover:text-white text-sm font-medium underline">
           发行说明 (v1.1.1) ↗
         </a>
       </div>
 
-      <div class="text-xs text-neutral-400 font-mono pt-2" data-i18n="dl_req">
+      <div class="text-xs text-neutral-400 font-mono pt-2">
         适用于 Apple Silicon (M1+) · macOS 15.0+
       </div>
     </div>
   </section>
 
-  <!-- 页脚区域 (Footer) -->
+  <!-- 页脚区域 -->
   <footer class="border-t border-black/10 py-10 text-xs sm:text-sm text-neutral-600">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
       <div class="flex items-center gap-2.5">
         <div class="w-7 h-7 rounded-lg bg-white border border-black/10 p-0.5 shadow-sm overflow-hidden flex items-center justify-center shrink-0">
-          <img src="assets/voice_buddy_color_512.png" alt="Voice Buddy Mascot" class="w-full h-full object-contain" />
+          <img src="assets/voice_buddy_color_512.png" width="28" height="28" alt="Voice Buddy Mascot" class="w-full h-full object-contain" loading="lazy" decoding="async" />
         </div>
         <span class="font-extrabold text-ink">voice buddy.</span>
-        <span data-i18n="footer_desc">100% 纯本地端侧运行的 macOS 语音输入搭子 · 零数据上云 · 保护你的每一句话。</span>
+        <span>100% 纯本地端侧运行的 macOS 语音输入搭子 · 零数据上云 · 保护你的每一句话。</span>
       </div>
       <div class="flex items-center gap-5 font-medium">
         <a href="https://myvoicebuddy.com/" class="hover:text-ink">myvoicebuddy.com</a>
         <a href="https://github.com/zfdang/voice-buddy" target="_blank" rel="noopener" class="hover:text-ink">GitHub ↗</a>
-        <a href="https://github.com/zfdang/voice-buddy/issues" target="_blank" rel="noopener" class="hover:text-ink" data-i18n="footer_issues">反馈问题 ↗</a>
-        <a href="https://remote.zfdang.com/" target="_blank" rel="noopener" class="hover:text-ink" data-i18n="footer_remote">遥控搭子 ↗</a>
+        <a href="https://github.com/zfdang/voice-buddy/issues" target="_blank" rel="noopener" class="hover:text-ink">反馈问题 ↗</a>
+        <a href="https://remote.zfdang.com/" target="_blank" rel="noopener" class="hover:text-ink">遥控搭子 ↗</a>
       </div>
     </div>
   </footer>
 
   <script>
+    // 语言切换与锚点保留逻辑
+    const langBtn = document.getElementById('langSwitchBtn');
+    if (langBtn) {
+      langBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        try { localStorage.setItem('vb_lang', 'en'); } catch(err) {}
+        window.location.href = 'en.html' + (window.location.hash || '');
+      });
+    }
+
     // 4 档文字整理力度样本与特性说明
     const refineSamples = {
       raw: '“呃李经理那个关于下周排期计划我们下午两点开个短会过一下然后测试同学记得把用例准备好就这样”',
@@ -581,8 +585,11 @@
         const level = btn.getAttribute('data-level');
         document.querySelectorAll('.level-tab').forEach(b => {
           b.className = 'level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition';
+          b.setAttribute('aria-selected', 'false');
         });
         btn.className = 'level-tab px-3 py-1.5 rounded-xl bg-ink text-white shadow-sm transition';
+        btn.setAttribute('aria-selected', 'true');
+
         document.getElementById('polishedTextBox').textContent = refineSamples[level];
         const badgeEl = document.getElementById('polCardBadge');
         const tagEl = document.getElementById('activeLevelTag');
@@ -606,8 +613,11 @@
         const tag = btn.getAttribute('data-mfilter');
         document.querySelectorAll('.model-filter').forEach(b => {
           b.className = 'model-filter px-3.5 py-2 rounded-xl bg-cream hover:bg-neutral-200 text-neutral-700 border border-black/10 transition';
+          b.setAttribute('aria-pressed', 'false');
         });
         btn.className = 'model-filter px-3.5 py-2 rounded-xl bg-ink text-white transition';
+        btn.setAttribute('aria-pressed', 'true');
+
         document.querySelectorAll('.model-card').forEach(card => {
           const tags = card.getAttribute('data-mtags').split(' ');
           card.style.display = tags.includes(tag) ? 'block' : 'none';

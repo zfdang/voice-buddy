@@ -3,52 +3,46 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Voice Buddy — 100% On-Device macOS AI Voice Dictation & Smart Refinement</title>
-  <meta name="description" content="What you want to say, written out as you speak. 100% local macOS speech recognition and LLM refinement. Zero cloud transmission, zero audio logging, zero API costs." />
-  <link rel="icon" type="image/png" href="assets/voice_buddy_color_512.png" />
+  <title>Voice Buddy — 100% On-Device macOS Voice Dictation & AI Text Refinement</title>
+  <meta name="description" content="Speak naturally, type effortlessly. 100% on-device speech recognition + local LLM refinement for Apple Silicon macOS. Zero cloud transmission, zero audio caching, zero API fees." />
+
+  <!-- Canonical & Multilingual Alternate Hreflang -->
+  <link rel="canonical" href="https://myvoicebuddy.com/en.html" />
+  <link rel="alternate" hreflang="zh-CN" href="https://myvoicebuddy.com/" />
+  <link rel="alternate" hreflang="en" href="https://myvoicebuddy.com/en.html" />
+  <link rel="alternate" hreflang="x-default" href="https://myvoicebuddy.com/" />
+
+  <!-- Social Graph & Meta Cards -->
+  <meta property="og:title" content="Voice Buddy — 100% On-Device macOS Voice Dictation & AI Text Refinement" />
+  <meta property="og:description" content="Speak naturally, type effortlessly. 100% on-device speech recognition + local LLM refinement for Apple Silicon macOS. Zero cloud transmission, zero audio caching, zero API fees." />
+  <meta property="og:url" content="https://myvoicebuddy.com/en.html" />
+  <meta property="og:image" content="https://myvoicebuddy.com/assets/dictation_en.png" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Voice Buddy" />
+  <meta name="twitter:description" content="100% On-Device macOS Voice Dictation & AI Text Refinement." />
+  <meta name="twitter:image" content="https://myvoicebuddy.com/assets/dictation_en.png" />
+
+  <!-- Lightweight Vector Favicon & Touch Icon -->
+  <link rel="icon" type="image/svg+xml" href="assets/icon.svg" />
   <link rel="apple-touch-icon" href="assets/voice_buddy_color_512.png" />
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+
+  <!-- Pre-compiled Standalone Production Stylesheet -->
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Instant Language Preference Route (Prevents Flash) -->
   <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            cream: '#F8F7F3',
-            ink: '#16161A',
-            limeAccent: '#CCFF7C',
-            sage: '#78A860',
-            sageDark: '#2E4F27',
-            lavender: '#EFEAFF'
-          },
-          fontFamily: {
-            sans: ['-apple-system', 'BlinkMacSystemFont', '"Inter"', '"SF Pro Display"', 'sans-serif'],
-            mono: ['"SF Mono"', 'Menlo', 'Monaco', 'Consolas', 'monospace']
-          }
+    (function() {
+      try {
+        var pref = localStorage.getItem('vb_lang');
+        var navLang = (navigator.language || '').toLowerCase();
+        var shouldBeZh = pref === 'zh' || (!pref && navLang.startsWith('zh'));
+        if (shouldBeZh) {
+          window.location.replace('./' + (window.location.hash || ''));
         }
-      }
-    };
+      } catch(e) {}
+    })();
   </script>
-  <style>
-    @keyframes wavePulse {
-      0%, 100% { transform: scaleY(0.28); opacity: 0.65; }
-      50% { transform: scaleY(1); opacity: 1; }
-    }
-    .wave-bar {
-      animation: wavePulse 0.9s ease-in-out infinite;
-      transform-origin: center;
-    }
-    .glass-nav {
-      background: rgba(248, 247, 243, 0.85);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-    }
-    .hud-glass {
-      background: rgba(20, 21, 28, 0.92);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.12);
-    }
-  </style>
 </head>
 <body id="top" class="bg-cream text-ink font-sans antialiased selection:bg-limeAccent selection:text-ink">
 
@@ -57,7 +51,7 @@
     <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
       <div class="flex items-center gap-2">
         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-limeAccent text-ink">LOCAL</span>
-        <span>100% On-Device AI Voice Typing Assistant</span>
+        <span>100% On-Device macOS AI Voice Typing Assistant</span>
       </div>
       <a href="https://remote.zfdang.com/" target="_blank" rel="noopener" class="text-limeAccent hover:underline font-medium inline-flex items-center gap-1">
         Looking for Remote Buddy? Visit remote.zfdang.com →
@@ -71,26 +65,26 @@
       <!-- Brand Logo -->
       <a href="#top" class="flex items-center gap-2.5 group">
         <div class="w-10 h-10 rounded-xl bg-white border border-black/10 shadow-sm flex items-center justify-center overflow-hidden p-1 group-hover:scale-105 transition">
-          <img src="assets/voice_buddy_color_512.png" alt="Voice Buddy Mascot" class="w-full h-full object-contain" />
+          <img src="assets/voice_buddy_color_512.png" width="32" height="32" alt="Voice Buddy Mascot" class="w-full h-full object-contain" />
         </div>
         <div class="flex flex-col">
           <span class="font-extrabold text-lg tracking-tight leading-none">voice buddy<span class="text-sage">.</span></span>
-          <span class="text-[11px] text-neutral-500 font-medium">Voice Dictation · macOS</span>
+          <span class="text-[11px] text-neutral-500 font-medium">Voice Assistant · macOS</span>
         </div>
       </a>
 
       <!-- Nav Links -->
       <nav class="hidden md:flex items-center gap-6 text-sm font-medium text-neutral-700">
         <a href="#privacy" class="hover:text-ink transition">Privacy</a>
-        <a href="#ai-refine" class="hover:text-ink transition">AI Polish</a>
+        <a href="#ai-refine" class="hover:text-ink transition">AI Refine</a>
         <a href="#how" class="hover:text-ink transition">Workflow</a>
-        <a href="#models" class="hover:text-ink transition">On-Device Models</a>
+        <a href="#models" class="hover:text-ink transition">Models</a>
         <a href="#download" class="hover:text-ink transition">Download</a>
       </nav>
 
       <!-- Language Toggle + CTA -->
       <div class="flex items-center gap-2.5">
-        <a href="index.html" class="px-3 py-1.5 rounded-lg border border-black/15 bg-white hover:bg-neutral-100 text-xs font-semibold transition flex items-center gap-1.5 text-neutral-800" title="Switch to Chinese">
+        <a href="./" id="langSwitchBtn" class="px-3 py-1.5 rounded-lg border border-black/15 bg-white hover:bg-neutral-100 text-xs font-semibold transition flex items-center gap-1.5 text-neutral-800 shadow-sm" title="切换为简体中文版本">
           <span>🌐</span>
           <span>中文</span>
         </a>
@@ -108,26 +102,26 @@
       <div class="lg:col-span-6 space-y-6">
         <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-black/10 shadow-sm text-xs font-semibold text-neutral-700">
           <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>100% On-Device Inference · Zero Cloud API Costs · Mixed-Language Ready</span>
+          <span>100% On-Device Inference · Zero Cloud API Costs · Multilingual</span>
         </div>
 
         <h1 class="text-4xl sm:text-5xl lg:text-[54px] font-black tracking-tight leading-[1.12] text-ink">
-          What you want to say,<br/><span class="underline decoration-limeAccent decoration-[10px] underline-offset-4">written out</span> as you speak.
+          Think it, speak it,<br/><span class="underline decoration-limeAccent decoration-[10px] underline-offset-4">it's written.</span>
         </h1>
 
         <p class="text-base sm:text-lg text-neutral-600 leading-relaxed">
-          Stop pausing to type. Hold a shortcut and speak in any app—the moment you release, on-device acoustic models and local LLMs strip fillers, fix grammar, and type polished text right at your cursor.
+          Never break your flow to type. Hold a hotkey anywhere, speak naturally, and release. On-device acoustic models and local LLMs filter filler words, fix grammar, and polish punctuation—typing clean text directly at your cursor.
         </p>
 
         <!-- Primary Download Buttons -->
         <div class="pt-2 flex flex-wrap items-center gap-3">
           <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.dmg" class="px-6 py-3.5 rounded-2xl bg-ink text-white hover:bg-neutral-800 font-bold text-sm sm:text-base flex items-center gap-2.5 shadow-lg shadow-black/10 transition transform hover:-translate-y-0.5">
             <span>↓</span>
-            <span>Download for macOS (.DMG)</span>
+            <span>Download for macOS (.dmg)</span>
             <span class="text-xs px-2 py-0.5 rounded-md bg-limeAccent text-ink font-mono font-bold">v1.1.1</span>
           </a>
           <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.zip" class="px-5 py-3.5 rounded-2xl bg-white hover:bg-neutral-100 text-ink border border-black/15 font-semibold text-sm sm:text-base transition">
-            ZIP Archive
+            ZIP Portable
           </a>
           <a href="https://github.com/zfdang/voice-buddy" target="_blank" rel="noopener" class="px-4 py-3.5 rounded-2xl text-neutral-600 hover:text-ink font-medium text-sm flex items-center gap-1 transition">
             <span>GitHub</span>
@@ -136,7 +130,7 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-neutral-500 font-medium pt-1">
-          <span>💻 Requires Apple Silicon (M1 / M2 / M3 / M4) · macOS 15.0+</span>
+          <span>💻 Designed for Apple Silicon (M-Series) · macOS 15.0+</span>
           <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.1.1" target="_blank" rel="noopener" class="underline hover:text-ink">View v1.1.1 Release Notes →</a>
         </div>
       </div>
@@ -152,25 +146,25 @@
           <div class="w-full flex items-center justify-between text-xs font-bold text-neutral-600 mb-4 z-10">
             <div class="flex items-center gap-2">
               <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Listening · On-Device Unified Memory Inference</span>
+              <span>Listening & Streaming · Real-Time Unified Memory</span>
             </div>
-            <span class="font-mono text-[11px] text-neutral-500 px-2 py-0.5 rounded-md bg-white/70 border border-black/5 shadow-sm">Style C Floating HUD</span>
+            <span class="font-mono text-[11px] text-neutral-500 px-2 py-0.5 rounded-md bg-white/70 border border-black/5 shadow-sm">Dynamic Streaming HUD</span>
           </div>
 
           <!-- Centered Real App Dictation Screenshot -->
           <div class="relative z-10 w-full max-w-[500px] my-2 transform hover:scale-[1.02] transition duration-300 filter drop-shadow-[0_20px_35px_rgba(30,20,50,0.22)]">
-            <img src="assets/dictation_en.png" alt="Voice Buddy Floating Dictation HUD" class="w-full h-auto rounded-2xl block" />
+            <img src="assets/dictation_en.png" width="500" height="227" alt="Voice Buddy Floating Dictation HUD" class="w-full h-auto rounded-2xl block" loading="eager" decoding="async" />
           </div>
 
           <!-- Feature badges below screenshot -->
           <div class="relative z-10 flex flex-wrap items-center justify-center gap-2 pt-4 text-xs font-semibold">
             <span class="px-3 py-1.5 rounded-full bg-white/90 border border-black/10 shadow-sm text-neutral-700 flex items-center gap-1.5">
               <span>🛡️</span>
-              <span>Zero Cloud Audio</span>
+              <span>Audio Stays Local</span>
             </span>
             <span class="px-3 py-1.5 rounded-full bg-white/90 border border-black/10 shadow-sm text-neutral-700 flex items-center gap-1.5">
               <span>🧠</span>
-              <span>Local LLM Polish</span>
+              <span>On-Device LLM Polish</span>
             </span>
             <span class="px-3 py-1.5 rounded-full bg-white/90 border border-black/10 shadow-sm text-neutral-700 flex items-center gap-1.5">
               <span>⚡</span>
@@ -180,7 +174,7 @@
 
           <!-- Bottom caption -->
           <div class="mt-5 pt-3 border-t border-black/5 flex items-center justify-between w-full text-[11px] text-neutral-500 font-mono z-10">
-            <span>✳ <span>Uninterrupted thought, natural text.</span></span>
+            <span>✳ Keep your thought train moving.</span>
             <span class="font-bold">LOCAL-FIRST AI <span class="text-lime-600">v1.1.1</span></span>
           </div>
         </div>
@@ -191,18 +185,18 @@
   <!-- Highlights Bar -->
   <section class="bg-ink text-white py-4 border-y border-black">
     <div class="max-w-6xl mx-auto px-4 flex flex-wrap items-center justify-around gap-4 text-xs sm:text-sm font-semibold tracking-wide">
-      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> <span>100% On-Device Compute</span></span>
-      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> <span>Zero Cloud API Costs</span></span>
-      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> <span>Works Completely Offline</span></span>
-      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> <span>Smart Filler Word Stripping</span></span>
-      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> <span>Password Box & Clipboard Guard</span></span>
+      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> 100% On-Device Inference</span>
+      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> Zero Cloud API Costs</span>
+      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> Full Offline Availability</span>
+      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> Verbal Filler Filtering</span>
+      <span class="flex items-center gap-2"><span class="text-limeAccent">✦</span> Password & Clipboard Guard</span>
     </div>
   </section>
 
-  <!-- 00 / PRIVACY & SECURITY -->
+  <!-- 00 / PRIVACY & SECURITY FIRST -->
   <section id="privacy" class="py-16 sm:py-24 max-w-6xl mx-auto px-4 sm:px-6 space-y-12">
     <div class="space-y-3 max-w-3xl">
-      <div class="text-xs font-mono uppercase tracking-widest text-sageDark font-bold">00 / PRIVACY & SECURITY</div>
+      <div class="text-xs font-mono uppercase tracking-widest text-sageDark font-bold">00 / PRIVACY & SECURITY FIRST</div>
       <h2 class="text-3xl sm:text-4xl font-black tracking-tight">Your voice belongs to you, and only you.</h2>
       <p class="text-neutral-600 text-base sm:text-lg leading-relaxed">
         All acoustic transcription and LLM refinement happen inside Apple Silicon unified memory—zero internet required, eliminating leaks from the hardware up.
@@ -214,38 +208,38 @@
         <div class="w-11 h-11 rounded-2xl bg-limeAccent/40 flex items-center justify-center text-xl">🛡️</div>
         <h3 class="text-xl font-bold">Zero Cloud Transmission</h3>
         <p class="text-sm sm:text-base text-neutral-600 leading-relaxed">
-          Microphone audio streams are processed solely in Apple Silicon unified memory and never uploaded to any remote server. Unplug Ethernet or turn on Airplane Mode and keep typing.
+          Microphone streams are processed entirely in local RAM. Nothing is ever transmitted to remote cloud servers. Pull your Ethernet cable, toggle Airplane Mode—it keeps dictating.
         </p>
       </div>
 
       <div class="p-6 sm:p-8 rounded-3xl bg-white border border-black/10 shadow-sm hover:shadow-md transition space-y-3">
-        <div class="w-11 h-11 rounded-2xl bg-limeAccent/40 flex items-center justify-center text-xl">🗑️</div>
-        <h3 class="text-xl font-bold">Zero Audio Retention</h3>
+        <div class="w-11 h-11 rounded-2xl bg-limeAccent/40 flex items-center justify-center text-xl">🔥</div>
+        <h3 class="text-xl font-bold">Zero Audio Storage</h3>
         <p class="text-sm sm:text-base text-neutral-600 leading-relaxed">
-          Audio buffers are freed from RAM immediately after transcription—never written to disk or cached as audio files, preventing leaks at the physical layer.
+          Audio buffers are cleared immediately from memory after processing. No audio files, recordings, or cache files are ever written to your local disk.
         </p>
       </div>
 
       <div class="p-6 sm:p-8 rounded-3xl bg-white border border-black/10 shadow-sm hover:shadow-md transition space-y-3">
-        <div class="w-11 h-11 rounded-2xl bg-limeAccent/40 flex items-center justify-center text-xl">💸</div>
-        <h3 class="text-xl font-bold">Zero API Costs or Quota Anxiety</h3>
+        <div class="w-11 h-11 rounded-2xl bg-limeAccent/40 flex items-center justify-center text-xl">💎</div>
+        <h3 class="text-xl font-bold">Zero API Cost or Quota Anxiety</h3>
         <p class="text-sm sm:text-base text-neutral-600 leading-relaxed">
-          No account registration, no OpenAI or DeepSeek API keys to configure, and zero per-word billing. Download and use freely with total peace of mind.
+          No user accounts to register, no third-party API keys to configure, and zero per-token billing anxieties. Download and start speaking immediately.
         </p>
       </div>
 
       <div class="p-6 sm:p-8 rounded-3xl bg-white border border-black/10 shadow-sm hover:shadow-md transition space-y-3">
         <div class="w-11 h-11 rounded-2xl bg-limeAccent/40 flex items-center justify-center text-xl">🔒</div>
-        <h3 class="text-xl font-bold">Password & Clipboard Guard</h3>
+        <h3 class="text-xl font-bold">Secure Input & Transient Clipboard</h3>
         <p class="text-sm sm:text-base text-neutral-600 leading-relaxed">
-          Automatically blocks dictation in password fields to prevent sensitive leaks; supports Transient clipboard tagging so history managers never log your text.
+          Dictation is automatically intercepted on secure password fields to prevent credential leaks. Injections use transient clipboard markers to evade third-party clipboard scrapers.
         </p>
       </div>
     </div>
 
     <div class="mt-6 text-right">
-      <a href="https://github.com/zfdang/voice-buddy#%E9%9A%90%E7%A7%81%E4%B8%8E%E5%AE%89%E5%85%A8%E6%89%BF%E8%AF%BA" target="_blank" rel="noopener" class="text-sm font-semibold text-neutral-700 hover:text-ink underline">
-        Read Full Privacy Commitment on GitHub ↗
+      <a href="https://github.com/zfdang/voice-buddy#privacy--security" target="_blank" rel="noopener" class="text-sm font-semibold text-neutral-700 hover:text-ink underline">
+        Read our full Privacy & Security Commitments on GitHub ↗
       </a>
     </div>
   </section>
@@ -256,20 +250,20 @@
       <div class="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div class="space-y-3 max-w-2xl">
           <div class="text-xs font-mono uppercase tracking-widest text-sageDark font-bold">01 / DUAL-STAGE INTELLIGENCE</div>
-          <h2 class="text-3xl sm:text-4xl font-black tracking-tight">Speech Recognition + Local LLM Polish, Crystal Clear.</h2>
-          <p class="text-neutral-600 text-base sm:text-lg">
-            Spoken language is naturally full of hesitations, self-corrections, and verbal fillers. Voice Buddy pairs acoustic transcription with on-device LLMs to turn raw dictation into polished writing.
+          <h2 class="text-3xl sm:text-4xl font-black tracking-tight">Speech-to-text plus LLM refinement, side-by-side.</h2>
+          <p class="text-neutral-600 text-base sm:text-lg leading-relaxed">
+            Spoken language naturally includes filler words, false starts, and repetitions. Voice Buddy relays acoustic transcription directly to local LLMs, refining spoken phrasing into polished written prose.
           </p>
         </div>
 
         <!-- 4 Refinement Level Interactive Tabs -->
         <div class="flex flex-col gap-1.5">
           <span class="text-xs text-neutral-500 font-semibold">Try 4 Text Refinement Levels:</span>
-          <div class="inline-flex p-1 rounded-2xl bg-cream border border-black/10 text-xs sm:text-sm font-semibold">
-            <button type="button" data-level="raw" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">Original (Raw)</button>
-            <button type="button" data-level="light" class="level-tab px-3 py-1.5 rounded-xl bg-ink text-white shadow-sm transition">Level 1: Light Polish (Default)</button>
-            <button type="button" data-level="moderate" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">Level 2: Deep Optimization</button>
-            <button type="button" data-level="rewrite" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">Level 3: Professional Rewrite</button>
+          <div class="inline-flex p-1 rounded-2xl bg-cream border border-black/10 text-xs sm:text-sm font-semibold" role="tablist" aria-label="Text Refinement Levels">
+            <button type="button" role="tab" id="tab-raw" aria-controls="polishedTextBox" aria-selected="false" data-level="raw" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">Original (Raw)</button>
+            <button type="button" role="tab" id="tab-light" aria-controls="polishedTextBox" aria-selected="true" data-level="light" class="level-tab px-3 py-1.5 rounded-xl bg-ink text-white shadow-sm transition">Level 1: Light Polish (Default)</button>
+            <button type="button" role="tab" id="tab-moderate" aria-controls="polishedTextBox" aria-selected="false" data-level="moderate" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">Level 2: Deep Optimization</button>
+            <button type="button" role="tab" id="tab-rewrite" aria-controls="polishedTextBox" aria-selected="false" data-level="rewrite" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">Level 3: Professional Rewrite</button>
           </div>
         </div>
       </div>
@@ -284,7 +278,7 @@
               <span class="text-xs font-mono text-neutral-500">Qwen3-ASR / Whisper Turbo</span>
             </div>
             <blockquote id="rawTranscriptBox" class="text-base sm:text-lg text-neutral-600 leading-relaxed italic">
-              "um hey David so regarding next week's release schedule let's have a quick sync at two pm and QA team please have the test cases ready that's it"
+              “um hey David so regarding next week's release schedule let's have a quick sync at two pm and QA team please have the test cases ready that's it”
             </blockquote>
           </div>
           <div class="pt-3 border-t border-black/5 text-xs text-neutral-500">
@@ -300,7 +294,7 @@
               <span id="activeLevelTag" class="text-xs font-mono text-limeAccent">Local Qwen LLM · Level 1: Light Polish (Default)</span>
             </div>
             <blockquote id="polishedTextBox" class="text-lg sm:text-xl text-white font-semibold leading-relaxed">
-              "Hey David, regarding next week's release schedule, let's have a quick sync at 2 PM, and QA team please have the test cases ready."
+              “Hey David, regarding next week's release schedule, let's have a quick sync at 2 PM, and QA team please have the test cases ready.”
             </blockquote>
           </div>
           <div class="pt-3 border-t border-white/10 flex items-center justify-between text-xs text-emerald-300">
@@ -319,22 +313,22 @@
     </div>
   </section>
 
-  <!-- 02 / WORKFLOW -->
+  <!-- 02 / THREE-STEP WORKFLOW -->
   <section id="how" class="py-16 sm:py-24 max-w-6xl mx-auto px-4 sm:px-6 space-y-12">
     <div class="space-y-3 max-w-2xl">
-      <div class="text-xs font-mono uppercase tracking-widest text-sageDark font-bold">02 / WORKFLOW</div>
-      <h2 class="text-3xl sm:text-4xl font-black tracking-tight">Natural typing, in three simple steps.</h2>
-      <p class="text-neutral-600 text-base sm:text-lg">
-        Types directly into your focused cursor. Say goodbye to window toggling.
+      <div class="text-xs font-mono uppercase tracking-widest text-sageDark font-bold">02 / THREE-STEP WORKFLOW</div>
+      <h2 class="text-3xl sm:text-4xl font-black tracking-tight">Effortless typing in three natural steps.</h2>
+      <p class="text-neutral-600 text-base sm:text-lg leading-relaxed">
+        Direct injection into the active cursor without window switching.
       </p>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
       <div class="p-6 sm:p-8 rounded-3xl bg-white border border-black/10 space-y-3">
         <div class="text-xs font-mono font-bold text-sageDark">STEP 01</div>
-        <h3 class="text-xl font-bold">Place Cursor</h3>
+        <h3 class="text-xl font-bold">Place Your Cursor</h3>
         <p class="text-sm sm:text-base text-neutral-600 leading-relaxed">
-          Slack, WeChat, Notion, VS Code, Notes, or Terminal. Wherever your cursor sits, text flows right there.
+          Slack, Notion, VS Code, Terminal, WhatsApp, or Google Docs. Wherever your cursor rests, words appear directly.
         </p>
       </div>
 
@@ -343,40 +337,40 @@
           <span class="text-xs font-mono font-bold text-sageDark">STEP 02</span>
           <kbd class="px-2 py-0.5 text-xs font-mono bg-cream border border-black/15 rounded-md">Fn / 🌐</kbd>
         </div>
-        <h3 class="text-xl font-bold">Hold & Speak</h3>
+        <h3 class="text-xl font-bold">Hold and Speak</h3>
         <p class="text-sm sm:text-base text-neutral-600 leading-relaxed">
-          Single-finger press the Fn / Globe key or ^⌥Space to speak your thoughts. Supports both Hold-to-Speak and Press-to-Toggle.
+          Press and hold Fn / Globe or ^⌥Space to speak freely. Supports both "Hold to Talk" and "Toggle On/Off" modes.
         </p>
       </div>
 
       <div class="p-6 sm:p-8 rounded-3xl bg-white border border-black/10 space-y-3">
         <div class="text-xs font-mono font-bold text-sageDark">STEP 03</div>
-        <h3 class="text-xl font-bold">Release & Type</h3>
+        <h3 class="text-xl font-bold">Release to Type</h3>
         <p class="text-sm sm:text-base text-neutral-600 leading-relaxed">
-          Release the key. Acoustic transcription and AI refinement complete instantly, typing text at your cursor and resuming background audio (press Esc to undo).
+          The moment you release, acoustic recognition and LLM refinement complete in milliseconds—typing words directly at your cursor.
         </p>
       </div>
     </div>
   </section>
 
-  <!-- 03 / MODELS -->
+  <!-- 03 / ON-DEVICE MODELS -->
   <section id="models" class="py-16 sm:py-24 bg-white border-t border-black/10">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 space-y-10">
       <div class="space-y-6">
         <div class="space-y-3 max-w-3xl">
-          <div class="text-xs font-mono uppercase tracking-widest text-sageDark font-bold">03 / MODELS</div>
+          <div class="text-xs font-mono uppercase tracking-widest text-sageDark font-bold">03 / ON-DEVICE MODELS</div>
           <h2 class="text-3xl sm:text-4xl font-black tracking-tight">Switch Engines Freely, Tailored for Your Mac.</h2>
-          <p class="text-neutral-600 text-base sm:text-lg">
-            Optimized for diverse Apple Silicon chips and linguistic needs, equipped with 5 distinct acoustic engines.
+          <p class="text-neutral-600 text-base sm:text-lg leading-relaxed">
+            Five leading on-device acoustic models optimized for diverse hardware specs and language workloads.
           </p>
         </div>
 
-        <!-- Scenario Filter Buttons (Dedicated Row) -->
-        <div class="flex flex-wrap gap-2.5 text-xs sm:text-sm font-semibold">
-          <button type="button" data-mfilter="all" class="model-filter px-3.5 py-2 rounded-xl bg-ink text-white transition">All Engines (5)</button>
-          <button type="button" data-mfilter="fast" class="model-filter px-3.5 py-2 rounded-xl bg-cream hover:bg-neutral-200 text-neutral-700 border border-black/10 transition">⚡ 8GB/16GB Low-Latency</button>
-          <button type="button" data-mfilter="code" class="model-filter px-3.5 py-2 rounded-xl bg-cream hover:bg-neutral-200 text-neutral-700 border border-black/10 transition">💻 Bilingual / Code (0.6B / 1.7B)</button>
-          <button type="button" data-mfilter="multi" class="model-filter px-3.5 py-2 rounded-xl bg-cream hover:bg-neutral-200 text-neutral-700 border border-black/10 transition">🌍 90+ Multilingual</button>
+        <!-- Filter Buttons -->
+        <div class="flex flex-wrap gap-2.5 text-xs sm:text-sm font-semibold" role="group" aria-label="Model filters">
+          <button type="button" data-mfilter="all" aria-pressed="true" class="model-filter px-3.5 py-2 rounded-xl bg-ink text-white transition">All Engines (5)</button>
+          <button type="button" data-mfilter="fast" aria-pressed="false" class="model-filter px-3.5 py-2 rounded-xl bg-cream hover:bg-neutral-200 text-neutral-700 border border-black/10 transition">⚡ 8GB/16GB Fast Pick</button>
+          <button type="button" data-mfilter="code" aria-pressed="false" class="model-filter px-3.5 py-2 rounded-xl bg-cream hover:bg-neutral-200 text-neutral-700 border border-black/10 transition">💻 Coding & Tech Mixed (0.6B / 1.7B)</button>
+          <button type="button" data-mfilter="multi" aria-pressed="false" class="model-filter px-3.5 py-2 rounded-xl bg-cream hover:bg-neutral-200 text-neutral-700 border border-black/10 transition">🌍 90+ Global Languages</button>
         </div>
       </div>
 
@@ -390,11 +384,11 @@
             </div>
             <span class="px-2.5 py-1 rounded-lg bg-white border border-black/10 text-xs font-mono font-bold">⚡ 300~600ms</span>
           </div>
-          <p class="text-sm font-semibold text-neutral-800">90+ languages supported with high accuracy. The gold standard for English & multilingual dictation.</p>
+          <p class="text-sm font-semibold text-neutral-800">High-precision transcription for 90+ global languages, translation, and pure English.</p>
           <ul class="text-xs sm:text-sm text-neutral-600 space-y-1.5 list-disc list-inside">
-            <li>Comprehensive global multilingual coverage</li>
-            <li>Accelerated with Apple Neural Engine (ANE)</li>
-            <li>Compiles once on first run for near-instant loads</li>
+            <li>Comprehensive coverage of major international languages</li>
+            <li>Accelerated via Apple Neural Engine (ANE) hardware</li>
+            <li>Optimized compilation on first run for ultra-fast standby calls</li>
           </ul>
         </div>
 
@@ -407,11 +401,11 @@
             </div>
             <span class="px-2.5 py-1 rounded-lg bg-limeAccent text-ink text-xs font-mono font-bold">⚡⚡ 30~80ms Ultra-Fast</span>
           </div>
-          <p class="text-sm font-semibold text-neutral-800">Sub-100ms ultra-low latency. Chinese, English, Cantonese, Japanese, Korean with minimal RAM footprint.</p>
+          <p class="text-sm font-semibold text-neutral-800">Sub-100ms response with minimal RAM footprint for everyday chat.</p>
           <ul class="text-xs sm:text-sm text-neutral-600 space-y-1.5 list-disc list-inside">
-            <li>Instant transcription powered by FunASR</li>
-            <li>Featherweight footprint, silky smooth on 8GB/16GB Macs</li>
-            <li>Ideal for fast chats & quick responses</li>
+            <li>Alibaba FunASR classic, instant on-screen typing on key release</li>
+            <li>Low memory overhead, runs effortlessly on 8GB / 16GB Macs</li>
+            <li>Ideal for instant messaging, quick replies, and voice notes</li>
           </ul>
         </div>
 
@@ -423,15 +417,15 @@
                 <h3 class="text-xl font-extrabold">Qwen 3 ASR 0.6B</h3>
                 <span class="px-2 py-0.5 rounded-md bg-limeAccent text-ink text-[11px] font-bold">Recommended</span>
               </div>
-              <p class="text-xs font-mono text-neutral-500 mt-0.5">MLX 8-bit · 960 MB · ~1.0 GB Unified RAM</p>
+              <p class="text-xs font-mono text-neutral-500 mt-0.5">MLX 8-bit · 960 MB · ~1.0 GB Unified Memory</p>
             </div>
             <span class="px-2.5 py-1 rounded-lg bg-limeAccent text-ink text-xs font-mono font-bold">⚡ 200~400ms</span>
           </div>
-          <p class="text-sm font-semibold text-neutral-800">Fast & lightweight · Best daily balance for dictation and mixed Chinese-English speech.</p>
+          <p class="text-sm font-semibold text-neutral-800">Lightweight & fast · Best daily balance for programming, technical terms, and bilingual dictation.</p>
           <ul class="text-xs sm:text-sm text-neutral-600 space-y-1.5 list-disc list-inside">
-            <li>Recommended for developers, daily coding, and bilingual tech discussions</li>
-            <li>Minimal memory footprint, silky smooth on 8GB/16GB Macs</li>
-            <li>Low latency response with accurate bilingual recognition</li>
+            <li>Tailored for software engineering and technical communication</li>
+            <li>Minimal memory footprint, seamless on 8GB / 16GB Apple Silicon</li>
+            <li>Millisecond low-latency streaming with accurate code keyword recognition</li>
           </ul>
         </div>
 
@@ -441,16 +435,16 @@
             <div>
               <div class="flex items-center gap-2">
                 <h3 class="text-xl font-extrabold">Qwen 3 ASR 1.7B</h3>
-                <span class="px-2 py-0.5 rounded-md bg-neutral-200 text-neutral-800 text-[11px] font-bold">Flagship Accuracy</span>
+                <span class="px-2 py-0.5 rounded-md bg-neutral-200 text-neutral-800 text-[11px] font-bold">Flagship Precision</span>
               </div>
-              <p class="text-xs font-mono text-neutral-500 mt-0.5">MLX 8-bit · 1.7 GB · ~1.8 GB Unified RAM</p>
+              <p class="text-xs font-mono text-neutral-500 mt-0.5">MLX 8-bit · 1.7 GB · ~1.8 GB Unified Memory</p>
             </div>
             <span class="px-2.5 py-1 rounded-lg bg-white border border-black/10 text-xs font-mono font-bold">⚡ 500~900ms</span>
           </div>
-          <p class="text-sm font-semibold text-neutral-800">Flagship precision · Highly accurate for long sentences, academic papers, and deep technical jargon.</p>
+          <p class="text-sm font-semibold text-neutral-800">Flagship accuracy · Built for long complex sentences, technical seminars, and deep code reviews.</p>
           <ul class="text-xs sm:text-sm text-neutral-600 space-y-1.5 list-disc list-inside">
-            <li>Formal lectures, code review, and complex technical terminology</li>
-            <li>Flagship accuracy benchmark for complex speech and acronyms</li>
+            <li>Highest accuracy for complex phrasing and academic terminology</li>
+            <li>Gold standard for lengthy technical lectures and code analysis</li>
             <li>Deeply integrated with Apple Silicon Metal GPU unified memory</li>
           </ul>
         </div>
@@ -460,15 +454,15 @@
           <div class="flex items-start justify-between gap-2">
             <div>
               <h3 class="text-xl font-extrabold">Apple Speech</h3>
-              <p class="text-xs font-mono text-neutral-500 mt-0.5">macOS Native · 0 MB</p>
+              <p class="text-xs font-mono text-neutral-500 mt-0.5">System Native · 0 MB</p>
             </div>
             <span class="px-2.5 py-1 rounded-lg bg-white border border-black/10 text-xs font-mono font-bold">⚡ 100~200ms</span>
           </div>
-          <p class="text-sm font-semibold text-neutral-800">Built-in macOS system speech service. Zero disk storage required, instantly usable without downloads.</p>
+          <p class="text-sm font-semibold text-neutral-800">macOS built-in dictation service, zero disk space, zero download needed.</p>
           <ul class="text-xs sm:text-sm text-neutral-600 space-y-1.5 list-disc list-inside">
-            <li>Ready out of the box with zero model downloads</li>
-            <li>Built natively into macOS system services</li>
-            <li>Ultra-low battery consumption on battery power</li>
+            <li>Ready to use out of the box with zero model downloads</li>
+            <li>Native system-level integration, ultra-lightweight</li>
+            <li>Energy efficient with 24/7 low-power standby</li>
           </ul>
         </div>
       </div>
@@ -476,24 +470,24 @@
       <div class="p-5 rounded-2xl bg-cream border border-black/10 text-xs sm:text-sm text-neutral-700 flex items-center gap-3">
         <span class="text-xl">🧠</span>
         <p>
-          <strong>On-Device Language Model:</strong> Paired with on-device Qwen LLMs (0.5B / 1.5B / 3.5 0.8B), providing local text restructuring and punctuation cleanup across all acoustic engines.
+          <strong>On-Device Language Models:</strong> Paired with on-device Qwen LLMs (Qwen 3.5 0.8B INT5/INT8, Qwen 3 1.7B, Qwen 3 4B), providing private text restructuring and punctuation cleanup across all acoustic engines.
         </p>
       </div>
     </div>
   </section>
 
-  <!-- Sister Project Section: Remote Buddy -->
+  <!-- Sister Project Link: Remote Buddy -->
   <section class="py-12 max-w-6xl mx-auto px-4 sm:px-6">
     <div class="rounded-3xl bg-gradient-to-r from-[#EBF5FF] to-[#F3F8FF] border border-sky-200 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6">
       <div class="flex items-center gap-4">
         <div class="w-14 h-14 rounded-2xl bg-white border border-sky-200 shadow-sm flex items-center justify-center p-2 shrink-0 overflow-hidden">
-          <img src="assets/remote_buddy_color_512.png" alt="Remote Buddy Logo" class="w-full h-full object-contain" />
+          <img src="assets/remote_buddy_color_512.png" width="48" height="48" alt="Remote Buddy Logo" class="w-full h-full object-contain" loading="lazy" decoding="async" />
         </div>
         <div class="space-y-1">
-          <div class="inline-flex items-center gap-1.5 text-xs font-bold text-sky-700 uppercase tracking-wider">SISTER PROJECT · GOLDEN DUO</div>
-          <h3 class="text-xl font-extrabold text-ink">Pair with Remote Buddy for Hands-Free Control</h3>
+          <div class="inline-flex items-center gap-1.5 text-xs font-bold text-sky-700 uppercase tracking-wider">SISTER PROJECT · THE PERFECT PAIR</div>
+          <h3 class="text-xl font-extrabold text-ink">Use with Remote Buddy</h3>
           <p class="text-xs sm:text-sm text-neutral-600 max-w-xl">
-            Turn a Xiaomi Bluetooth Voice Remote or Chromecast Remote into a wireless microphone and shortcut controller for your Mac. Lean back in your chair and tap a single button to dictate effortlessly.
+            Transform Xiaomi Bluetooth voice remotes or Chromecast remotes into wireless virtual microphones and hotkey controllers. Lean back in your chair and trigger Voice Buddy with a single thumb click.
           </p>
         </div>
       </div>
@@ -508,26 +502,26 @@
     </div>
   </section>
 
-  <!-- Download CTA Section -->
+  <!-- Download Section -->
   <section id="download" class="py-16 sm:py-24 max-w-6xl mx-auto px-4 sm:px-6">
     <div class="rounded-[32px] bg-ink text-white p-8 sm:p-14 text-center space-y-6 relative overflow-hidden">
       <div class="flex items-center justify-center">
         <div class="w-20 h-20 rounded-2xl bg-white/10 p-2.5 border border-white/15 shadow-2xl backdrop-blur-sm">
-          <img src="assets/voice_buddy_color_512.png" alt="Voice Buddy Mascot" class="w-full h-full object-contain" />
+          <img src="assets/voice_buddy_color_512.png" width="64" height="64" alt="Voice Buddy Mascot" class="w-full h-full object-contain" loading="lazy" decoding="async" />
         </div>
       </div>
-      <div class="text-xs font-mono uppercase tracking-widest text-limeAccent font-bold">READY TO TRY?</div>
-      <h2 class="text-3xl sm:text-5xl font-black tracking-tight">Let your ideas flow freely.</h2>
+      <div class="text-xs font-mono uppercase tracking-widest text-limeAccent font-bold">READY TO GET STARTED?</div>
+      <h2 class="text-3xl sm:text-5xl font-black tracking-tight">Let your thoughts flow freely.</h2>
       <p class="text-neutral-300 text-sm sm:text-lg max-w-xl mx-auto">
-        100% on-device execution · Absolute privacy · Zero cloud costs · Download now to get started.
+        100% on-device inference · Absolute privacy · Zero cloud costs · Download and try today.
       </p>
 
       <div class="pt-2 flex flex-wrap items-center justify-center gap-4">
         <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.dmg" class="px-7 py-4 rounded-2xl bg-limeAccent text-ink hover:brightness-95 font-extrabold text-sm sm:text-base transition shadow-lg">
-          <span>↓ Download Voice Buddy v1.1.1 (DMG)</span>
+          <span>↓ Download Voice Buddy v1.1.1 (.dmg)</span>
         </a>
         <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.zip" class="px-6 py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white border border-white/15 font-semibold text-sm sm:text-base transition">
-          ZIP Archive
+          ZIP Portable
         </a>
         <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.1.1" target="_blank" rel="noopener" class="px-5 py-4 rounded-2xl text-neutral-300 hover:text-white text-sm font-medium underline">
           Release Notes (v1.1.1) ↗
@@ -535,7 +529,7 @@
       </div>
 
       <div class="text-xs text-neutral-400 font-mono pt-2">
-        Requires Apple Silicon (M1+) · macOS 15.0+
+        Designed for Apple Silicon (M1+) · macOS 15.0+
       </div>
     </div>
   </section>
@@ -545,21 +539,31 @@
     <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
       <div class="flex items-center gap-2.5">
         <div class="w-7 h-7 rounded-lg bg-white border border-black/10 p-0.5 shadow-sm overflow-hidden flex items-center justify-center shrink-0">
-          <img src="assets/voice_buddy_color_512.png" alt="Voice Buddy Mascot" class="w-full h-full object-contain" />
+          <img src="assets/voice_buddy_color_512.png" width="28" height="28" alt="Voice Buddy Mascot" class="w-full h-full object-contain" loading="lazy" decoding="async" />
         </div>
         <span class="font-extrabold text-ink">voice buddy.</span>
-        <span>100% on-device macOS voice dictation assistant · Zero cloud data · Your voice is your own.</span>
+        <span>100% on-device macOS voice dictation assistant · Zero cloud transmission · Protecting every word you say.</span>
       </div>
       <div class="flex items-center gap-5 font-medium">
-        <a href="https://myvoicebuddy.com/" class="hover:text-ink">myvoicebuddy.com</a>
+        <a href="./en.html" class="hover:text-ink">myvoicebuddy.com</a>
         <a href="https://github.com/zfdang/voice-buddy" target="_blank" rel="noopener" class="hover:text-ink">GitHub ↗</a>
-        <a href="https://github.com/zfdang/voice-buddy/issues" target="_blank" rel="noopener" class="hover:text-ink">Issues ↗</a>
+        <a href="https://github.com/zfdang/voice-buddy/issues" target="_blank" rel="noopener" class="hover:text-ink">Feedback ↗</a>
         <a href="https://remote.zfdang.com/" target="_blank" rel="noopener" class="hover:text-ink">Remote Buddy ↗</a>
       </div>
     </div>
   </footer>
 
   <script>
+    // Language Switcher preserving URL anchor
+    const langBtn = document.getElementById('langSwitchBtn');
+    if (langBtn) {
+      langBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        try { localStorage.setItem('vb_lang', 'zh'); } catch(err) {}
+        window.location.href = './' + (window.location.hash || '');
+      });
+    }
+
     // 4 Refinement Levels Samples & Footers
     const refineSamples = {
       raw: `“um hey David so regarding next week's release schedule let's have a quick sync at two pm and QA team please have the test cases ready that's it”`,
@@ -581,10 +585,12 @@
         const level = btn.getAttribute('data-level');
         document.querySelectorAll('.level-tab').forEach(b => {
           b.className = 'level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition';
+          b.setAttribute('aria-selected', 'false');
         });
         btn.className = 'level-tab px-3 py-1.5 rounded-xl bg-ink text-white shadow-sm transition';
-        document.getElementById('polishedTextBox').textContent = refineSamples[level];
+        btn.setAttribute('aria-selected', 'true');
 
+        document.getElementById('polishedTextBox').textContent = refineSamples[level];
         const badgeEl = document.getElementById('polCardBadge');
         const tagEl = document.getElementById('activeLevelTag');
         if (level === 'raw') {
@@ -608,8 +614,11 @@
         const tag = btn.getAttribute('data-mfilter');
         document.querySelectorAll('.model-filter').forEach(b => {
           b.className = 'model-filter px-3.5 py-2 rounded-xl bg-cream hover:bg-neutral-200 text-neutral-700 border border-black/10 transition';
+          b.setAttribute('aria-pressed', 'false');
         });
         btn.className = 'model-filter px-3.5 py-2 rounded-xl bg-ink text-white transition';
+        btn.setAttribute('aria-pressed', 'true');
+
         document.querySelectorAll('.model-card').forEach(card => {
           const tags = card.getAttribute('data-mtags').split(' ');
           card.style.display = tags.includes(tag) ? 'block' : 'none';
