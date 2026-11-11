@@ -42,7 +42,7 @@ final class DiagnosticLog {
                 let size = (try FileManager.default.attributesOfItem(atPath: self.fileURL.path)[.size] as? NSNumber)?.uint64Value ?? 0
                 if size > 0 && size + UInt64(data.count) > self.limit {
                     let fm = FileManager.default
-                    if fm.fileExists(atPath: self.previousURL(6).path) { try? fm.removeItem(at: self.previousURL(6)) }
+                    if fm.fileExists(atPath: self.previousURL(6).path) { try fm.removeItem(at: self.previousURL(6)) }
                     for index in stride(from: 5, through: 1, by: -1) {
                         let source = self.previousURL(index)
                         let target = self.previousURL(index + 1)

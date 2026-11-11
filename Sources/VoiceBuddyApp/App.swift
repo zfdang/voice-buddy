@@ -78,7 +78,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private var liveTask: Task<Void, Never>?
     private var meter: Timer?
     private var gesture = HotkeyGesture()
-    private var activePasteboardSession: TemporaryPasteboard?
+    var activePasteboardSession: TemporaryPasteboard?
     private var fnGesture = FnKeyGesture()
     private var fnOtherModifiers: NSEvent.ModifierFlags = []
     private var fnStartedRecording = false
@@ -353,6 +353,10 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             modelProgress = 0
             ready = cachedSpeechModelIDs.contains(id)
             status = label("Ready", "就绪")
+            checkModelCacheStatus { [weak self] in
+                guard let self else { return }
+                self.ready = self.cachedSpeechModelIDs.contains(self.preferences.speechModel)
+            }
         }
     }
 
@@ -360,6 +364,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         let currentDownloading = activeDownloadingTextModelID ?? preferences.textModel
         if let id, id != currentDownloading { return }
         guard editorPreparing || activeDownloadingTextModelID != nil else { return }
+        let targetId = id ?? currentDownloading
         editorGeneration = UUID()
         editorTask?.cancel()
         editorTask = nil
@@ -367,9 +372,11 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         activeDownloadingTextModelID = nil
         editorProgress = 0
         editorProgressMessage = ""
-        modelPreparing = false
-        modelProgress = 0
-        status = label("Ready", "就绪")
+        if preferences.textModel == targetId {
+            modelPreparing = false
+            modelProgress = 0
+            status = label("Ready", "就绪")
+        }
     }
 
     func prepareSpeech(id: String? = nil, completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
@@ -785,17 +792,19 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
     }
     func cancel() {
-        let wasActiveSession = recording || busy || liveTask != nil || transcriptionTask != nil
+        mediaPlayback.resumeIfPaused()
+        let wasActiveSession = recording || busy || liveTask != nil || transcriptionTask != nil || activePasteboardSession != nil
         guard wasActiveSession else { return }
         DiagnosticLog.shared.record("session.cancel id=\(diagnosticSession)")
-        mediaPlayback.resumeIfPaused()
         liveTask?.cancel(); liveTask = nil; liveTranscript = ""; liveTranscriptState.clear(); tracker.reset()
         if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
         transcriptionGeneration = UUID()
         gesture.reset()
         transcriptionTask?.cancel(); transcriptionTask = nil
-        activePasteboardSession?.invalidate()
-        activePasteboardSession = nil
+        if let session = activePasteboardSession {
+            _ = session.restore()
+            activePasteboardSession = nil
+        }
         if recording { _ = recorder.stop() }
         recording = false
         busy = false
@@ -908,6 +917,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
         transcriptionTask = Task {
             defer {
+                self.transcriptionTask = nil
                 if self.transcriptionGeneration == id {
                     self.busy = false
                 }
@@ -971,8 +981,10 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     DiagnosticLog.shared.record("refinement.failed id=\(logSession)")
                     if !TargetAccessibility.isSensitiveDestination(element: boundElement) {
                         copyResult()
+                        status = label("Refinement failed; original text copied to clipboard.", "文本整理失败，已复制原文到剪贴板。")
+                    } else {
+                        status = label("Refinement failed. Open Result to review the original text.", "文本整理失败，请打开结果页查看原文。")
                     }
-                    status = label("Refinement failed; original text copied to clipboard.", "文本整理失败，已复制原文到剪贴板。")
                     if !recording { overlay.showStatus(state: self) }
                     return
                 }
@@ -1102,7 +1114,11 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 }
                 TargetAccessibility.postPasteShortcutAsync { [weak self] success in
                     guard let self else { return }
-                    guard let sid = sessionID, self.transcriptionGeneration == sid, !self.recording else { return }
+                    if let sid = sessionID {
+                        guard self.transcriptionGeneration == sid, !self.recording else { return }
+                    } else {
+                        guard !self.recording else { return }
+                    }
                     guard success else {
                         _ = temporaryClipboard.restore()
                         if self.activePasteboardSession === temporaryClipboard { self.activePasteboardSession = nil }
@@ -1116,7 +1132,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     // Restoring on a short delay allows target app to consume pasteboard
                     // while preventing prolonged exposure or collision with rapid dictations.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                        guard self.transcriptionGeneration == sid else { return }
+                        if let sid = sessionID {
+                            guard self.transcriptionGeneration == sid else { return }
+                        }
                         let restored = temporaryClipboard.restore()
                         if self.activePasteboardSession === temporaryClipboard { self.activePasteboardSession = nil }
                         DiagnosticLog.shared.record("clipboard.restore id=\(logSession) restored=\(restored)")
@@ -1543,15 +1561,15 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
             return
         }
 
+        let restored = targetScreen == nil && window.setFrameUsingName("VoiceBuddySettings")
         let screen = targetScreen
-            ?? (window.setFrameUsingName("VoiceBuddySettings") ? window.screen : nil)
+            ?? NSScreen.screens.first(where: { $0.frame.intersects(window.frame) })
             ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
             ?? NSScreen.main
 
         if let screen {
             let visibleFrame = screen.visibleFrame
             var frame = window.frame
-            let restored = targetScreen == nil && window.setFrameUsingName("VoiceBuddySettings") && window.screen == screen
             if !restored {
                 frame.origin = NSPoint(
                     x: visibleFrame.midX - frame.width / 2,

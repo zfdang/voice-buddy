@@ -306,8 +306,8 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
             }
         }
         if id == "apple-speech" {
-            // Apple Speech is completely built into macOS and handles its own speech detection.
-            // Do NOT attempt to download or load Silero VAD.
+            // Apple Speech is completely built into macOS and does not use Silero VAD.
+            progress(1.0, "Apple Speech ready")
             return
         }
         if vad == nil {
@@ -447,13 +447,15 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
     }
     func containsSpeech(_ samples: [Float]) async throws -> Bool {
+        if selectedID == "apple-speech" {
+            guard !samples.isEmpty else { return false }
+            let sumSquares = samples.reduce(0.0) { $0 + Double($1 * $1) }
+            let rms = sqrt(sumSquares / Double(samples.count))
+            return rms > 0.01
+        }
         if let vad {
             vad.resetState()
             return !vad.detectSpeech(audio: samples, sampleRate: 16000).isEmpty
-        }
-        if selectedID == "apple-speech" {
-            // Apple Speech includes native speech and silence detection.
-            return !samples.isEmpty
         }
         throw VoiceBuddyError.modelUnavailable("VAD")
     }

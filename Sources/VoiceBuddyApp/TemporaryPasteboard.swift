@@ -20,14 +20,14 @@ final class TemporaryPasteboard {
         if hasTransient, let predecessor, !predecessor.savedItems.isEmpty {
             // Inherit true original items from previous un-restored session
             self.savedItems = predecessor.savedItems
+            // Invalidate predecessor so its pending restore timer becomes a no-op
+            predecessor.invalidate()
         } else {
             self.savedItems = (board.pasteboardItems ?? []).map { item in
                 item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }
             }
         }
         self.ownedChangeCount = board.changeCount
-        // Invalidate predecessor so its pending restore timer becomes a no-op
-        predecessor?.invalidate()
     }
 
     func invalidate() {

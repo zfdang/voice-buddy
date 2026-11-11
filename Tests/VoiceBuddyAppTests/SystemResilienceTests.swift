@@ -47,11 +47,20 @@ final class SystemResilienceTests: XCTestCase {
     func testAppleSpeechOfflineDoesNotRequireVAD() async throws {
         let models = LocalModels()
         // Try prepareSpeech for apple-speech; must complete without network or Silero VAD error
-        try await models.prepareSpeech(id: "apple-speech") { _, _ in }
+        final class ProgressBox: @unchecked Sendable { var value: Double = 0 }
+        let box = ProgressBox()
+        try await models.prepareSpeech(id: "apple-speech") { progress, _ in
+            box.value = progress
+        }
+        XCTAssertEqual(box.value, 1.0, "Apple Speech preparation must reach 100% progress")
 
-        let sampleAudio = [Float](repeating: 0.05, count: 1600)
-        let hasSpeech = try await models.containsSpeech(sampleAudio)
-        XCTAssertTrue(hasSpeech, "Apple Speech should accept audio without throwing VAD unavailable")
+        let silence = [Float](repeating: 0.0, count: 1600)
+        let silenceDetected = try await models.containsSpeech(silence)
+        XCTAssertFalse(silenceDetected, "Pure silence must be rejected by Apple Speech energy detection")
+
+        let audibleAudio = (0..<1600).map { sin(Float($0) * 0.1) * 0.2 }
+        let hasSpeech = try await models.containsSpeech(audibleAudio)
+        XCTAssertTrue(hasSpeech, "Audible voice should be accepted by Apple Speech without throwing VAD unavailable")
 
         let emptyAudio: [Float] = []
         let hasSpeechEmpty = try await models.containsSpeech(emptyAudio)
@@ -76,10 +85,32 @@ final class SystemResilienceTests: XCTestCase {
         XCTAssertFalse(state.insertFailure.isEmpty, "insertFailure must describe the refusal reason")
     }
 
+    func testCancelPreservesOriginalUserClipboard() {
+        let board = NSPasteboard.general
+        let originalText = "user_clipboard_before_cancel_\(UUID().uuidString)"
+        board.clearContents()
+        board.setString(originalText, forType: .string)
+
+        let state = AppState()
+        // Simulate a session that wrote a temporary dictation to clipboard
+        let session = TemporaryPasteboard(board: board)
+        XCTAssertTrue(session.write("dictation text to be cancelled", sensitive: false))
+        XCTAssertEqual(board.string(forType: .string), "dictation text to be cancelled")
+
+        // Set session on state and call cancel()
+        state.activePasteboardSession = session
+        state.cancel()
+
+        // Board must be restored to original user clipboard!
+        XCTAssertEqual(board.string(forType: .string), originalText, "cancel() must restore original user clipboard")
+        XCTAssertNil(state.activePasteboardSession, "activePasteboardSession must be cleared")
+    }
+
     func testStuckBusyStateSelfHealing() {
         let state = AppState()
         state.busy = true
         state.recording = false
+        defer { state.cancel() }
 
         // Attempting to start dictation when busy is stuck without active recording or task should self-heal
         state.toggle()
