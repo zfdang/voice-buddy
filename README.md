@@ -65,9 +65,9 @@ Voice Buddy 是一款从底层遵循「本地优先（Local-First）」哲学打
 
 | 交付形式 | 下载链接 | 说明 |
 | :--- | :--- | :--- |
-| **DMG 安装镜像 (推荐)** | [Voice-Buddy-v1.1.0-macOS.dmg](https://github.com/zfdang/voice-buddy/releases/download/v1.1.0/Voice-Buddy-v1.1.0-macOS.dmg) | 双击打开并将 Voice Buddy 拖入「应用程序」即可 |
-| **ZIP 绿色压缩包** | [Voice-Buddy-v1.1.0-macOS.zip](https://github.com/zfdang/voice-buddy/releases/download/v1.1.0/Voice-Buddy-v1.1.0-macOS.zip) | 解压即用 |
-| **校验和文件** | [SHA256SUMS.txt](https://github.com/zfdang/voice-buddy/releases/download/v1.1.0/SHA256SUMS.txt) | SHA256 完整性校验 |
+| **DMG 安装镜像 (推荐)** | [Voice-Buddy-v1.1.1-macOS.dmg](https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.dmg) | 双击打开并将 Voice Buddy 拖入「应用程序」即可 |
+| **ZIP 绿色压缩包** | [Voice-Buddy-v1.1.1-macOS.zip](https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.zip) | 解压即用 |
+| **校验和文件** | [SHA256SUMS.txt](https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/SHA256SUMS.txt) | SHA256 完整性校验 |
 
 ### 首次配置步骤
 1. 打开应用，按引导授予「麦克风」权限（用于录音）与「辅助功能」权限（用于自动向光标处键入文字）。
@@ -84,7 +84,7 @@ Voice Buddy 集成了 Sparkle 框架以支持无缝静默更新检测：
 
 ---
 
-## 🔒 隐私与开源承诺
+## 🔒 隐私与安全承诺
 
 Voice Buddy 是一款从架构底层遵循本地优先（Local-First）原则的生产力工具：
 - **音频零留存**：麦克风音频流仅在内存中供端侧模型推理处理，从不写入本地音频文件，也绝不向云端发送任何数据。
@@ -98,3 +98,5 @@ Voice Buddy 是一款从架构底层遵循本地优先（Local-First）原则的
 - **官方网站**：[https://myvoicebuddy.com](https://myvoicebuddy.com)
 - **问题反馈**：[GitHub Issues](https://github.com/zfdang/voice-buddy/issues)
 - **遥控搭子**：[remote.zfdang.com](https://remote.zfdang.com)
+
+> 📌 **分发说明**：本 GitHub 仓库（`zfdang/voice-buddy`）仅作为 Voice Buddy 官方二进制分发站、Sparkle 自动更新源挂载点及用户 Issue 交流社区，软件本身并非开源软件。
