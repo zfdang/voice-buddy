@@ -3,6 +3,15 @@
     <channel>
         <title>Voice Buddy</title>
         <item>
+            <title>1.1.0</title>
+            <pubDate>Wed, 11 Nov 2026 07:44:13 +0000</pubDate>
+            <sparkle:version>1.1.0</sparkle:version>
+            <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/zfdang/voice-buddy/releases/download/v1.1.0/Voice-Buddy-v1.1.0-macOS.zip" length="50819748" type="application/octet-stream" sparkle:edSignature="ApFwymr3oRF64XKTdUvM9FqLT1b971blmDcFYNq3rOQwm8YWbu9lZPTIoZTxSn9HWjMaBQk5bBvtq6a0Qbs+BA=="/>
+        </item>
+        <item>
             <title>1.0.0</title>
             <pubDate>Sun, 08 Nov 2026 00:36:09 +0000</pubDate>
             <sparkle:version>1.0.0</sparkle:version>
