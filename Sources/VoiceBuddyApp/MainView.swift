@@ -249,7 +249,11 @@ struct MainView: View {
         let isCurrentTextDownloading = state.downloadingTextModelIDs.contains(state.preferences.textModel)
 
         let speechSubtitle: String = {
-            if state.isActivatingSpeechModel { return t("Loading into memory…", "载入内存中…") }
+            if state.isActivatingSpeechModel {
+                return state.preferences.speechModel.contains("whisper")
+                    ? t("Compiling (1-2 mins on 1st run)…", "载入中 (首次编译约1~2分钟)…")
+                    : t("Loading into memory…", "载入内存中…")
+            }
             if isCurrentSpeechDownloading { return t("Downloading…", "下载中…") }
             if state.asrReady { return t("Ready", "已就绪") }
             if state.isSpeechDownloaded { return t("Downloaded", "已下载") }
@@ -837,6 +841,17 @@ struct MainView: View {
                                         .foregroundStyle(.primary)
                                 }
                             }
+                            if activeSpec.id.contains("whisper") {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "info.circle")
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                    Text(t("First load compiles to Apple Neural Engine (~1–2 mins, once only). Instant thereafter.", "提示：首次加载需系统神经引擎编译（约需 1~2 分钟，仅执行一次），后续启动即可秒开。"))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.top, 2)
+                            }
                         }
                         .padding(10)
                         .background(Color.secondary.opacity(0.08))
@@ -855,9 +870,20 @@ struct MainView: View {
                         } else if state.isActivatingSpeechModel {
                             ProgressView()
                                 .controlSize(.small)
-                            Text(t("Loading model into unified memory…", "正在载入统一内存…"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(t("Loading model into unified memory…", "正在载入统一内存…"))
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.primary)
+                                if state.preferences.speechModel.contains("whisper") {
+                                    Text(t("First-time load requires Neural Engine compilation (~1–2 minutes, one-time only). Subsequent launches will be instant.", "首次加载需经由 Apple Neural Engine 硬件编译（约需 1~2 分钟，仅需编译一次），后续秒开，请稍候…"))
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                } else {
+                                    Text(t("Allocating memory and initializing neural weights…", "正在分配统一内存并初始化权重…"))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         } else {
                             Image(systemName: "pause.circle")
                                 .foregroundStyle(.orange)
@@ -1106,9 +1132,14 @@ struct MainView: View {
                         } else if state.isActivatingTextModel {
                             ProgressView()
                                 .controlSize(.small)
-                            Text(t("Loading model into unified memory…", "正在载入统一内存…"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(t("Loading model into unified memory…", "正在载入统一内存…"))
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.primary)
+                                Text(t("Mapping unified memory weights, please wait…", "正在映射统一内存权重，请稍候…"))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
                         } else if !state.preferences.refinement.needsModel {
                             Image(systemName: "info.circle")
                                 .foregroundStyle(.secondary)

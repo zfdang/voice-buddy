@@ -71,8 +71,8 @@ public struct SpeechModelSpec: Identifiable, Hashable, Sendable {
             memoryUsage: "约 1.0 GB 统一内存",
             bestForZh: "国际跨国会议、多语种互译办公、纯英文与专业学术场景",
             bestForEn: "Global meetings, multilingual dictation, and professional English",
-            description: "多语旗舰 · 全球 90+ 语言高精听写，纯英文与跨国多语互译首选",
-            descriptionEn: "Multilingual flagship · High accuracy across 90+ languages, ideal for global & English dictation"
+            description: "多语旗舰 · 全球 90+ 语言高精听写（首次载入需神经引擎编译约 1~2 分钟，仅一次，后续秒开）",
+            descriptionEn: "Multilingual flagship · 90+ languages (First load requires Neural Engine compilation ~1-2 mins, once only, instant thereafter)"
         ),
         SpeechModelSpec(
             id: "sensevoice-small",

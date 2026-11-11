@@ -365,13 +365,16 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         speechPreparing = true
         let targetId = id ?? preferences.speechModel
         let isSelectedModel = (targetId == preferences.speechModel)
+        let loadMsg = targetId.contains("whisper")
+            ? label("Compiling speech model into unified memory (1-2 mins on first run)…", "正在载入语音识别模型至统一内存（首次编译需1~2分钟，仅需一次）…")
+            : label("Loading speech model into memory…", "正在载入语音识别模型至统一内存…")
         if isSelectedModel {
             modelPreparing = true
             modelProgress = 0
-            status = label("Loading speech model into memory…", "正在载入语音识别模型至统一内存…")
+            status = loadMsg
         }
         speechProgress = 0
-        speechProgressMessage = label("Loading speech model into memory…", "正在载入语音识别模型至统一内存…")
+        speechProgressMessage = loadMsg
         let operation = UUID()
         DiagnosticLog.shared.record("model.speech.prepare id=\(operation) known_model=\(SpeechModelSpec.allModels.contains { $0.id == targetId })")
         speechGeneration = operation
