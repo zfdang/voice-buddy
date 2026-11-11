@@ -427,9 +427,29 @@ struct MainView: View {
                 }
 
                 if state.preferences.refinement != .original, let prompt = RefinementPrompts.prompt(for: state.preferences.refinement) {
-                    DisclosureGroup(
-                        isExpanded: $showPromptPreview,
-                        content: {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showPromptPreview.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: showPromptPreview ? "chevron.down" : "chevron.right")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 14)
+                                Image(systemName: "text.bubble")
+                                    .foregroundStyle(.secondary)
+                                Text(t("View System Prompt", "查看当前级别的 System Prompt"))
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        if showPromptPreview {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack {
                                     Text(t("System Prompt for active level (Read-Only Preview)", "当前级别生效的 System Prompt（只读预览）"))
@@ -465,18 +485,11 @@ struct MainView: View {
                                         .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                                 )
                             }
-                            .padding(.top, 4)
-                        },
-                        label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "text.bubble")
-                                    .foregroundStyle(.secondary)
-                                Text(t("View System Prompt", "查看当前级别的 System Prompt"))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.primary)
-                            }
+                            .padding(.top, 8)
+                            .padding(.leading, 20)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
-                    )
+                    }
                     .padding(.top, 4)
                 }
                 Divider()
