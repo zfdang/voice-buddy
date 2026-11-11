@@ -145,4 +145,35 @@ final class SystemResilienceTests: XCTestCase {
         // Either it began recording (if speech model was ready) or reset busy and stopped cleanly
         XCTAssertFalse(state.busy, "Stale busy state must be repaired and self-healed")
     }
+
+    func testAsrReadyAndReadyEquivalence() {
+        let state = AppState()
+        state.asrReady = true
+        XCTAssertTrue(state.ready, "ready property must read from asrReady")
+
+        state.ready = false
+        XCTAssertFalse(state.asrReady, "setting ready must update asrReady")
+    }
+
+    func testConcurrentModelDownloadDecoupledFromActiveModel() {
+        let state = AppState()
+        state.preferences.textModel = "qwen35-text-0.8b-int5"
+        state.editorReady = true
+        state.asrReady = true
+
+        // Simulate downloading another text model concurrently
+        state.downloadingTextModelIDs.insert("qwen3-text-1.7b-4bit")
+        state.textDownloadProgress["qwen3-text-1.7b-4bit"] = 0.35
+
+        // Downloading another text model must NEVER reset editorReady or trigger isActivatingTextModel
+        XCTAssertTrue(state.editorReady, "Active model readiness must NOT be mutated by other downloads")
+        XCTAssertFalse(state.isActivatingTextModel, "Background download must not be marked as activating into memory")
+
+        // Simulate downloading another speech model concurrently
+        state.downloadingSpeechModelIDs.insert("whisper-large-v3-turbo")
+        state.speechDownloadProgress["whisper-large-v3-turbo"] = 0.50
+
+        XCTAssertTrue(state.asrReady, "Active ASR model readiness must NOT be mutated by background downloads")
+        XCTAssertFalse(state.isActivatingSpeechModel, "Background download must not be marked as activating into memory")
+    }
 }

@@ -30,7 +30,11 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             menuBarController?.updateIcon(isRecording: recording)
         }
     }
-    @Published var ready = false
+    @Published var asrReady = false
+    var ready: Bool {
+        get { asrReady }
+        set { asrReady = newValue }
+    }
     @Published var editorReady = false
     @Published var isSpeechDownloaded = false
     @Published var isEditorDownloaded = false
@@ -40,8 +44,16 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     @Published var speechDownloadMessages: [String: String] = [:]
     private var speechDownloadTasks: [String: Task<Void, Never>] = [:]
     @Published var activeDownloadingSpeechModelID: String? = nil
+    @Published var isActivatingSpeechModel = false
+
     @Published var cachedTextModelIDs: Set<String> = []
+    @Published var downloadingTextModelIDs: Set<String> = []
+    @Published var textDownloadProgress: [String: Double] = [:]
+    @Published var textDownloadMessages: [String: String] = [:]
+    private var textDownloadTasks: [String: Task<Void, Never>] = [:]
     @Published var activeDownloadingTextModelID: String? = nil
+    @Published var isActivatingTextModel = false
+
     @Published var speechPreparing = false
     @Published var speechProgress: Double = 0
     @Published var speechProgressMessage = ""
@@ -262,13 +274,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         speechDownloadProgress[id] = 0
         speechDownloadMessages[id] = label("Starting download…", "正在开始下载…")
         activeDownloadingSpeechModelID = id
-        speechPreparing = true
 
         let isSelectedModel = (id == preferences.speechModel)
         if isSelectedModel {
             modelPreparing = true
             modelProgress = 0
-            status = label("Preparing speech model…", "正在准备语音识别模型…")
+            status = label("Downloading speech model…", "正在下载语音识别模型…")
         }
 
         let task = Task { [weak self] in
@@ -279,10 +290,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         guard let self, self.downloadingSpeechModelIDs.contains(id) else { return }
                         self.speechDownloadProgress[id] = progress
                         self.speechDownloadMessages[id] = message
-                        if self.activeDownloadingSpeechModelID == id {
-                            self.speechProgress = progress
-                            self.speechProgressMessage = message
-                        }
                         if self.preferences.speechModel == id {
                             self.modelProgress = progress
                             self.status = message
@@ -296,9 +303,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     self.speechDownloadMessages.removeValue(forKey: id)
                     if self.activeDownloadingSpeechModelID == id {
                         self.activeDownloadingSpeechModelID = self.downloadingSpeechModelIDs.first
-                        if self.downloadingSpeechModelIDs.isEmpty {
-                            self.speechPreparing = false
-                        }
                     }
                     self.checkModelCacheStatus()
 
@@ -315,9 +319,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     self.speechDownloadMessages.removeValue(forKey: id)
                     if self.activeDownloadingSpeechModelID == id {
                         self.activeDownloadingSpeechModelID = self.downloadingSpeechModelIDs.first
-                        if self.downloadingSpeechModelIDs.isEmpty {
-                            self.speechPreparing = false
-                        }
                     }
                     if self.preferences.speechModel == id {
                         self.modelPreparing = false
@@ -342,35 +343,16 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             speechTask = nil
             activeDownloadingSpeechModelID = downloadingSpeechModelIDs.first
             if downloadingSpeechModelIDs.isEmpty {
+                isActivatingSpeechModel = false
                 speechPreparing = false
             }
         }
-        if preferences.speechModel == id {
+        if preferences.speechModel == id && !asrReady {
             speechGeneration = UUID()
             speechTask?.cancel()
             speechTask = nil
+            isActivatingSpeechModel = false
             speechPreparing = false
-            activeDownloadingSpeechModelID = nil
-            modelPreparing = false
-            modelProgress = 0
-            ready = false
-            status = label("Ready", "就绪")
-        }
-    }
-
-    func cancelTextDownload(id: String? = nil) {
-        let currentDownloading = activeDownloadingTextModelID ?? preferences.textModel
-        if let id, id != currentDownloading { return }
-        guard editorPreparing || activeDownloadingTextModelID != nil else { return }
-        let targetId = id ?? currentDownloading
-        editorGeneration = UUID()
-        editorTask?.cancel()
-        editorTask = nil
-        editorPreparing = false
-        activeDownloadingTextModelID = nil
-        editorProgress = 0
-        editorProgressMessage = ""
-        if preferences.textModel == targetId {
             modelPreparing = false
             modelProgress = 0
             status = label("Ready", "就绪")
@@ -378,18 +360,18 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     }
 
     func prepareSpeech(id: String? = nil, completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
-        guard !speechPreparing && !recording else { completion?(false); return }
+        guard !isActivatingSpeechModel && !recording else { completion?(false); return }
+        isActivatingSpeechModel = true
         speechPreparing = true
         let targetId = id ?? preferences.speechModel
         let isSelectedModel = (targetId == preferences.speechModel)
         if isSelectedModel {
             modelPreparing = true
             modelProgress = 0
-            status = label("Preparing speech model…", "正在准备语音识别模型…")
+            status = label("Loading speech model into memory…", "正在载入语音识别模型至统一内存…")
         }
         speechProgress = 0
-        activeDownloadingSpeechModelID = targetId
-        speechProgressMessage = label("Preparing speech model…", "正在准备语音识别模型…")
+        speechProgressMessage = label("Loading speech model into memory…", "正在载入语音识别模型至统一内存…")
         let operation = UUID()
         DiagnosticLog.shared.record("model.speech.prepare id=\(operation) known_model=\(SpeechModelSpec.allModels.contains { $0.id == targetId })")
         speechGeneration = operation
@@ -408,10 +390,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 DiagnosticLog.shared.record("model.speech.prepared id=\(operation)")
                 guard speechGeneration == operation else {
                     await MainActor.run {
-                        if self.activeDownloadingSpeechModelID == targetId {
-                            self.activeDownloadingSpeechModelID = nil
-                            self.speechPreparing = false
-                        }
+                        self.isActivatingSpeechModel = false
+                        self.speechPreparing = false
                         if isSelectedModel {
                             self.modelPreparing = false
                         }
@@ -425,22 +405,20 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self.ready = true
                     }
                     self.isSpeechDownloaded = self.cachedSpeechModelIDs.contains(self.preferences.speechModel)
+                    self.isActivatingSpeechModel = false
                     self.speechPreparing = false
                     if isSelectedModel {
                         self.modelPreparing = false
                         self.status = self.label("Speech model ready", "语音识别已就绪")
                     }
-                    self.activeDownloadingSpeechModelID = nil
                     completion?(true)
                 }
             } catch {
                 DiagnosticLog.shared.record("model.speech.failed id=\(operation) error_type=\(String(describing: type(of: error))) code=\((error as NSError).code)")
                 guard speechGeneration == operation else {
                     await MainActor.run {
-                        if self.activeDownloadingSpeechModelID == targetId {
-                            self.activeDownloadingSpeechModelID = nil
-                            self.speechPreparing = false
-                        }
+                        self.isActivatingSpeechModel = false
+                        self.speechPreparing = false
                         if isSelectedModel {
                             self.modelPreparing = false
                         }
@@ -453,11 +431,11 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self.status = error.localizedDescription
                     }
                     self.speechProgressMessage = error.localizedDescription
+                    self.isActivatingSpeechModel = false
                     self.speechPreparing = false
                     if isSelectedModel {
                         self.modelPreparing = false
                     }
-                    self.activeDownloadingSpeechModelID = nil
                     completion?(false)
                 }
             }
@@ -472,37 +450,118 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         guard preferences.textModel != id else { return }
         preferences.textModel = id
         editorReady = false
-        if cachedTextModelIDs.contains(id) {
+        if cachedTextModelIDs.contains(id) && preferences.refinement.needsModel {
             prepareEditor(id: id)
         }
     }
 
     func downloadTextModel(id: String) {
-        prepareEditor(id: id) { [weak self] success in
-            guard let self, success else { return }
-            if !self.cachedTextModelIDs.contains(self.preferences.textModel) || self.preferences.textModel == id {
-                self.preferences.textModel = id
-                self.editorReady = true
-            } else {
-                // Restore active model in memory if user was using another model
-                self.loadActiveEditorModel()
+        guard !downloadingTextModelIDs.contains(id) else { return }
+        guard !recording else { return }
+
+        downloadingTextModelIDs.insert(id)
+        textDownloadProgress[id] = 0
+        textDownloadMessages[id] = label("Starting download…", "正在开始下载…")
+        activeDownloadingTextModelID = id
+
+        let isSelectedModel = (id == preferences.textModel)
+        if isSelectedModel && preferences.refinement.needsModel {
+            modelPreparing = true
+            modelProgress = 0
+            status = label("Downloading text model…", "正在下载文本模型…")
+        }
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.models.downloadEditor(id: id) { [weak self] progress, message in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.downloadingTextModelIDs.contains(id) else { return }
+                        self.textDownloadProgress[id] = progress
+                        self.textDownloadMessages[id] = message
+                        if self.preferences.textModel == id && self.preferences.refinement.needsModel {
+                            self.modelProgress = progress
+                            self.status = message
+                        }
+                    }
+                }
+                await MainActor.run {
+                    self.textDownloadTasks.removeValue(forKey: id)
+                    self.downloadingTextModelIDs.remove(id)
+                    self.textDownloadProgress.removeValue(forKey: id)
+                    self.textDownloadMessages.removeValue(forKey: id)
+                    if self.activeDownloadingTextModelID == id {
+                        self.activeDownloadingTextModelID = self.downloadingTextModelIDs.first
+                    }
+                    self.checkModelCacheStatus()
+
+                    // If user has no downloaded model for active preferences, or this is active and needsModel is true, activate it
+                    if (self.preferences.textModel == id && self.preferences.refinement.needsModel) || !self.cachedTextModelIDs.contains(self.preferences.textModel) {
+                        self.preferences.textModel = id
+                        self.loadActiveEditorModel()
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.textDownloadTasks.removeValue(forKey: id)
+                    self.downloadingTextModelIDs.remove(id)
+                    self.textDownloadProgress.removeValue(forKey: id)
+                    self.textDownloadMessages.removeValue(forKey: id)
+                    if self.activeDownloadingTextModelID == id {
+                        self.activeDownloadingTextModelID = self.downloadingTextModelIDs.first
+                    }
+                    if self.preferences.textModel == id {
+                        self.modelPreparing = false
+                        self.status = self.label("Download failed", "下载失败")
+                    }
+                }
             }
+        }
+        textDownloadTasks[id] = task
+    }
+
+    func cancelTextDownload(id: String) {
+        if let task = textDownloadTasks.removeValue(forKey: id) {
+            task.cancel()
+        }
+        downloadingTextModelIDs.remove(id)
+        textDownloadProgress.removeValue(forKey: id)
+        textDownloadMessages.removeValue(forKey: id)
+        if activeDownloadingTextModelID == id {
+            editorGeneration = UUID()
+            editorTask?.cancel()
+            editorTask = nil
+            activeDownloadingTextModelID = downloadingTextModelIDs.first
+            if downloadingTextModelIDs.isEmpty {
+                isActivatingTextModel = false
+                editorPreparing = false
+            }
+        }
+        if preferences.textModel == id && !editorReady {
+            editorGeneration = UUID()
+            editorTask?.cancel()
+            editorTask = nil
+            isActivatingTextModel = false
+            editorPreparing = false
+            modelPreparing = false
+            modelProgress = 0
+            status = label("Ready", "就绪")
         }
     }
 
     func prepareEditor(id: String? = nil, completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
-        guard !editorPreparing && !recording else { completion?(false); return }
+        guard !isActivatingTextModel && !recording else { completion?(false); return }
+        isActivatingTextModel = true
         editorPreparing = true
         let targetId = id ?? preferences.textModel
         let isSelectedModel = (targetId == preferences.textModel)
         if isSelectedModel {
             modelPreparing = true
             modelProgress = 0
-            status = label("Preparing text model…", "正在准备文本模型…")
+            status = label("Loading text model into memory…", "正在载入文本模型至统一内存…")
         }
         editorProgress = 0
-        activeDownloadingTextModelID = targetId
-        editorProgressMessage = label("Preparing text model…", "正在准备文本模型…")
+        editorProgressMessage = label("Loading text model into memory…", "正在载入文本模型至统一内存…")
         let operation = UUID()
         DiagnosticLog.shared.record("model.text.prepare id=\(operation) known_model=\(TextModelSpec.allModels.contains { $0.id == targetId })")
         editorGeneration = operation
@@ -521,9 +580,10 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 DiagnosticLog.shared.record("model.text.prepared id=\(operation)")
                 guard editorGeneration == operation else {
                     await MainActor.run {
-                        if self.editorGeneration == operation {
-                            self.editorPreparing = false
-                            self.activeDownloadingTextModelID = nil
+                        self.isActivatingTextModel = false
+                        self.editorPreparing = false
+                        if isSelectedModel {
+                            self.modelPreparing = false
                         }
                         completion?(false)
                     }
@@ -535,21 +595,22 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self.editorReady = true
                     }
                     self.isEditorDownloaded = self.cachedTextModelIDs.contains(self.preferences.textModel)
+                    self.isActivatingTextModel = false
                     self.editorPreparing = false
                     if isSelectedModel {
                         self.modelPreparing = false
                         self.status = self.label("Text model ready", "文本模型已就绪")
                     }
-                    self.activeDownloadingTextModelID = nil
                     completion?(true)
                 }
             } catch {
                 DiagnosticLog.shared.record("model.text.failed id=\(operation) error_type=\(String(describing: type(of: error))) code=\((error as NSError).code)")
                 guard editorGeneration == operation else {
                     await MainActor.run {
-                        if self.editorGeneration == operation {
-                            self.editorPreparing = false
-                            self.activeDownloadingTextModelID = nil
+                        self.isActivatingTextModel = false
+                        self.editorPreparing = false
+                        if isSelectedModel {
+                            self.modelPreparing = false
                         }
                         completion?(false)
                     }
@@ -560,11 +621,11 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self.status = error.localizedDescription
                     }
                     self.editorProgressMessage = error.localizedDescription
+                    self.isActivatingTextModel = false
                     self.editorPreparing = false
                     if isSelectedModel {
                         self.modelPreparing = false
                     }
-                    self.activeDownloadingTextModelID = nil
                     completion?(false)
                 }
             }
@@ -1586,10 +1647,19 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
 
         let restored = window.setFrameUsingName("VoiceBuddySettings")
         let containingScreen = NSScreen.screens.first(where: { $0.frame.intersects(window.frame) })
+        let minSafeSize = NSSize(width: 720, height: 560)
+        let defaultSize = NSSize(width: 840, height: 600)
 
         if let screen = containingScreen, restored {
             let visibleFrame = screen.visibleFrame
             var frame = window.frame
+            if frame.width < minSafeSize.width || frame.height < minSafeSize.height {
+                frame.size = defaultSize
+                frame.origin = NSPoint(
+                    x: visibleFrame.midX - defaultSize.width / 2,
+                    y: visibleFrame.midY - defaultSize.height / 2
+                )
+            }
             if frame.maxX > visibleFrame.maxX { frame.origin.x = visibleFrame.maxX - frame.width }
             if frame.minX < visibleFrame.minX { frame.origin.x = visibleFrame.minX }
             if frame.maxY > visibleFrame.maxY { frame.origin.y = visibleFrame.maxY - frame.height }
@@ -1602,6 +1672,9 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
             if let screen = fallbackScreen {
                 let visibleFrame = screen.visibleFrame
                 var frame = window.frame
+                if frame.width < minSafeSize.width || frame.height < minSafeSize.height {
+                    frame.size = defaultSize
+                }
                 frame.origin = NSPoint(
                     x: visibleFrame.midX - frame.width / 2,
                     y: visibleFrame.midY - frame.height / 2
@@ -1625,8 +1698,10 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
         let hostingController = NSHostingController(
             rootView: MainView().environmentObject(appState)
         )
+        let defaultSize = NSSize(width: 840, height: 600)
+        let minSafeSize = NSSize(width: 720, height: 560)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 840, height: 600),
+            contentRect: NSRect(origin: .zero, size: defaultSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -1640,9 +1715,12 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
         window.delegate = self
         window.contentViewController = hostingController
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 720, height: 560)
+        window.minSize = minSafeSize
         window.setFrameAutosaveName("VoiceBuddySettings")
-        if !window.setFrameUsingName("VoiceBuddySettings") {
+        if !window.setFrameUsingName("VoiceBuddySettings") || window.frame.width < minSafeSize.width || window.frame.height < minSafeSize.height {
+            var frame = window.frame
+            frame.size = defaultSize
+            window.setFrame(frame, display: false)
             window.center()
         }
         return NSWindowController(window: window)

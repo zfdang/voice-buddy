@@ -48,6 +48,7 @@ struct MainView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .frame(minWidth: 720, minHeight: 560)
         .onAppear {
             state.refreshPermissions()
         }
@@ -240,9 +241,25 @@ struct MainView: View {
 
     private var general: some View {
         let permReady = state.micAuthorized && state.axAuthorized
-        let speechReady = state.ready || state.isSpeechDownloaded
+        let speechReady = state.asrReady || state.isSpeechDownloaded
         let textReady = state.editorReady || state.isEditorDownloaded
         let allReady = permReady && speechReady && textReady
+
+        let speechSubtitle: String = {
+            if state.isActivatingSpeechModel { return t("Loading into memory…", "载入内存中…") }
+            if !state.downloadingSpeechModelIDs.isEmpty { return t("Downloading…", "下载中…") }
+            if state.asrReady { return t("Ready", "已就绪") }
+            if state.isSpeechDownloaded { return t("Downloaded", "已下载") }
+            return t("Not downloaded", "尚未下载")
+        }()
+
+        let textSubtitle: String = {
+            if state.isActivatingTextModel { return t("Loading into memory…", "载入内存中…") }
+            if !state.downloadingTextModelIDs.isEmpty { return t("Downloading…", "下载中…") }
+            if state.editorReady { return t("Ready", "已就绪") }
+            if state.isEditorDownloaded { return t("Downloaded", "已下载") }
+            return t("Not downloaded", "尚未下载")
+        }()
 
         return VStack(alignment: .leading, spacing: 20) {
             // 0. System Readiness Check
@@ -261,18 +278,18 @@ struct MainView: View {
                         statusModule(
                             number: 2,
                             title: t("Speech Model", "语音识别"),
-                            subtitle: state.speechPreparing ? t("Preparing…", "加载中…") : (speechReady ? t("Ready", "已就绪") : t("Not downloaded", "尚未下载")),
+                            subtitle: speechSubtitle,
                             isReady: speechReady,
-                            isPreparing: state.speechPreparing,
+                            isPreparing: state.isActivatingSpeechModel || !state.downloadingSpeechModelIDs.isEmpty,
                             targetTab: .speech
                         )
 
                         statusModule(
                             number: 3,
                             title: t("Text Model", "文本模型"),
-                            subtitle: state.editorPreparing ? t("Preparing…", "加载中…") : (textReady ? t("Ready", "已就绪") : t("Not downloaded", "尚未下载")),
+                            subtitle: textSubtitle,
                             isReady: textReady,
-                            isPreparing: state.editorPreparing,
+                            isPreparing: state.isActivatingTextModel || !state.downloadingTextModelIDs.isEmpty,
                             targetTab: .editor
                         )
                     }
@@ -799,13 +816,13 @@ struct MainView: View {
                     Divider()
 
                     HStack(spacing: 8) {
-                        if state.ready {
+                        if state.asrReady {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
                             Text(t("Model & VAD are loaded in unified memory · Ready for instant dictation.", "声学识别与语音检测模型已载入统一内存 · 随时可用 (快捷键即刻听写)"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                        } else if state.speechPreparing {
+                        } else if state.isActivatingSpeechModel {
                             ProgressView()
                                 .controlSize(.small)
                             Text(t("Loading model into unified memory…", "正在载入统一内存…"))
@@ -895,7 +912,9 @@ struct MainView: View {
                         }
 
                         let isCached = state.cachedTextModelIDs.contains(spec.id)
-                        let isDownloadingThis = state.editorPreparing && state.activeDownloadingTextModelID == spec.id && !isCached
+                        let isDownloadingThis = state.downloadingTextModelIDs.contains(spec.id)
+                        let progressVal = state.textDownloadProgress[spec.id] ?? 0
+                        let progressMsg = state.textDownloadMessages[spec.id] ?? ""
 
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .center, spacing: 10) {
@@ -925,7 +944,7 @@ struct MainView: View {
                                     if isDownloadingThis {
                                         HStack(spacing: 4) {
                                             ProgressView().controlSize(.small)
-                                            Text("\(Int(state.editorProgress * 100))%")
+                                            Text("\(Int(progressVal * 100))%")
                                                 .font(.caption.monospacedDigit())
                                                 .foregroundStyle(.secondary)
                                         }
@@ -972,7 +991,7 @@ struct MainView: View {
                                         }
                                         .controlSize(.small)
                                         .buttonStyle(.borderedProminent)
-                                        .disabled(state.busy || state.recording)
+                                        .disabled(state.busy || state.recording || isDownloadingThis)
                                         .frame(minWidth: 90)
                                         .accessibilityLabel(t("Download", "下载"))
                                     }
@@ -982,9 +1001,9 @@ struct MainView: View {
 
                             if isDownloadingThis {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    ProgressView(value: state.editorProgress)
-                                    if !state.editorProgressMessage.isEmpty {
-                                        Text(state.editorProgressMessage)
+                                    ProgressView(value: progressVal)
+                                    if !progressMsg.isEmpty {
+                                        Text(progressMsg)
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                     }
@@ -1042,7 +1061,7 @@ struct MainView: View {
                             Text(t("Model is loaded in unified memory · Ready for instant zero-latency refinement.", "模型已载入统一内存 · 随时可用 (毫秒级零延迟润色)"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                        } else if state.editorPreparing {
+                        } else if state.isActivatingTextModel {
                             ProgressView()
                                 .controlSize(.small)
                             Text(t("Loading model into unified memory…", "正在载入统一内存…"))

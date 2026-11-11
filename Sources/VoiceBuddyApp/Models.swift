@@ -361,6 +361,41 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         progress(1.0, "Completed")
     }
 
+    func downloadEditor(id: String, progress: @escaping @Sendable (Double, String) -> Void) async throws {
+        guard TextModelSpec.allModels.contains(where: { $0.id == id }) else {
+            throw VoiceBuddyError.modelUnavailable("Invalid text model identifier")
+        }
+        let isCached = isEditorModelCached(id: id)
+        var dir = textDirectory(id)
+
+        if id.hasPrefix("qwen35-text-0.8b") {
+            let q: Qwen35MLXChat.Quantization = id.contains("int8") ? .int8 : .int5
+            if id == "qwen35-text-0.8b-int5" && !FileManager.default.fileExists(atPath: dir.path) {
+                let legacy = directory("qwen35-text-0.8b")
+                if FileManager.default.fileExists(atPath: legacy.path) {
+                    dir = legacy
+                }
+            }
+            _ = try await Qwen35MLXChat.fromPretrained(
+                quantization: q,
+                cacheDir: dir,
+                offlineMode: isCached,
+                progressHandler: progress
+            )
+        } else {
+            let hfModelId = (id == "qwen3-text-4b-4bit")
+                ? "aufklarer/Qwen3-4B-Instruct-2507-MLX-4bit"
+                : "mlx-community/Qwen3-1.7B-4bit"
+            _ = try await Qwen3DenseChat.fromPretrained(
+                modelId: hfModelId,
+                cacheDir: dir,
+                offlineMode: isCached,
+                progressHandler: progress
+            )
+        }
+        progress(1.0, "Completed")
+    }
+
     func prepareEditor(id: String? = nil, progress: @escaping @Sendable (Double, String) -> Void) async throws {
         let targetId = id ?? "qwen35-text-0.8b-int5"
         guard TextModelSpec.allModels.contains(where: { $0.id == targetId }) else {
