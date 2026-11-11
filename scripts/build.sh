@@ -268,18 +268,99 @@ touch "${APP_BUNDLE}"
 # 4. Code Signing
 echo ""
 echo "==> Step 4/4: Signing ${APP_BUNDLE} with '${SIGN_IDENTITY}'..."
-if [ "${SIGN_IDENTITY}" = "-" ]; then
-    codesign --force --deep --sign - "${APP_BUNDLE}"
-else
-    SIGN_FLAGS=(--force --deep)
-    if [[ "${SIGN_IDENTITY}" == *"Developer ID Application"* ]] || [ "${HARDENED_RUNTIME:-false}" = "true" ]; then
-        SIGN_FLAGS+=(--options runtime)
-    fi
-    if ! codesign "${SIGN_FLAGS[@]}" --timestamp --sign "${SIGN_IDENTITY}" "${APP_BUNDLE}" 2>/dev/null; then
-        echo "Note: Secure timestamp signing failed; falling back to timestamp=none."
-        codesign --force --deep --timestamp=none --sign "${SIGN_IDENTITY}" "${APP_BUNDLE}"
-    fi
+
+RUNTIME_FLAGS=()
+if [[ "${SIGN_IDENTITY}" == *"Developer ID Application"* ]] || [ "${HARDENED_RUNTIME:-false}" = "true" ]; then
+    RUNTIME_FLAGS=(--options runtime)
 fi
+
+sign_component() {
+    local target="$1"
+    shift
+    local extra_args=("$@")
+    if [ "${SIGN_IDENTITY}" = "-" ]; then
+        codesign --force --sign - ${extra_args[@]+"${extra_args[@]}"} "${target}"
+    else
+        local flags=(--force ${RUNTIME_FLAGS[@]+"${RUNTIME_FLAGS[@]}"} ${extra_args[@]+"${extra_args[@]}"})
+        local is_release_signing=false
+        if [[ "${SIGN_IDENTITY}" == *"Developer ID"* ]] || [ "${STRICT_SIGNING:-false}" = "true" ]; then
+            is_release_signing=true
+        fi
+
+        local attempt=1
+        local max_attempts=1
+        if [ "${is_release_signing}" = "true" ]; then
+            max_attempts=3
+        fi
+
+        local err_msg=""
+        while [ "${attempt}" -le "${max_attempts}" ]; do
+            if err_msg=$(codesign "${flags[@]}" --timestamp --sign "${SIGN_IDENTITY}" "${target}" 2>&1); then
+                return 0
+            fi
+            if [ "${attempt}" -lt "${max_attempts}" ]; then
+                echo "Warning: Secure timestamp signing failed for $(basename "${target}") (attempt ${attempt}/${max_attempts}): ${err_msg}"
+                echo "Retrying in 2s..."
+                sleep 2
+            fi
+            attempt=$((attempt + 1))
+        done
+
+        if [ "${is_release_signing}" = "true" ]; then
+            echo "Error: Secure timestamp signing failed for $(basename "${target}") after ${max_attempts} attempts: ${err_msg}" >&2
+            echo "Strict/Developer ID signing requires a secure timestamp for notarization." >&2
+            exit 1
+        else
+            echo "Note: Secure timestamp signing failed for $(basename "${target}"); falling back to timestamp=none for local development."
+            codesign "${flags[@]}" --timestamp=none --sign "${SIGN_IDENTITY}" "${target}"
+        fi
+    fi
+}
+
+# Sign embedded frameworks and XPC services inside-out (avoiding --deep which taints helper services with app entitlements)
+SPARKLE_FRAMEWORK="${APP_BUNDLE}/Contents/Frameworks/Sparkle.framework"
+if [ -d "${SPARKLE_FRAMEWORK}" ]; then
+    echo "Signing embedded Sparkle components from inside out..."
+    SPARKLE_VER="${SPARKLE_FRAMEWORK}/Versions/Current"
+    if [ ! -d "${SPARKLE_VER}" ]; then
+        SPARKLE_VER="${SPARKLE_FRAMEWORK}/Versions/B"
+    fi
+    if [ -d "${SPARKLE_VER}/XPCServices/Installer.xpc" ]; then
+        sign_component "${SPARKLE_VER}/XPCServices/Installer.xpc"
+    fi
+    if [ -d "${SPARKLE_VER}/XPCServices/Downloader.xpc" ]; then
+        sign_component "${SPARKLE_VER}/XPCServices/Downloader.xpc" --preserve-metadata=entitlements
+    fi
+    if [ -f "${SPARKLE_VER}/Autoupdate" ]; then
+        sign_component "${SPARKLE_VER}/Autoupdate"
+    fi
+    if [ -d "${SPARKLE_VER}/Updater.app" ]; then
+        sign_component "${SPARKLE_VER}/Updater.app"
+    fi
+    sign_component "${SPARKLE_FRAMEWORK}"
+fi
+
+# Sign any other embedded frameworks or dylibs
+if [ -d "${APP_BUNDLE}/Contents/Frameworks" ]; then
+    find "${APP_BUNDLE}/Contents/Frameworks" -mindepth 1 -maxdepth 1 ! -name "Sparkle.framework" | while read -r fw; do
+        if [ -e "${fw}" ]; then
+            sign_component "${fw}"
+        fi
+    done
+fi
+
+# Sign embedded binaries / metal libraries in Contents/MacOS before root bundle
+if [ -f "${APP_BUNDLE}/Contents/MacOS/mlx.metallib" ]; then
+    sign_component "${APP_BUNDLE}/Contents/MacOS/mlx.metallib"
+fi
+
+# Finally, sign the main application bundle at root with entitlements (DO NOT pass --deep here)
+ENTITLEMENTS_PATH="${ROOT_DIR}/VoiceBuddy.entitlements"
+MAIN_FLAGS=()
+if [ -f "${ENTITLEMENTS_PATH}" ]; then
+    MAIN_FLAGS+=(--entitlements "${ENTITLEMENTS_PATH}")
+fi
+sign_component "${APP_BUNDLE}" ${MAIN_FLAGS[@]+"${MAIN_FLAGS[@]}"}
 
 echo "Verifying code signature..."
 codesign --verify --deep --strict "${APP_BUNDLE}"

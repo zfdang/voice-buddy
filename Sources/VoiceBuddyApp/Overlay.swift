@@ -236,6 +236,7 @@ final class OverlayAnimationModel: ObservableObject {
 @MainActor
 final class Overlay {
     private var panel: NSPanel?
+    var isIgnoringMouseEvents: Bool { panel?.ignoresMouseEvents ?? false }
     private let animModel = OverlayAnimationModel()
     private var presentationID = UUID()
     private var targetScreen: NSScreen?
@@ -259,6 +260,7 @@ final class Overlay {
             panel.isOpaque = false
             panel.backgroundColor = .clear
             panel.hasShadow = false
+            panel.ignoresMouseEvents = true
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             let hostingView = NSHostingView(rootView: OverlayView(state: state, animModel: animModel))
             hostingView.wantsLayer = true

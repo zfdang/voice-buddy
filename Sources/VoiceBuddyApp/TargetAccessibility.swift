@@ -149,6 +149,19 @@ public enum TargetAccessibility {
         check()
     }
 
+    /// Asynchronously posts a hardware-level Command+V sequence on a background user-interactive queue,
+    /// avoiding main thread frame drops caused by hardware settling delays (usleep).
+    public static func postPasteShortcutAsync(completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
+        DispatchQueue.global(qos: .userInteractive).async {
+            let result = postPasteShortcut()
+            if let completion {
+                DispatchQueue.main.async {
+                    completion(result)
+                }
+            }
+        }
+    }
+
     /// Posts a hardware-level Command+V sequence directly to .cghidEventTap.
     /// Emits the modifier flagsChanged transitions so Chromium / Electron apps (Antigravity, ChatGPT, Chrome)
     /// properly recognize the Command modifier, and posts to exactly ONE tap to prevent duplicated pastes.

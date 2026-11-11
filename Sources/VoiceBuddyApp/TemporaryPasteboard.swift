@@ -1,20 +1,46 @@
 import AppKit
 
-/// Owns a temporary pasteboard value until it is restored or replaced externally.
+/// Owns a temporary pasteboard value until it is restored or superseded by a subsequent dictation session.
+@MainActor
 final class TemporaryPasteboard {
     private let board: NSPasteboard
-    private let savedItems: [[(NSPasteboard.PasteboardType, Data)]]
-    private var ownedChangeCount: Int
+    private(set) var savedItems: [[(NSPasteboard.PasteboardType, Data)]]
+    private(set) var ownedChangeCount: Int
+    private(set) var isActive = true
+    private(set) var isPastePosted = false
 
-    init(board: NSPasteboard = .general) {
+    init(board: NSPasteboard = .general, predecessor: TemporaryPasteboard? = nil) {
         self.board = board
-        self.savedItems = (board.pasteboardItems ?? []).map { item in
-            item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }
+        let isPredecessorCurrent: Bool
+        if let predecessor, predecessor.isActive {
+            isPredecessorCurrent = (board.changeCount == predecessor.ownedChangeCount)
+        } else {
+            isPredecessorCurrent = false
+        }
+
+        if isPredecessorCurrent, let predecessor, !predecessor.savedItems.isEmpty {
+            // Inherit true original items from active in-flight predecessor whose content is still on board
+            self.savedItems = predecessor.savedItems
+            // Invalidate predecessor so its pending restore timer becomes a no-op
+            predecessor.invalidate()
+        } else {
+            self.savedItems = (board.pasteboardItems ?? []).map { item in
+                item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }
+            }
         }
         self.ownedChangeCount = board.changeCount
     }
 
+    func markPastePosted() {
+        isPastePosted = true
+    }
+
+    func invalidate() {
+        isActive = false
+    }
+
     func write(_ text: String, sensitive: Bool) -> Bool {
+        guard isActive else { return false }
         board.clearContents()
         ownedChangeCount = board.changeCount
         let item = NSPasteboardItem()
@@ -30,11 +56,13 @@ final class TemporaryPasteboard {
     }
 
     func owns(_ text: String) -> Bool {
-        board.changeCount == ownedChangeCount && board.string(forType: .string) == text
+        isActive && board.changeCount == ownedChangeCount && board.string(forType: .string) == text
     }
 
     @discardableResult
     func restore() -> Bool {
+        guard isActive else { return false }
+        isActive = false
         guard board.changeCount == ownedChangeCount else { return false }
         board.clearContents()
         let items: [NSPasteboardItem] = savedItems.compactMap { entries in

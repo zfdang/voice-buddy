@@ -106,6 +106,8 @@ jobs:
 
       - name: Build and package signed release
         id: build
+        env:
+          HARDENED_RUNTIME: "true"
         run: |
           tag="${{ steps.tag.outputs.tag }}"
           keychain="$RUNNER_TEMP/voice-buddy-signing.keychain-db"
@@ -156,9 +158,9 @@ jobs:
               --issuer "$APPLE_API_ISSUER" \
               --wait
             xcrun stapler staple "dist/Voice Buddy.app"
-            xcrun stapler staple "$dmg_file" || true
-            # Recreate zip and checksums with stapled app ticket
-            (cd dist && rm -f "$(basename "$zip_file")" && zip -qry "$(basename "$zip_file")" "Voice Buddy.app")
+            # Recreate zip, dmg, and checksums with stapled app ticket
+            (cd dist && rm -f "$(basename "$zip_file")" && ditto -c -k --keepParent "Voice Buddy.app" "$(basename "$zip_file")")
+            (cd dist && rm -f "$(basename "$dmg_file")" && hdiutil create -volname "Voice Buddy" -srcfolder "Voice Buddy.app" -ov -format UDZO "$(basename "$dmg_file")")
             (cd dist && shasum -a 256 "$(basename "$dmg_file")" "$(basename "$zip_file")" > SHA256SUMS.txt)
             echo "Notarization and stapling succeeded."
           elif [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
@@ -169,9 +171,9 @@ jobs:
               --team-id "$APPLE_TEAM_ID" \
               --wait
             xcrun stapler staple "dist/Voice Buddy.app"
-            xcrun stapler staple "$dmg_file" || true
-            # Recreate zip and checksums with stapled app ticket
-            (cd dist && rm -f "$(basename "$zip_file")" && zip -qry "$(basename "$zip_file")" "Voice Buddy.app")
+            # Recreate zip, dmg, and checksums with stapled app ticket
+            (cd dist && rm -f "$(basename "$zip_file")" && ditto -c -k --keepParent "Voice Buddy.app" "$(basename "$zip_file")")
+            (cd dist && rm -f "$(basename "$dmg_file")" && hdiutil create -volname "Voice Buddy" -srcfolder "Voice Buddy.app" -ov -format UDZO "$(basename "$dmg_file")")
             (cd dist && shasum -a 256 "$(basename "$dmg_file")" "$(basename "$zip_file")" > SHA256SUMS.txt)
             echo "Notarization and stapling succeeded."
           else

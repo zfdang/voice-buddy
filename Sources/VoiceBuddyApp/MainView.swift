@@ -932,7 +932,7 @@ struct MainView: View {
                                         .frame(width: 80, alignment: .trailing)
 
                                         Button(t("Cancel", "取消")) {
-                                            state.cancel()
+                                            state.cancelTextDownload(id: spec.id)
                                         }
                                         .controlSize(.small)
                                         .frame(minWidth: 90)

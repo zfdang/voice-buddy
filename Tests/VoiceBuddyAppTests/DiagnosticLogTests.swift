@@ -20,4 +20,26 @@ final class DiagnosticLogTests: XCTestCase {
         let permissions = try XCTUnwrap(try FileManager.default.attributesOfItem(atPath: log.fileURL.path)[.posixPermissions] as? NSNumber)
         XCTAssertEqual(permissions.intValue, 0o600)
     }
+
+    func testRotationOverwritesPreexistingTargetFilesWithoutError() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let stale1URL = root.appendingPathComponent("diagnostics.1.log")
+        let stale2URL = root.appendingPathComponent("diagnostics.2.log")
+        let stale6URL = root.appendingPathComponent("diagnostics.6.log")
+        try "stale_content_1".write(to: stale1URL, atomically: true, encoding: .utf8)
+        try "stale_content_2".write(to: stale2URL, atomically: true, encoding: .utf8)
+        try "stale_content_6".write(to: stale6URL, atomically: true, encoding: .utf8)
+
+        let log = DiagnosticLog(directory: root, limit: 60)
+        for index in 0..<12 { log.record("event_\(index) " + String(repeating: "x", count: 20)) }
+        _ = try log.readyFile()
+
+        let content1 = try String(contentsOf: stale1URL, encoding: .utf8)
+        XCTAssertFalse(content1.contains("stale_content_1"), "Rotation must overwrite stale diagnostics.1.log content")
+        XCTAssertTrue(content1.contains("event_"), "diagnostics.1.log must contain rotated log events")
+        let content6 = try String(contentsOf: stale6URL, encoding: .utf8)
+        XCTAssertFalse(content6.contains("stale_content_6"), "Rotation must overwrite stale diagnostics.6.log content without error")
+    }
 }
