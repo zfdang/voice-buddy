@@ -365,9 +365,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         speechPreparing = true
         let targetId = id ?? preferences.speechModel
         let isSelectedModel = (targetId == preferences.speechModel)
-        let loadMsg = targetId.contains("whisper")
-            ? label("Compiling speech model into unified memory (1-2 mins on first run)…", "正在载入语音识别模型至统一内存（首次编译需1~2分钟，仅需一次）…")
-            : label("Loading speech model into memory…", "正在载入语音识别模型至统一内存…")
+        let loadMsg = label("Loading speech model into memory…", "正在载入语音识别模型至统一内存…")
         if isSelectedModel {
             modelPreparing = true
             modelProgress = 0
@@ -725,9 +723,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         guard ready else {
             DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=speech_model_not_ready")
             gesture.reset()
-            status = isActivatingSpeechModel
-                ? label("Speech model is compiling into unified memory. Please wait…", "语音识别模型正在载入统一内存（首次编译需1-2分钟），请稍候…")
-                : label("Loading speech model into memory…", "正在载入语音识别模型至统一内存…")
+            status = label("Speech model is still loading, please wait…", "语音模型还在加载中，请稍候…")
             overlay.showStatus(state: self)
             if !isActivatingSpeechModel {
                 prepareSpeech()
@@ -736,9 +732,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
         if preferences.refinement.needsModel && !editorReady {
             DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=text_model_not_ready")
-            status = isActivatingTextModel
-                ? label("Text model is loading into unified memory. Please wait…", "文本模型正在载入统一内存，请稍候…")
-                : label("Loading text model into memory…", "正在载入文本润色模型至统一内存…")
+            status = label("Text model is still loading, please wait…", "文本模型还在加载中，请稍候…")
             gesture.reset()
             overlay.showStatus(state: self)
             if !isActivatingTextModel {
