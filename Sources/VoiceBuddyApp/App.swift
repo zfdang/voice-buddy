@@ -408,6 +408,13 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 DiagnosticLog.shared.record("model.speech.prepared id=\(operation)")
                 guard speechGeneration == operation else {
                     await MainActor.run {
+                        if self.activeDownloadingSpeechModelID == targetId {
+                            self.activeDownloadingSpeechModelID = nil
+                            self.speechPreparing = false
+                        }
+                        if isSelectedModel {
+                            self.modelPreparing = false
+                        }
                         completion?(false)
                     }
                     return
@@ -430,6 +437,13 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 DiagnosticLog.shared.record("model.speech.failed id=\(operation) error_type=\(String(describing: type(of: error))) code=\((error as NSError).code)")
                 guard speechGeneration == operation else {
                     await MainActor.run {
+                        if self.activeDownloadingSpeechModelID == targetId {
+                            self.activeDownloadingSpeechModelID = nil
+                            self.speechPreparing = false
+                        }
+                        if isSelectedModel {
+                            self.modelPreparing = false
+                        }
                         completion?(false)
                     }
                     return
@@ -1104,12 +1118,24 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     self.overlay.showStatus(state: self)
                     return
                 }
+                temporaryClipboard.markPastePosted()
                 TargetAccessibility.postPasteShortcutAsync { [weak self] success in
-                    guard let self else { return }
+                    guard let self else {
+                        _ = temporaryClipboard.restore()
+                        return
+                    }
                     if let sid = sessionID {
-                        guard self.transcriptionGeneration == sid, !self.recording else { return }
+                        guard self.transcriptionGeneration == sid, !self.recording else {
+                            _ = temporaryClipboard.restore()
+                            if self.activePasteboardSession === temporaryClipboard { self.activePasteboardSession = nil }
+                            return
+                        }
                     } else {
-                        guard !self.recording else { return }
+                        guard !self.recording else {
+                            _ = temporaryClipboard.restore()
+                            if self.activePasteboardSession === temporaryClipboard { self.activePasteboardSession = nil }
+                            return
+                        }
                     }
                     guard success else {
                         _ = temporaryClipboard.restore()
@@ -1119,17 +1145,13 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                         self.overlay.showStatus(state: self)
                         return
                     }
-                    temporaryClipboard.isPastePosted = true
                     self.status = self.label("Paste command sent.", "已发送粘贴命令。")
                     DiagnosticLog.shared.record("insert.paste_posted id=\(logSession)")
                     // Restoring on a short delay allows target app to consume pasteboard
                     // while preventing prolonged exposure or collision with rapid dictations.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                        if let sid = sessionID {
-                            guard self.transcriptionGeneration == sid else { return }
-                        }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
                         let restored = temporaryClipboard.restore()
-                        if self.activePasteboardSession === temporaryClipboard { self.activePasteboardSession = nil }
+                        if self?.activePasteboardSession === temporaryClipboard { self?.activePasteboardSession = nil }
                         DiagnosticLog.shared.record("clipboard.restore id=\(logSession) restored=\(restored)")
                     }
                 }
@@ -1146,6 +1168,14 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         DiagnosticLog.shared.record("clipboard.copy id=\(diagnosticSession) success=\(success)")
         status = success ? label("Copied", "已复制") : label("Copy failed", "复制失败")
     }
+    #if DEBUG
+    func setActivePasteboardSessionForTesting(_ session: TemporaryPasteboard?) {
+        self.activePasteboardSession = session
+    }
+    func getActivePasteboardSessionForTesting() -> TemporaryPasteboard? {
+        return self.activePasteboardSession
+    }
+    #endif
     static let menuBarMascotIcon: NSImage = {
         let size = NSSize(width: 22, height: 22)
         let img = NSImage(size: size)
@@ -1555,33 +1585,33 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
         }
 
         let restored = window.setFrameUsingName("VoiceBuddySettings")
-        let screen = targetScreen
-            ?? window.screen
-            ?? NSScreen.screens.first(where: { $0.frame.intersects(window.frame) })
-            ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
-            ?? NSScreen.main
+        let containingScreen = NSScreen.screens.first(where: { $0.frame.intersects(window.frame) })
 
-        if let screen {
+        if let screen = containingScreen, restored {
             let visibleFrame = screen.visibleFrame
             var frame = window.frame
-            if !restored {
-                frame.origin = NSPoint(
-                    x: visibleFrame.midX - frame.width / 2,
-                    y: visibleFrame.midY - frame.height / 2
-                )
-            } else if let target = targetScreen, target != window.screen {
-                if !target.frame.intersects(frame) {
-                    frame.origin = NSPoint(
-                        x: visibleFrame.midX - frame.width / 2,
-                        y: visibleFrame.midY - frame.height / 2
-                    )
-                }
-            }
             if frame.maxX > visibleFrame.maxX { frame.origin.x = visibleFrame.maxX - frame.width }
             if frame.minX < visibleFrame.minX { frame.origin.x = visibleFrame.minX }
             if frame.maxY > visibleFrame.maxY { frame.origin.y = visibleFrame.maxY - frame.height }
             if frame.minY < visibleFrame.minY { frame.origin.y = visibleFrame.minY }
             window.setFrame(frame, display: false)
+        } else {
+            let fallbackScreen = targetScreen
+                ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
+                ?? NSScreen.main
+            if let screen = fallbackScreen {
+                let visibleFrame = screen.visibleFrame
+                var frame = window.frame
+                frame.origin = NSPoint(
+                    x: visibleFrame.midX - frame.width / 2,
+                    y: visibleFrame.midY - frame.height / 2
+                )
+                if frame.maxX > visibleFrame.maxX { frame.origin.x = visibleFrame.maxX - frame.width }
+                if frame.minX < visibleFrame.minX { frame.origin.x = visibleFrame.minX }
+                if frame.maxY > visibleFrame.maxY { frame.origin.y = visibleFrame.maxY - frame.height }
+                if frame.minY < visibleFrame.minY { frame.origin.y = visibleFrame.minY }
+                window.setFrame(frame, display: false)
+            }
         }
 
         isSettingsWindowOpen = true

@@ -58,14 +58,14 @@ final class SystemResilienceTests: XCTestCase {
         let silenceDetected = try await models.containsSpeech(silence)
         XCTAssertFalse(silenceDetected, "Pure silence must be rejected by Apple Speech energy detection")
 
-        let lowNoise = [Float](repeating: 0.003, count: 160000)
+        let lowNoise = [Float](repeating: 0.001, count: 160000)
         let noiseDetected = try await models.containsSpeech(lowNoise)
-        XCTAssertFalse(noiseDetected, "Low ambient noise must be rejected by frame-based energy detection")
+        XCTAssertFalse(noiseDetected, "Low digital noise must be rejected")
 
-        // 0.2s of speech in 10s of total audio: frame-based energy detection must NOT dilute this
-        let shortSpeechInSilence = (0..<160000).map { $0 < 3200 ? sin(Float($0) * 0.1) * 0.05 : 0.0 }
+        // 0.2s of soft voice in 10s of total audio: must NOT be dropped
+        let shortSpeechInSilence = (0..<160000).map { $0 < 3200 ? sin(Float($0) * 0.1) * 0.02 : 0.0 }
         let shortSpeechDetected = try await models.containsSpeech(shortSpeechInSilence)
-        XCTAssertTrue(shortSpeechDetected, "Short speech within long silence must be detected by frame-based energy gate")
+        XCTAssertTrue(shortSpeechDetected, "Soft speech within long silence must be accepted by Apple Speech")
 
         let audibleAudio = (0..<1600).map { sin(Float($0) * 0.1) * 0.2 }
         let hasSpeech = try await models.containsSpeech(audibleAudio)
@@ -74,6 +74,44 @@ final class SystemResilienceTests: XCTestCase {
         let emptyAudio: [Float] = []
         let hasSpeechEmpty = try await models.containsSpeech(emptyAudio)
         XCTAssertFalse(hasSpeechEmpty, "Empty audio should be rejected")
+    }
+
+    func testAppStateCancelPreservesUserClipboard() {
+        let board = NSPasteboard(name: .init(UUID().uuidString))
+        defer { board.releaseGlobally() }
+        board.clearContents()
+        board.setString("real_user_content_before_dictation", forType: .string)
+
+        let state = AppState()
+        state.preferences.sounds = false
+
+        // 1. Test cancel before paste is posted
+        let session1 = TemporaryPasteboard(board: board)
+        XCTAssertTrue(session1.write("dictation 1 to be cancelled", sensitive: false))
+        XCTAssertEqual(board.string(forType: .string), "dictation 1 to be cancelled")
+
+        state.setActivePasteboardSessionForTesting(session1)
+        state.cancel()
+
+        // Clipboard must be restored immediately!
+        XCTAssertEqual(board.string(forType: .string), "real_user_content_before_dictation")
+        XCTAssertNil(state.getActivePasteboardSessionForTesting())
+
+        // 2. Test cancel after paste is posted (e.g. sleep notification during 0.45s consumption window)
+        let session2 = TemporaryPasteboard(board: board)
+        XCTAssertTrue(session2.write("dictation 2 in flight", sensitive: false))
+        session2.markPastePosted()
+
+        state.setActivePasteboardSessionForTesting(session2)
+        state.cancel()
+
+        // Dictation 2 remains on pasteboard briefly so target app's ⌘V can consume it
+        XCTAssertEqual(board.string(forType: .string), "dictation 2 in flight")
+        XCTAssertNil(state.getActivePasteboardSessionForTesting())
+
+        // Once the 0.45s delay elapses (simulated by session2.restore()):
+        XCTAssertTrue(session2.restore())
+        XCTAssertEqual(board.string(forType: .string), "real_user_content_before_dictation", "Original clipboard must be restored after target app consumes paste")
     }
 
     func testFocusVerificationFailsClosedWhenInitialElementIsNil() {

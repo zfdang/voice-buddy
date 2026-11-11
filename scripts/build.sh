@@ -293,19 +293,22 @@ sign_component() {
             max_attempts=3
         fi
 
+        local err_msg=""
         while [ "${attempt}" -le "${max_attempts}" ]; do
-            if codesign "${flags[@]}" --timestamp --sign "${SIGN_IDENTITY}" "${target}" 2>/dev/null; then
+            if err_msg=$(codesign "${flags[@]}" --timestamp --sign "${SIGN_IDENTITY}" "${target}" 2>&1); then
                 return 0
             fi
             if [ "${attempt}" -lt "${max_attempts}" ]; then
-                echo "Warning: Secure timestamp signing failed for $(basename "${target}") (attempt ${attempt}/${max_attempts}); retrying in 2s..."
+                echo "Warning: Secure timestamp signing failed for $(basename "${target}") (attempt ${attempt}/${max_attempts}): ${err_msg}"
+                echo "Retrying in 2s..."
                 sleep 2
             fi
             attempt=$((attempt + 1))
         done
 
         if [ "${is_release_signing}" = "true" ]; then
-            echo "Error: Secure timestamp signing failed for $(basename "${target}") after ${max_attempts} attempts. Strict/Developer ID signing requires a secure timestamp for notarization." >&2
+            echo "Error: Secure timestamp signing failed for $(basename "${target}") after ${max_attempts} attempts: ${err_msg}" >&2
+            echo "Strict/Developer ID signing requires a secure timestamp for notarization." >&2
             exit 1
         else
             echo "Note: Secure timestamp signing failed for $(basename "${target}"); falling back to timestamp=none for local development."

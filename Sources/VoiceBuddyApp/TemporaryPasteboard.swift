@@ -7,11 +7,16 @@ final class TemporaryPasteboard {
     private(set) var savedItems: [[(NSPasteboard.PasteboardType, Data)]]
     private(set) var ownedChangeCount: Int
     private(set) var isActive = true
-    var isPastePosted = false
+    private(set) var isPastePosted = false
 
     init(board: NSPasteboard = .general, predecessor: TemporaryPasteboard? = nil) {
         self.board = board
-        let isPredecessorCurrent = (predecessor?.isActive == true) && (board.changeCount == predecessor?.ownedChangeCount)
+        let isPredecessorCurrent: Bool
+        if let predecessor, predecessor.isActive {
+            isPredecessorCurrent = (board.changeCount == predecessor.ownedChangeCount)
+        } else {
+            isPredecessorCurrent = false
+        }
 
         if isPredecessorCurrent, let predecessor, !predecessor.savedItems.isEmpty {
             // Inherit true original items from active in-flight predecessor whose content is still on board
@@ -24,6 +29,10 @@ final class TemporaryPasteboard {
             }
         }
         self.ownedChangeCount = board.changeCount
+    }
+
+    func markPastePosted() {
+        isPastePosted = true
     }
 
     func invalidate() {
