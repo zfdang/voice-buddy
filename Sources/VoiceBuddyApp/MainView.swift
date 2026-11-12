@@ -13,6 +13,8 @@ struct MainView: View {
     @State private var confirmTextDelete = false
     @State private var textModelToDelete: String? = nil
     @State private var diagnosticsError = false
+    @State private var showPromptPreview = false
+    @State private var copiedPromptTip = false
     private func t(_ en: String, _ zh: String) -> String { state.label(en, zh) }
 
     var body: some View {
@@ -415,13 +417,80 @@ struct MainView: View {
                     subtitle: t("Degree of punctuation and stylistic cleanup", "调整文本标点修整与口语语气整理程度")
                 ) {
                     Picker("", selection: $state.preferences.refinement) {
-                        Text(t("Original", "原文")).tag(Refinement.original)
-                        Text(t("Light", "轻微整理")).tag(Refinement.light)
-                        Text(t("Moderate", "适度整理")).tag(Refinement.moderate)
-                        Text(t("Rewrite", "完全重写")).tag(Refinement.rewrite)
+                        Text(t("Original (Raw)", "原文 (无整理)")).tag(Refinement.original)
+                        Text(t("Level 1: Light Polish", "轻度整理 (Level 1)")).tag(Refinement.light)
+                        Text(t("Level 2: Deep Optimization", "深度优化 (Level 2)")).tag(Refinement.moderate)
+                        Text(t("Level 3: Professional Rewrite", "专业重构 (Level 3)")).tag(Refinement.rewrite)
                     }
                     .labelsHidden()
                     .fixedSize()
+                }
+
+                if state.preferences.refinement != .original, let prompt = RefinementPrompts.prompt(for: state.preferences.refinement) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showPromptPreview.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: showPromptPreview ? "chevron.down" : "chevron.right")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 14)
+                                Image(systemName: "text.bubble")
+                                    .foregroundStyle(.secondary)
+                                Text(t("View System Prompt", "查看当前级别的 System Prompt"))
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        if showPromptPreview {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text(t("System Prompt for active level (Read-Only Preview)", "当前级别生效的 System Prompt（只读预览）"))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button(action: {
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString(prompt, forType: .string)
+                                        copiedPromptTip = true
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                            copiedPromptTip = false
+                                        }
+                                    }) {
+                                        Label(copiedPromptTip ? t("Copied", "已复制") : t("Copy Prompt", "复制提示词"),
+                                              systemImage: copiedPromptTip ? "checkmark" : "doc.on.doc")
+                                            .font(.caption)
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                                ScrollView {
+                                    Text(prompt)
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .textSelection(.enabled)
+                                        .padding(8)
+                                }
+                                .frame(height: 140)
+                                .background(Color(NSColor.textBackgroundColor).opacity(0.5))
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                                )
+                            }
+                            .padding(.top, 8)
+                            .padding(.leading, 20)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                    .padding(.top, 4)
                 }
                 Divider()
                 settingRow(
@@ -1177,16 +1246,16 @@ struct MainView: View {
                     HStack(alignment: .top, spacing: 10) {
                         Text("•")
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(t("Original & Light modes", "原文与轻微整理模式")).font(.subheadline.bold())
-                            Text(t("Run 100% locally with zero MLX LLM overhead. Light mode uses regex to instantly remove verbal pauses like 'uh', 'um', '那个'.", "完全基于本地毫秒级规则，不消耗大语言模型显存。轻微整理即刻智能剔除“嗯、啊、那个”等口癖。")).font(.caption).foregroundStyle(.secondary)
+                            Text(t("Original mode", "原文模式")).font(.subheadline.bold())
+                            Text(t("Outputs raw speech recognition results directly without loading LLM, providing lightning-fast zero-overhead dictation.", "直接输出语音识别 ASR 原始结果，完全不加载大模型，零内存额外消耗。")).font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     Divider()
                     HStack(alignment: .top, spacing: 10) {
                         Text("•")
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(t("Moderate & Rewrite modes", "适度整理与完全重写模式")).font(.subheadline.bold())
-                            Text(t("Leverage this local Qwen 3.5 model on Apple Neural Engine to restructure sentences, fix grammar, and output polished prose.", "在 Apple 神经引擎上调用本模型进行语序重构、标点润色与书面化排版，全程同样 100% 本地离线。")).font(.caption).foregroundStyle(.secondary)
+                            Text(t("Levels 1, 2 & 3 (Light, Deep, Rewrite)", "轻度整理、深度优化与专业重构模式")).font(.subheadline.bold())
+                            Text(t("Run 100% locally via Apple Silicon unified memory to polish speech, fix homophone errors, remove oral fillers, or reconstruct formal lists. If the text model is ever unavailable, the system automatically degrades gracefully to inputting the original transcript.", "在 Apple 统一内存上本地调用轻量端侧大模型，进行同音纠错、口癖过滤、语病自改与条理化重构。全程 100% 离线隐私。若大模型尚未就绪或遇到异常，系统将自动优雅降级，直接输入识别原文，绝不耽误输入。")).font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }

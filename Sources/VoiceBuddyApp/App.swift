@@ -731,14 +731,10 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             return
         }
         if preferences.refinement.needsModel && !editorReady {
-            DiagnosticLog.shared.record("session.stop id=\(diagnosticSession) reason=text_model_not_ready")
-            status = label("Text model is still loading, please wait…", "文本模型还在加载中，请稍候…")
-            gesture.reset()
-            overlay.showStatus(state: self)
+            DiagnosticLog.shared.record("session.text_model_not_ready_background_prepare id=\(diagnosticSession)")
             if !isActivatingTextModel {
                 prepareEditor()
             }
-            return
         }
         // Snapshot the destination with system-wide + frontmost fallbacks and wake accessibility
         let target = TargetAccessibility.captureTargetFocus()
@@ -973,23 +969,10 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     DiagnosticLog.shared.record("transcription.discarded id=\(logSession) reason=session_changed")
                     return
                 }
-                DiagnosticLog.shared.record("transcription.completed id=\(logSession) mode=\(settings.refinement.rawValue)")
+                DiagnosticLog.shared.record("transcription.completed id=\(logSession) original_chars=\(output.original.count) refined_chars=\(output.result.count) mode=\(settings.refinement.rawValue)")
                 original = output.original
                 result = output.result
                 busy = false
-                if settings.refinement.needsModel {
-                    DiagnosticLog.shared.record("result.review_mode id=\(logSession)")
-                    overlay.hide()
-                    liveTranscriptState.clear()
-                    if TargetAccessibility.isSensitiveDestination(element: boundElement) {
-                        status = label("Sensitive field detected. Open Result to review the text.", "检测到敏感输入框，请打开结果页查看文字。")
-                    } else {
-                        copyResult()
-                        status = label("Edited text copied. Review it before pasting; open Result to compare the original.", "整理后的文字已复制，请检查后粘贴；可打开结果页查看原文。")
-                    }
-                    overlay.showStatus(state: self)
-                    return
-                }
                 if settings.autoInsert {
                     let targetPt = targetInsertionPoint()
                     overlay.flyAndDismiss(to: targetPt) { [weak self] in
@@ -1014,7 +997,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     overlay.showStatus(state: self)
                 }
             } catch {
-                DiagnosticLog.shared.record("transcription.failed id=\(logSession) error_type=\(String(describing: type(of: error))) code=\((error as NSError).code)")
+                let errDesc = error.localizedDescription
+                DiagnosticLog.shared.record("transcription.failed id=\(logSession) error_type=\(String(describing: type(of: error))) code=\((error as NSError).code) error=\(errDesc)")
                 guard transcriptionGeneration == id else { return }
                 if !recording {
                     liveTranscriptState.clear()
@@ -1023,14 +1007,31 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 if let failure = error as? RefinementFailure {
                     original = failure.original
                     result = failure.original
-                    DiagnosticLog.shared.record("refinement.failed id=\(logSession)")
-                    if !TargetAccessibility.isSensitiveDestination(element: boundElement) {
-                        copyResult()
-                        status = label("Refinement failed; original text copied to clipboard.", "文本整理失败，已复制原文到剪贴板。")
+                    let sample = failure.original.replacingOccurrences(of: "\n", with: " ").prefix(60)
+                    DiagnosticLog.shared.record("refinement.failed id=\(logSession) reason=\(failure.reason) original_sample=\"\(sample)\"")
+                    if settings.autoInsert {
+                        let targetPt = targetInsertionPoint()
+                        overlay.flyAndDismiss(to: targetPt) { [weak self] in
+                            guard let self else { return }
+                            guard self.transcriptionGeneration == id, !self.recording else { return }
+                            self.liveTranscriptState.clear()
+                            if self.insertIfSafe(failure.original, targetPID: boundPID, targetAppName: boundAppName, targetElement: boundElement, sessionID: id) {
+                                self.status = self.label("Refinement unavailable; inserted original text.", "文本整理未生效，已直接输入识别原文。")
+                            } else {
+                                let tip = !self.insertFailure.isEmpty ? self.insertFailure : self.label("Paste failed. Open Result to review the text.", "粘贴失败，请打开结果页查看文字。")
+                                self.status = tip
+                                self.overlay.showStatus(state: self)
+                            }
+                        }
                     } else {
-                        status = label("Refinement failed. Open Result to review the original text.", "文本整理失败，请打开结果页查看原文。")
+                        if !TargetAccessibility.isSensitiveDestination(element: boundElement) {
+                            copyResult()
+                            status = label("Refinement unavailable; original text copied to clipboard.", "文本整理未生效，已复制原文到剪贴板。")
+                        } else {
+                            status = label("Refinement unavailable. Open Result to review the original text.", "文本整理未生效，请打开结果页查看原文。")
+                        }
+                        if !recording { overlay.showStatus(state: self) }
                     }
-                    if !recording { overlay.showStatus(state: self) }
                     return
                 }
                 if let voiceError = error as? VoiceBuddyError, voiceError == .noSpeech {
