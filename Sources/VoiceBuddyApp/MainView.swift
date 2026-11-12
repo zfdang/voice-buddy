@@ -417,10 +417,11 @@ struct MainView: View {
                     subtitle: t("Degree of punctuation and stylistic cleanup", "调整文本标点修整与口语语气整理程度")
                 ) {
                     Picker("", selection: $state.preferences.refinement) {
-                        Text(t("Original (Raw)", "原文 (无整理)")).tag(Refinement.original)
-                        Text(t("Level 1: Light Polish", "轻度整理 (Level 1)")).tag(Refinement.light)
-                        Text(t("Level 2: Deep Optimization", "深度优化 (Level 2)")).tag(Refinement.moderate)
-                        Text(t("Level 3: Professional Rewrite", "专业重构 (Level 3)")).tag(Refinement.rewrite)
+                        Text(t("Original", "原文")).tag(Refinement.original)
+                        Text(t("Light", "轻度")).tag(Refinement.light)
+                        Text(t("Moderate", "适度")).tag(Refinement.balanced)
+                        Text(t("Deep", "深度")).tag(Refinement.moderate)
+                        Text(t("Professional Rewrite", "专业改写")).tag(Refinement.rewrite)
                     }
                     .labelsHidden()
                     .fixedSize()
@@ -1174,7 +1175,7 @@ struct MainView: View {
                 } else {
                     settingRow(
                         title: t("Active Refinement Model", "当前生效模型"),
-                        subtitle: t("Local LLM used for Moderate editing and Rewrite modes", "用于“适度整理”与“完全重写”模式的端侧大语言模型")
+                        subtitle: t("Local LLM used for all refinement modes except Original", "用于轻度、适度、深度和专业改写的端侧大语言模型")
                     ) {
                         Picker("", selection: Binding(
                             get: { state.preferences.textModel },
@@ -1254,7 +1255,7 @@ struct MainView: View {
                     HStack(alignment: .top, spacing: 10) {
                         Text("•")
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(t("Levels 1, 2 & 3 (Light, Deep, Rewrite)", "轻度整理、深度优化与专业重构模式")).font(.subheadline.bold())
+                            Text(t("Light, Moderate, Deep & Professional Rewrite", "轻度、适度、深度与专业改写模式")).font(.subheadline.bold())
                             Text(t("Run 100% locally via Apple Silicon unified memory to polish speech, fix homophone errors, remove oral fillers, or reconstruct formal lists. If the text model is ever unavailable, the system automatically degrades gracefully to inputting the original transcript.", "在 Apple 统一内存上本地调用轻量端侧大模型，进行同音纠错、口癖过滤、语病自改与条理化重构。全程 100% 离线隐私。若大模型尚未就绪或遇到异常，系统将自动优雅降级，直接输入识别原文，绝不耽误输入。")).font(.caption).foregroundStyle(.secondary)
                         }
                     }

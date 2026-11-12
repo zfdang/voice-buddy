@@ -78,6 +78,22 @@ final class PipelineTests: XCTestCase {
         let empty = Pipeline(detector: Detector(value: true), transcription: ASR(text: "hello"), refinement: Editor(text: ""))
         do { _ = try await empty.run(samples: [1], language: "auto", mode: .moderate); XCTFail("Expected error") } catch { XCTAssertEqual((error as? RefinementFailure)?.original, "hello") }
     }
+    func testFiveRefinementLevelsAndLegacyPreference() async throws {
+        XCTAssertEqual(Refinement.allCases, [.original, .light, .balanced, .moderate, .rewrite])
+        XCTAssertNil(RefinementPrompts.prompt(for: .original))
+        let prompts = Refinement.allCases.dropFirst().compactMap { RefinementPrompts.prompt(for: $0) }
+        XCTAssertEqual(Set(prompts).count, 4)
+        let legacy = try JSONDecoder().decode(Preferences.self, from: Data(#"{"refinement":"moderate"}"#.utf8))
+        XCTAssertEqual(legacy.refinement, .moderate)
+        XCTAssertEqual(RefinementPrompts.prompt(for: legacy.refinement), RefinementPrompts.level2DeepOptimization)
+        for mode in Refinement.allCases {
+            var settings = Preferences(); settings.refinement = mode
+            XCTAssertEqual(try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(settings)).refinement, mode)
+        }
+        let pipeline = Pipeline(detector: Detector(value: true), transcription: ASR(text: "hello"), refinement: Editor(text: "edited"))
+        let result = try await pipeline.run(samples: [1], language: "en", mode: .balanced)
+        XCTAssertEqual(result.result, "edited")
+    }
     func testPreferencesRoundTrip() throws {
         var settings = Preferences(); settings.speechLanguage = "zh"; settings.refinement = .rewrite
         XCTAssertEqual(try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(settings)), settings)

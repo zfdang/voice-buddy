@@ -33,7 +33,7 @@ extension LocalModelIntegrationTests {
         let model = try await Qwen35MLXChat.fromPretrained(cacheDir: root, offlineMode: false)
         let sampling = ChatSamplingConfig(temperature: 0.15, maxTokens: 512, repetitionPenalty: 1.05)
 
-        for mode in [Refinement.light, Refinement.moderate, Refinement.rewrite] {
+        for mode in [Refinement.light, Refinement.balanced, Refinement.moderate, Refinement.rewrite] {
             guard let prompt = RefinementPrompts.prompt(for: mode) else { continue }
 
             let testInputs = [
