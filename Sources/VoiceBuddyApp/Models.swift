@@ -482,15 +482,21 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
     }
 
+    func unloadEditor() {
+        qwen35Editor?.unload()
+        qwen35Editor = nil
+        denseEditor = nil
+        selectedEditorID = ""
+        Qwen35MLXChat.clearGPUCache()
+    }
+
     func removeEditor(id: String? = nil) throws {
         let targetId = id ?? selectedEditorID
         guard TextModelSpec.allModels.contains(where: { $0.id == targetId }) else {
             throw VoiceBuddyError.modelUnavailable("Invalid text model identifier")
         }
         if selectedEditorID == targetId {
-            qwen35Editor = nil
-            denseEditor = nil
-            selectedEditorID = ""
+            unloadEditor()
         }
         let path = textDirectory(targetId)
         if FileManager.default.fileExists(atPath: path.path) {

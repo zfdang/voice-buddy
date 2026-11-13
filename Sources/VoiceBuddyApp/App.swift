@@ -18,7 +18,17 @@ public enum AppTab: Int, CaseIterable, Identifiable {
 }
 
 @MainActor final class AppState: ObservableObject {
-    @Published var preferences: Preferences { didSet { save(); if oldValue.useFnKey != preferences.useFnKey { configureShortcutMode() } } }
+    @Published var preferences: Preferences {
+        didSet {
+            save()
+            if oldValue.useFnKey != preferences.useFnKey {
+                configureShortcutMode()
+            }
+            if oldValue.refinement != preferences.refinement {
+                handleRefinementChanged(from: oldValue.refinement, to: preferences.refinement)
+            }
+        }
+    }
     @Published var status = "Ready"
     @Published var liveTranscript = ""
     @Published var liveTranscriptState = LiveTranscriptState()
@@ -467,6 +477,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             } else {
                 // A separate engine keeps model selection and readiness for dictation intact.
                 let tester = LocalModels()
+                defer { Task { await tester.unloadEditor() } }
                 guard await tester.isEditorModelCached(id: modelID) else {
                     refinementTestStatus = label("Download this model in Text Models first.", "请先在文本模型页下载所选模型。")
                     return
@@ -507,8 +518,33 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
     }
 
-    func loadActiveEditorModel() {
-        prepareEditor(id: preferences.textModel)
+    func loadActiveEditorModel(force: Bool = false) {
+        prepareEditor(id: preferences.textModel, force: force)
+    }
+
+    func unloadEditor() {
+        editorGeneration = UUID()
+        editorTask?.cancel()
+        editorTask = nil
+        isActivatingTextModel = false
+        editorPreparing = false
+        editorReady = false
+        let targetId = preferences.textModel
+        Task {
+            await models.unloadEditor()
+        }
+        DiagnosticLog.shared.record("model.text.unloaded id=\(targetId)")
+    }
+
+    private func handleRefinementChanged(from old: Refinement, to new: Refinement) {
+        DiagnosticLog.shared.record("refinement.changed from=\(old.rawValue) to=\(new.rawValue)")
+        if !new.needsModel {
+            unloadEditor()
+        } else {
+            if !editorReady && !isActivatingTextModel && cachedTextModelIDs.contains(preferences.textModel) && !recording {
+                loadActiveEditorModel()
+            }
+        }
     }
 
     func selectTextModel(id: String) {
@@ -517,6 +553,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         editorReady = false
         if cachedTextModelIDs.contains(id) && preferences.refinement.needsModel {
             prepareEditor(id: id)
+        } else {
+            unloadEditor()
         }
     }
 
@@ -614,8 +652,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
     }
 
-    func prepareEditor(id: String? = nil, completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
-        guard preferences.refinement.needsModel, !isActivatingTextModel && !recording else { completion?(false); return }
+    func prepareEditor(id: String? = nil, force: Bool = false, completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
+        guard (preferences.refinement.needsModel || force), !isActivatingTextModel && !recording else { completion?(false); return }
         isActivatingTextModel = true
         editorPreparing = true
         let targetId = id ?? preferences.textModel

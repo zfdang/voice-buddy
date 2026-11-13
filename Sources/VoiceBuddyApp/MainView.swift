@@ -266,6 +266,9 @@ struct MainView: View {
 
         let textSubtitle: String = {
             if !state.preferences.refinement.needsModel {
+                if state.editorReady {
+                    return t("Preloaded · Not needed for Light/Original", "已预载入 · 轻度/原文无需使用")
+                }
                 return t("Original / Light (No LLM needed)", "原文 / 轻度（无需大模型）")
             }
             if state.isActivatingTextModel { return t("Loading into memory…", "载入内存中…") }
@@ -1196,11 +1199,33 @@ struct MainView: View {
 
                     HStack(spacing: 8) {
                         if state.editorReady {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                            Text(t("Model is loaded in unified memory · Ready for instant zero-latency refinement.", "模型已载入统一内存 · 随时可用 (毫秒级零延迟润色)"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            if state.preferences.refinement.needsModel {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                                Text(t("Model is loaded in unified memory · Ready for instant zero-latency refinement.", "模型已载入统一内存 · 随时可用 (毫秒级零延迟润色)"))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button(t("Unload", "卸载释放内存")) {
+                                    state.unloadEditor()
+                                }
+                                .controlSize(.small)
+                                .buttonStyle(.bordered)
+                                .accessibilityLabel(t("Unload text model", "卸载文本模型以释放内存"))
+                            } else {
+                                Image(systemName: "info.circle.fill")
+                                    .foregroundStyle(.blue)
+                                Text(t("Model is preloaded, but current mode (Original/Light) does not need it.", "模型已预载入内存，但当前模式（原文 / 轻度）无需使用大模型。"))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button(t("Unload to Free Memory", "卸载释放内存")) {
+                                    state.unloadEditor()
+                                }
+                                .controlSize(.small)
+                                .buttonStyle(.borderedProminent)
+                                .accessibilityLabel(t("Unload text model to free memory", "卸载文本模型以释放内存"))
+                            }
                         } else if state.isActivatingTextModel {
                             ProgressView()
                                 .controlSize(.small)
@@ -1212,25 +1237,27 @@ struct MainView: View {
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
+                            Spacer()
                         } else if !state.preferences.refinement.needsModel {
                             Image(systemName: "info.circle")
                                 .foregroundStyle(.secondary)
-                            Text(t("Original and Light modes do not require a text model.", "原文和轻度模式不需要加载文本模型；轻度使用本地规则整理。"))
+                            Text(t("Original and Light modes do not require a text model; no memory used.", "当前整理级别（原文 / 轻度）无需文本大模型，未载入内存，零内存开销。"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Button(t("Load Anyway", "按需预载入")) {
-                                state.loadActiveEditorModel()
+                            Button(t("Preload Anyway", "按需预载入")) {
+                                state.loadActiveEditorModel(force: true)
                             }
                             .controlSize(.small)
                             .buttonStyle(.bordered)
-                            .accessibilityLabel(t("Load Anyway", "按需预载入"))
+                            .accessibilityLabel(t("Preload Anyway", "按需预载入"))
                         } else {
                             Image(systemName: "pause.circle")
                                 .foregroundStyle(.orange)
                             Text(t("Model not loaded into unified memory.", "当前润色模式需要大模型，但尚未载入统一内存。"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            Spacer()
                             Button(t("Load into Memory", "载入内存")) {
                                 state.loadActiveEditorModel()
                             }
@@ -1238,7 +1265,6 @@ struct MainView: View {
                             .buttonStyle(.borderedProminent)
                             .accessibilityLabel(t("Load into Memory", "载入内存"))
                         }
-                        Spacer()
                     }
                 }
             }
