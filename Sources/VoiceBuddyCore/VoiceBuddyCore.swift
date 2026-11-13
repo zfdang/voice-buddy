@@ -1,8 +1,19 @@
 import Foundation
 
 public enum Refinement: String, CaseIterable, Codable, Identifiable {
-    // Keep the legacy moderate value mapped to deep refinement for existing preferences.
-    case original, light, balanced, moderate, rewrite
+    /// Raw transcript; the only mode that does not require a text model.
+    case original
+    /// Light cleanup that preserves conversational wording and self-corrections.
+    case light
+    /// UI “Moderate / 适度”: conversational editing with self-corrections merged.
+    /// Stored as "balanced" to distinguish it from the legacy deep-refinement value.
+    case balanced
+    /// UI “Deep / 深度”: rewrite spoken phrasing as fluent written prose.
+    /// The name and stored value "moderate" are retained for preference compatibility;
+    /// use `balanced` when selecting the UI's Moderate mode in code.
+    case moderate
+    /// UI “Professional Rewrite / 专业改写”: professional, structured rewriting.
+    case rewrite
     public var id: String { rawValue }
     public var needsModel: Bool { self != .original }
 }
