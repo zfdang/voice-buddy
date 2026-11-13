@@ -25,6 +25,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private let tracker = TranscriptStreamTracker()
     @Published var result = ""
     @Published var original = ""
+    @Published private(set) var testingRefinement = false
+    @Published private(set) var refinementTestStatus = ""
+    @Published private(set) var refinementTestSummary = ""
     @Published var recording = false {
         didSet {
             menuBarController?.updateIcon(isRecording: recording)
@@ -443,6 +446,67 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
     }
 
+    /// Reprocess the captured transcript without changing dictation preferences or inserting text.
+    func testRefinement(mode: Refinement) async {
+        guard !testingRefinement, !recording, !busy else { return }
+        let source = original
+        let modelID = preferences.textModel
+        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        testingRefinement = true
+        refinementTestStatus = label("Testing…", "正在测试…")
+        defer { testingRefinement = false }
+        let started = Date()
+        var loadDuration: TimeInterval = 0
+        var refineDuration: TimeInterval = 0
+        do {
+            let output: String
+            if mode == .original {
+                output = source
+            } else if mode == .light {
+                output = TextCleanup.light(source)
+            } else {
+                // A separate engine keeps model selection and readiness for dictation intact.
+                let tester = LocalModels()
+                guard await tester.isEditorModelCached(id: modelID) else {
+                    refinementTestStatus = label("Download this model in Text Models first.", "请先在文本模型页下载所选模型。")
+                    return
+                }
+                refinementTestStatus = label("Loading model and testing…", "正在加载模型并测试…")
+                try await tester.prepareEditor(id: modelID) { _, _ in }
+                loadDuration = Date().timeIntervalSince(started)
+                try Task.checkCancellation()
+                let refineStarted = Date()
+                output = try await tester.refine(source, mode: mode)
+                refineDuration = Date().timeIntervalSince(refineStarted)
+                if let reason = TextCleanup.unsafeReason(output, original: source) {
+                    throw RefinementFailure(original: source, reason: reason)
+                }
+            }
+            try Task.checkCancellation()
+            guard original == source else {
+                refinementTestStatus = label("Original text changed. Test again.", "原文已变化，请重新测试。")
+                return
+            }
+            result = output
+            let names: [Refinement: String] = [
+                .original: label("Original", "原文"), .light: label("Light", "轻度"),
+                .balanced: label("Moderate", "适度"), .moderate: label("Deep", "深度"),
+                .rewrite: label("Professional Rewrite", "专业改写")
+            ]
+            let model = TextModelSpec.allModels.first { $0.id == modelID }
+            let modelName = mode.needsModel ? [model?.name, model?.quantization].compactMap { $0 }.joined(separator: " · ") : label("No text model", "不使用文本模型")
+            let timing = mode.needsModel
+                ? label("Load", "加载") + " \(String(format: "%.1f", loadDuration))s · " + label("Refine", "整理") + " \(String(format: "%.1f", refineDuration))s"
+                : label("Original text", "原文直出")
+            refinementTestSummary = "\(names[mode] ?? mode.rawValue) · \(modelName) · \(timing)"
+            refinementTestStatus = label("Test complete", "测试完成")
+        } catch is CancellationError {
+            refinementTestStatus = label("Test cancelled", "测试已取消")
+        } catch {
+            refinementTestStatus = label("Test failed: ", "测试失败：") + error.localizedDescription
+        }
+    }
+
     func loadActiveEditorModel() {
         prepareEditor(id: preferences.textModel)
     }
@@ -497,7 +561,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     self.checkModelCacheStatus()
 
                     // If user has no downloaded model for active preferences, or this is active and needsModel is true, activate it
-                    if (self.preferences.textModel == id && self.preferences.refinement.needsModel) || !self.cachedTextModelIDs.contains(self.preferences.textModel) {
+                    if self.preferences.refinement.needsModel && (self.preferences.textModel == id || !self.cachedTextModelIDs.contains(self.preferences.textModel)) {
                         self.preferences.textModel = id
                         self.loadActiveEditorModel()
                     }
@@ -551,7 +615,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     }
 
     func prepareEditor(id: String? = nil, completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
-        guard !isActivatingTextModel && !recording else { completion?(false); return }
+        guard preferences.refinement.needsModel, !isActivatingTextModel && !recording else { completion?(false); return }
         isActivatingTextModel = true
         editorPreparing = true
         let targetId = id ?? preferences.textModel
@@ -707,6 +771,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     // The window button remains a toggle for accessibility and manual use.
     func toggle() { if recording { finish() } else { start(whileHeld: false) } }
     private func start(whileHeld: Bool) {
+        guard !testingRefinement else { return }
         if busy && !recording && transcriptionTask == nil {
             DiagnosticLog.shared.record("session.stale_busy_repaired")
             busy = false
@@ -970,6 +1035,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     return
                 }
                 DiagnosticLog.shared.record("transcription.completed id=\(logSession) original_chars=\(output.original.count) refined_chars=\(output.result.count) mode=\(settings.refinement.rawValue)")
+                refinementTestSummary = ""
+                refinementTestStatus = ""
                 original = output.original
                 result = output.result
                 busy = false
@@ -1005,6 +1072,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 }
                 busy = false
                 if let failure = error as? RefinementFailure {
+                    refinementTestSummary = ""
+                    refinementTestStatus = ""
                     original = failure.original
                     result = failure.original
                     let sample = failure.original.replacingOccurrences(of: "\n", with: " ").prefix(60)
@@ -1050,6 +1119,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         targetElement: AXUIElement? = nil,
         sessionID: UUID? = nil
     ) -> Bool {
+        let fallbackChangeCount = NSPasteboard.general.changeCount
         let effPID = targetPID ?? self.targetPID
         let initialElement = targetElement ?? self.targetElement
         let logSession = diagnosticSession
@@ -1089,12 +1159,18 @@ public enum AppTab: Int, CaseIterable, Identifiable {
            currentFrontPID != effPID && currentFrontPID != myPID {
             DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=frontmost_changed front_pid=\(currentFrontPID)")
             insertFailure = label("Target application changed; open Result to review the text.", "目标应用已切换，请打开结果页查看文字。")
+            if TemporaryPasteboard.copyForManualPaste(text, expectedChangeCount: fallbackChangeCount, sensitive: sensitiveTarget || TargetAccessibility.isSensitiveDestination(element: currentFocus.element)) {
+                insertFailure = label("Focus changed; text copied. Press ⌘V to paste manually.", "焦点已变化，文字已复制，可按 ⌘V 手动粘贴。")
+            }
             return false
         }
         // 4b. Check if focused element switched within the same application (fail-closed for security)
         guard let initial = initialElement, let current = currentElem, CFEqual(initial, current) else {
             DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=focus_unverified")
             insertFailure = label("Cannot verify the focused input; open Result to review the text.", "无法确认输入框焦点，请打开结果页查看文字。")
+            if TemporaryPasteboard.copyForManualPaste(text, expectedChangeCount: fallbackChangeCount, sensitive: sensitiveTarget || TargetAccessibility.isSensitiveDestination(element: currentFocus.element)) {
+                insertFailure = label("Focus changed; text copied. Press ⌘V to paste manually.", "焦点已变化，文字已复制，可按 ⌘V 手动粘贴。")
+            }
             return false
         }
         // 5. Universal Insertion via Clipboard + Hardware-level Synthesized ⌘V (100% of apps supported)
@@ -1151,10 +1227,13 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 let sensitive = TargetAccessibility.isSensitiveDestination(element: liveFocus)
                 DiagnosticLog.shared.record("insert.final_check id=\(logSession) front_pid=\(frontPID) focus_present=\(liveFocus != nil) focus_matches=\(focusMatches) sensitive=\(sensitive)")
                 guard frontPID == effPID, focusMatches, (!sensitive || sensitiveTarget) else {
-                    _ = temporaryClipboard.restore()
+                    let copied = temporaryClipboard.retainForManualPaste(text, sensitive: sensitiveTarget || sensitive)
+                    if !copied { _ = temporaryClipboard.restore() }
                     if self.activePasteboardSession === temporaryClipboard { self.activePasteboardSession = nil }
-                    DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=final_focus_unverified")
-                    self.status = self.label("Could not verify the target. Open Result to review the text.", "无法确认目标输入框，请打开结果页查看文字。")
+                    DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=final_focus_unverified manual_copy=\(copied)")
+                    self.status = copied
+                        ? self.label("Focus changed; text copied. Press ⌘V to paste manually.", "焦点已变化，文字已复制，可按 ⌘V 手动粘贴。")
+                        : self.label("Could not verify the target. Open Result to review the text.", "无法确认目标输入框，请打开结果页查看文字。")
                     self.overlay.showStatus(state: self)
                     return
                 }

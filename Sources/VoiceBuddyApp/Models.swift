@@ -560,6 +560,7 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
     }
     func refine(_ text: String, mode: Refinement) async throws -> String {
+        if mode == .light { return TextCleanup.light(text) }
         guard let instruction = RefinementPrompts.prompt(for: mode) else {
             return text
         }
@@ -573,7 +574,9 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         let sampling = ChatSamplingConfig(
             temperature: 0.15,
             maxTokens: tokenBudget,
-            repetitionPenalty: 1.05
+            // Editing should reuse the source words. The sampler includes input
+            // tokens in its repetition history, so do not penalize copying them.
+            repetitionPenalty: 1.0
         )
 
         let startTime = CFAbsoluteTimeGetCurrent()

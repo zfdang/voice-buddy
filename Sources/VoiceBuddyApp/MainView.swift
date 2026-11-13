@@ -15,6 +15,8 @@ struct MainView: View {
     @State private var diagnosticsError = false
     @State private var showPromptPreview = false
     @State private var copiedPromptTip = false
+    @State private var resultTestMode: Refinement?
+    @State private var resultActionStatus = ""
     private func t(_ en: String, _ zh: String) -> String { state.label(en, zh) }
 
     var body: some View {
@@ -264,7 +266,7 @@ struct MainView: View {
 
         let textSubtitle: String = {
             if !state.preferences.refinement.needsModel {
-                return t("Light mode (No LLM needed)", "轻度调整 (无需大模型)")
+                return t("Original / Light (No LLM needed)", "原文 / 轻度（无需大模型）")
             }
             if state.isActivatingTextModel { return t("Loading into memory…", "载入内存中…") }
             if isCurrentTextDownloading { return t("Downloading…", "下载中…") }
@@ -417,10 +419,11 @@ struct MainView: View {
                     subtitle: t("Degree of punctuation and stylistic cleanup", "调整文本标点修整与口语语气整理程度")
                 ) {
                     Picker("", selection: $state.preferences.refinement) {
-                        Text(t("Original (Raw)", "原文 (无整理)")).tag(Refinement.original)
-                        Text(t("Level 1: Light Polish", "轻度整理 (Level 1)")).tag(Refinement.light)
-                        Text(t("Level 2: Deep Optimization", "深度优化 (Level 2)")).tag(Refinement.moderate)
-                        Text(t("Level 3: Professional Rewrite", "专业重构 (Level 3)")).tag(Refinement.rewrite)
+                        Text(t("Original", "原文")).tag(Refinement.original)
+                        Text(t("Light", "轻度")).tag(Refinement.light)
+                        Text(t("Moderate", "适度")).tag(Refinement.balanced)
+                        Text(t("Deep", "深度")).tag(Refinement.moderate)
+                        Text(t("Professional Rewrite", "专业改写")).tag(Refinement.rewrite)
                     }
                     .labelsHidden()
                     .fixedSize()
@@ -1174,7 +1177,7 @@ struct MainView: View {
                 } else {
                     settingRow(
                         title: t("Active Refinement Model", "当前生效模型"),
-                        subtitle: t("Local LLM used for Moderate editing and Rewrite modes", "用于“适度整理”与“完全重写”模式的端侧大语言模型")
+                        subtitle: t("Local LLM used for Moderate, Deep and Professional Rewrite", "用于适度、深度和专业改写的端侧大语言模型")
                     ) {
                         Picker("", selection: Binding(
                             get: { state.preferences.textModel },
@@ -1212,7 +1215,7 @@ struct MainView: View {
                         } else if !state.preferences.refinement.needsModel {
                             Image(systemName: "info.circle")
                                 .foregroundStyle(.secondary)
-                            Text(t("Current mode is Light/Original (no text model required, so not loaded into memory).", "当前选择的是轻微整理/原文模式，不需要使用 text 模型，所以没有加载。"))
+                            Text(t("Original and Light modes do not require a text model.", "原文和轻度模式不需要加载文本模型；轻度使用本地规则整理。"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
@@ -1254,7 +1257,8 @@ struct MainView: View {
                     HStack(alignment: .top, spacing: 10) {
                         Text("•")
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(t("Levels 1, 2 & 3 (Light, Deep, Rewrite)", "轻度整理、深度优化与专业重构模式")).font(.subheadline.bold())
+                            Text(t("Light uses local rules to normalize whitespace and remove standalone hesitations; it preserves self-corrections and does not load a text model.", "轻度使用本地规则整理空白、去除独立填充词，保留改口过程，不加载文本模型。")).font(.caption).foregroundStyle(.secondary)
+                            Text(t("Moderate, Deep & Professional Rewrite", "适度、深度与专业改写模式")).font(.subheadline.bold())
                             Text(t("Run 100% locally via Apple Silicon unified memory to polish speech, fix homophone errors, remove oral fillers, or reconstruct formal lists. If the text model is ever unavailable, the system automatically degrades gracefully to inputting the original transcript.", "在 Apple 统一内存上本地调用轻量端侧大模型，进行同音纠错、口癖过滤、语病自改与条理化重构。全程 100% 离线隐私。若大模型尚未就绪或遇到异常，系统将自动优雅降级，直接输入识别原文，绝不耽误输入。")).font(.caption).foregroundStyle(.secondary)
                         }
                     }
@@ -1273,6 +1277,16 @@ struct MainView: View {
             }
         } message: {
             Text(t("Model files will be removed from your disk. You can re-download anytime.", "模型文件将从本机存储中移除，后续需要时可随时重新下载。"))
+        }
+    }
+
+    private func refinementName(_ mode: Refinement) -> String {
+        switch mode {
+        case .original: return t("Original", "原文")
+        case .light: return t("Light", "轻度")
+        case .balanced: return t("Moderate", "适度")
+        case .moderate: return t("Deep", "深度")
+        case .rewrite: return t("Professional Rewrite", "专业改写")
         }
     }
 
@@ -1317,11 +1331,48 @@ struct MainView: View {
             // 2. Refined & Optimized Output
             settingsCard(title: t("Refined & Optimized Output", "优化润色结果 (最终文本)")) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(t("Final text polished by punctuation rules or on-device LLM.", "经口语消除、标点符号自动规整或端侧大语言模型重构润色后的最终文本。"))
+                    Text(t("Use the current text model to compare refinement levels on the same original transcript.", "使用当前文本模型和同一份原始识别文本，对比不同整理程度的输出效果。"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                    if let model = TextModelSpec.allModels.first(where: { $0.id == state.preferences.textModel }) {
+                        Text(t("Current model: ", "当前模型：") + model.name + " · " + model.quantization)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack(spacing: 12) {
+                        Picker(t("Refinement Level", "整理程度"), selection: Binding(
+                            get: { resultTestMode ?? state.preferences.refinement },
+                            set: { resultTestMode = $0 }
+                        )) {
+                            ForEach(Refinement.allCases) { mode in
+                                Text(refinementName(mode) + (mode == state.preferences.refinement ? t(" (Default)", "（默认）") : ""))
+                                    .tag(mode)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .disabled(state.testingRefinement)
+                        Button(t("Test", "测试")) {
+                            let mode = resultTestMode ?? state.preferences.refinement
+                            resultActionStatus = ""
+                            Task { await state.testRefinement(mode: mode) }
+                        }
+                        .disabled(state.original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.testingRefinement || state.busy || state.recording)
+                    }
+                    HStack {
+                        if state.testingRefinement { ProgressView().controlSize(.small) }
+                        Text(state.refinementTestStatus)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if !state.refinementTestSummary.isEmpty {
+                        Text(state.refinementTestSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     TextEditor(text: $state.result)
+                        .disabled(state.testingRefinement)
                         .font(.system(.body, design: .default))
                         .frame(minHeight: 110, maxHeight: 180)
                         .padding(4)
@@ -1332,31 +1383,32 @@ struct MainView: View {
                     HStack(spacing: 12) {
                         Button {
                             state.copyResult()
+                            resultActionStatus = state.status
                         } label: {
                             Label(t("Copy Result", "复制润色结果"), systemImage: "doc.on.clipboard")
                         }
                         .controlSize(.small)
-                        .disabled(state.result.isEmpty)
+                        .disabled(state.result.isEmpty || state.testingRefinement)
                         .accessibilityLabel(t("Copy Result", "复制润色结果"))
 
                         Button {
-                            if !state.insertIfSafe(state.result) {
+                            if state.insertIfSafe(state.result) {
+                                resultActionStatus = t("Insertion queued", "已安排插入")
+                            } else {
                                 state.status = state.insertFailure
+                                resultActionStatus = state.insertFailure
                             }
                         } label: {
                             Label(t("Insert into Active App", "直接插入光标处"), systemImage: "arrow.down.doc")
                         }
                         .controlSize(.small)
                         .buttonStyle(.borderedProminent)
-                        .disabled(state.result.isEmpty)
+                        .disabled(state.result.isEmpty || state.testingRefinement)
                         .accessibilityLabel(t("Insert into Active App", "直接插入光标处"))
 
                         Spacer()
-
-                        if !state.status.isEmpty {
-                            Text(state.status)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        if !resultActionStatus.isEmpty {
+                            Text(resultActionStatus).font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }

@@ -59,6 +59,19 @@ final class TemporaryPasteboard {
         isActive && board.changeCount == ownedChangeCount && board.string(forType: .string) == text
     }
 
+    /// Leave failed, non-sensitive insertions available for an explicit manual paste.
+    static func copyForManualPaste(_ text: String, board: NSPasteboard = .general, expectedChangeCount: Int, sensitive: Bool) -> Bool {
+        guard !sensitive, !text.isEmpty, board.changeCount == expectedChangeCount else { return false }
+        board.clearContents()
+        return board.setString(text, forType: .string)
+    }
+
+    func retainForManualPaste(_ text: String, sensitive: Bool) -> Bool {
+        guard owns(text), Self.copyForManualPaste(text, board: board, expectedChangeCount: ownedChangeCount, sensitive: sensitive) else { return false }
+        invalidate()
+        return true
+    }
+
     @discardableResult
     func restore() -> Bool {
         guard isActive else { return false }

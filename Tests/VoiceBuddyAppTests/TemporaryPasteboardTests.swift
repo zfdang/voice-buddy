@@ -106,3 +106,32 @@ final class TemporaryPasteboardTests: XCTestCase {
         XCTAssertEqual(board.string(forType: .string), "user_original_data", "Session cancellation must restore original user data")
     }
 }
+
+@MainActor
+final class ManualPasteRecoveryTests: XCTestCase {
+    func testFailedPasteRemainsAvailableAndCannotBeRestoredByOldTimer() {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        board.setString("old", forType: .string)
+        let session = TemporaryPasteboard(board: board)
+        XCTAssertTrue(session.write("dictated", sensitive: false))
+        XCTAssertTrue(session.retainForManualPaste("dictated", sensitive: false))
+        XCTAssertFalse(session.restore())
+        XCTAssertEqual(board.string(forType: .string), "dictated")
+        XCTAssertFalse(board.types?.contains(NSPasteboard.PasteboardType("org.nspasteboard.TransientType")) ?? true)
+    }
+    func testManualRecoveryPreservesNewClipboardAndSensitiveProtection() {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        board.setString("old", forType: .string)
+        let session = TemporaryPasteboard(board: board)
+        XCTAssertTrue(session.write("private", sensitive: true))
+        XCTAssertFalse(session.retainForManualPaste("private", sensitive: true))
+        XCTAssertTrue(session.restore())
+        XCTAssertEqual(board.string(forType: .string), "old")
+        let count = board.changeCount
+        board.clearContents(); board.setString("new copy", forType: .string)
+        XCTAssertFalse(TemporaryPasteboard.copyForManualPaste("dictated", board: board, expectedChangeCount: count, sensitive: false))
+        XCTAssertEqual(board.string(forType: .string), "new copy")
+    }
+}
