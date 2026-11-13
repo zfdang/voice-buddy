@@ -15,7 +15,6 @@ struct MainView: View {
     @State private var diagnosticsError = false
     @State private var showPromptPreview = false
     @State private var copiedPromptTip = false
-    @State private var resultTestModelID: String?
     @State private var resultTestMode: Refinement?
     @State private var resultActionStatus = ""
     private func t(_ en: String, _ zh: String) -> String { state.label(en, zh) }
@@ -1331,43 +1330,33 @@ struct MainView: View {
             // 2. Refined & Optimized Output
             settingsCard(title: t("Refined & Optimized Output", "优化润色结果 (最终文本)")) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(t("Compare models and refinement levels using the same original transcript.", "使用同一份原始识别文本，对比不同模型与整理档位的输出效果。"))
+                    Text(t("Use the current text model to compare refinement levels on the same original transcript.", "使用当前文本模型和同一份原始识别文本，对比不同整理程度的输出效果。"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Picker(t("Test Model", "测试模型"), selection: Binding(
-                        get: { resultTestModelID ?? state.preferences.textModel },
-                        set: { resultTestModelID = $0 }
-                    )) {
-                        ForEach(TextModelSpec.allModels) { model in
-                            Text(model.name + " · " + model.quantization
-                                 + (model.id == state.preferences.textModel ? t(" (Default)", "（默认）") : "")
-                                 + (state.cachedTextModelIDs.contains(model.id) ? "" : t(" — Not downloaded", " — 未下载")))
-                                .tag(model.id)
-                        }
+                    if let model = TextModelSpec.allModels.first(where: { $0.id == state.preferences.textModel }) {
+                        Text(t("Current model: ", "当前模型：") + model.name + " · " + model.quantization)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    .disabled(state.testingRefinement)
-
-                    ForEach(Refinement.allCases) { mode in
-                        HStack {
-                            Image(systemName: (resultTestMode ?? state.preferences.refinement) == mode ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle((resultTestMode ?? state.preferences.refinement) == mode ? Color.accentColor : .secondary)
-                            Text(refinementName(mode))
-                            if mode == state.preferences.refinement {
-                                Text(t("Default", "默认"))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                    HStack(spacing: 12) {
+                        Picker(t("Refinement Level", "整理程度"), selection: Binding(
+                            get: { resultTestMode ?? state.preferences.refinement },
+                            set: { resultTestMode = $0 }
+                        )) {
+                            ForEach(Refinement.allCases) { mode in
+                                Text(refinementName(mode) + (mode == state.preferences.refinement ? t(" (Default)", "（默认）") : ""))
+                                    .tag(mode)
                             }
-                            Spacer()
-                            Button(t("Test", "测试")) {
-                                resultTestMode = mode
-                                let modelID = resultTestModelID ?? state.preferences.textModel
-                                Task { await state.testRefinement(mode: mode, modelID: modelID) }
-                            }
-                            .controlSize(.small)
-                            .disabled(state.original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.testingRefinement || state.busy || state.recording)
-                            .accessibilityLabel(t("Test ", "测试") + refinementName(mode))
                         }
+                        .pickerStyle(.menu)
+                        .disabled(state.testingRefinement)
+                        Button(t("Test", "测试")) {
+                            let mode = resultTestMode ?? state.preferences.refinement
+                            resultActionStatus = ""
+                            Task { await state.testRefinement(mode: mode) }
+                        }
+                        .disabled(state.original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.testingRefinement || state.busy || state.recording)
                     }
                     HStack {
                         if state.testingRefinement { ProgressView().controlSize(.small) }

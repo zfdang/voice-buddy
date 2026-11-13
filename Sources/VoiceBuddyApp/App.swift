@@ -447,9 +447,10 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     }
 
     /// Reprocess the captured transcript without changing dictation preferences or inserting text.
-    func testRefinement(mode: Refinement, modelID: String) async {
+    func testRefinement(mode: Refinement) async {
         guard !testingRefinement, !recording, !busy else { return }
         let source = original
+        let modelID = preferences.textModel
         guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         testingRefinement = true
         refinementTestStatus = label("Testing…", "正在测试…")

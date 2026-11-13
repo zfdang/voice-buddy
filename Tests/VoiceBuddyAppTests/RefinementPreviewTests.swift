@@ -9,7 +9,7 @@ final class RefinementPreviewTests: XCTestCase {
         state.original = "  周三，不对，周四。  "
         state.result = "previous result"
         let settings = state.preferences
-        await state.testRefinement(mode: .original, modelID: "not-a-model")
+        await state.testRefinement(mode: .original)
         XCTAssertEqual(state.result, state.original)
         XCTAssertEqual(state.preferences, settings)
         XCTAssertFalse(state.testingRefinement)
@@ -20,7 +20,7 @@ final class RefinementPreviewTests: XCTestCase {
         let state = AppState()
         state.original = "  \n "
         state.result = "keep this"
-        await state.testRefinement(mode: .light, modelID: "not-a-model")
+        await state.testRefinement(mode: .light)
         XCTAssertEqual(state.result, "keep this")
         XCTAssertFalse(state.testingRefinement)
     }
@@ -30,7 +30,7 @@ final class RefinementPreviewTests: XCTestCase {
         state.original = "original"
         state.result = "keep this"
         state.busy = true
-        await state.testRefinement(mode: .original, modelID: "not-a-model")
+        await state.testRefinement(mode: .original)
         XCTAssertEqual(state.result, "keep this")
         XCTAssertTrue(state.busy)
         XCTAssertFalse(state.testingRefinement)
