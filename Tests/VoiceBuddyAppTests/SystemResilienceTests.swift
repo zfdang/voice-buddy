@@ -176,4 +176,48 @@ final class SystemResilienceTests: XCTestCase {
         XCTAssertTrue(state.asrReady, "Active ASR model readiness must NOT be mutated by background downloads")
         XCTAssertFalse(state.isActivatingSpeechModel, "Background download must not be marked as activating into memory")
     }
+
+    func testRefinementLevelChangeToLightUnloadsTextModel() {
+        let state = AppState()
+        state.preferences.refinement = .balanced
+        state.editorReady = true
+
+        // Switch to light refinement: must unload text model and reset editorReady
+        state.preferences.refinement = .light
+        XCTAssertFalse(state.editorReady, "Switching to light refinement must unload text model")
+    }
+
+    func testRefinementLevelChangeToOriginalUnloadsTextModel() {
+        let state = AppState()
+        state.preferences.refinement = .moderate
+        state.editorReady = true
+
+        // Switch to original mode: must unload text model
+        state.preferences.refinement = .original
+        XCTAssertFalse(state.editorReady, "Switching to original mode must unload text model")
+    }
+
+    func testExplicitUnloadEditorClearsEditorReady() {
+        let state = AppState()
+        state.editorReady = true
+        state.isActivatingTextModel = true
+        state.editorPreparing = true
+
+        state.unloadEditor()
+
+        XCTAssertFalse(state.editorReady, "unloadEditor() must set editorReady to false")
+        XCTAssertFalse(state.isActivatingTextModel, "unloadEditor() must cancel isActivatingTextModel")
+        XCTAssertFalse(state.editorPreparing, "unloadEditor() must cancel editorPreparing")
+    }
+
+    func testSelectTextModelInLightModeDoesNotTriggerPrepare() {
+        let state = AppState()
+        state.preferences.refinement = .light
+        state.cachedTextModelIDs.insert("qwen3-text-1.7b-4bit")
+
+        state.selectTextModel(id: "qwen3-text-1.7b-4bit")
+
+        XCTAssertFalse(state.editorReady, "Selecting a text model while in Light mode must not mark it ready")
+        XCTAssertFalse(state.isActivatingTextModel, "Selecting a text model while in Light mode must not activate it")
+    }
 }
