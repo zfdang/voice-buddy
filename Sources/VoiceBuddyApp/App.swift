@@ -25,6 +25,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     private let tracker = TranscriptStreamTracker()
     @Published var result = ""
     @Published var original = ""
+    @Published private(set) var testingRefinement = false
+    @Published private(set) var refinementTestStatus = ""
+    @Published private(set) var refinementTestSummary = ""
     @Published var recording = false {
         didSet {
             menuBarController?.updateIcon(isRecording: recording)
@@ -443,6 +446,64 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         }
     }
 
+    /// Reprocess the captured transcript without changing dictation preferences or inserting text.
+    func testRefinement(mode: Refinement, modelID: String) async {
+        guard !testingRefinement, !recording, !busy else { return }
+        let source = original
+        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        testingRefinement = true
+        refinementTestStatus = label("Testing…", "正在测试…")
+        defer { testingRefinement = false }
+        let started = Date()
+        var loadDuration: TimeInterval = 0
+        var refineDuration: TimeInterval = 0
+        do {
+            let output: String
+            if mode == .original {
+                output = source
+            } else {
+                // A separate engine keeps model selection and readiness for dictation intact.
+                let tester = LocalModels()
+                guard await tester.isEditorModelCached(id: modelID) else {
+                    refinementTestStatus = label("Download this model in Text Models first.", "请先在文本模型页下载所选模型。")
+                    return
+                }
+                refinementTestStatus = label("Loading model and testing…", "正在加载模型并测试…")
+                try await tester.prepareEditor(id: modelID) { _, _ in }
+                loadDuration = Date().timeIntervalSince(started)
+                try Task.checkCancellation()
+                let refineStarted = Date()
+                output = try await tester.refine(source, mode: mode)
+                refineDuration = Date().timeIntervalSince(refineStarted)
+                if let reason = TextCleanup.unsafeReason(output, original: source) {
+                    throw RefinementFailure(original: source, reason: reason)
+                }
+            }
+            try Task.checkCancellation()
+            guard original == source else {
+                refinementTestStatus = label("Original text changed. Test again.", "原文已变化，请重新测试。")
+                return
+            }
+            result = output
+            let names: [Refinement: String] = [
+                .original: label("Original", "原文"), .light: label("Light", "轻度"),
+                .balanced: label("Moderate", "适度"), .moderate: label("Deep", "深度"),
+                .rewrite: label("Professional Rewrite", "专业改写")
+            ]
+            let model = TextModelSpec.allModels.first { $0.id == modelID }
+            let modelName = mode.needsModel ? [model?.name, model?.quantization].compactMap { $0 }.joined(separator: " · ") : label("No text model", "不使用文本模型")
+            let timing = mode.needsModel
+                ? label("Load", "加载") + " \(String(format: "%.1f", loadDuration))s · " + label("Refine", "整理") + " \(String(format: "%.1f", refineDuration))s"
+                : label("Original text", "原文直出")
+            refinementTestSummary = "\(names[mode] ?? mode.rawValue) · \(modelName) · \(timing)"
+            refinementTestStatus = label("Test complete", "测试完成")
+        } catch is CancellationError {
+            refinementTestStatus = label("Test cancelled", "测试已取消")
+        } catch {
+            refinementTestStatus = label("Test failed: ", "测试失败：") + error.localizedDescription
+        }
+    }
+
     func loadActiveEditorModel() {
         prepareEditor(id: preferences.textModel)
     }
@@ -707,6 +768,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     // The window button remains a toggle for accessibility and manual use.
     func toggle() { if recording { finish() } else { start(whileHeld: false) } }
     private func start(whileHeld: Bool) {
+        guard !testingRefinement else { return }
         if busy && !recording && transcriptionTask == nil {
             DiagnosticLog.shared.record("session.stale_busy_repaired")
             busy = false
@@ -970,6 +1032,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     return
                 }
                 DiagnosticLog.shared.record("transcription.completed id=\(logSession) original_chars=\(output.original.count) refined_chars=\(output.result.count) mode=\(settings.refinement.rawValue)")
+                refinementTestSummary = ""
+                refinementTestStatus = ""
                 original = output.original
                 result = output.result
                 busy = false
@@ -1005,6 +1069,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 }
                 busy = false
                 if let failure = error as? RefinementFailure {
+                    refinementTestSummary = ""
+                    refinementTestStatus = ""
                     original = failure.original
                     result = failure.original
                     let sample = failure.original.replacingOccurrences(of: "\n", with: " ").prefix(60)

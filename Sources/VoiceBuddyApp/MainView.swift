@@ -15,6 +15,9 @@ struct MainView: View {
     @State private var diagnosticsError = false
     @State private var showPromptPreview = false
     @State private var copiedPromptTip = false
+    @State private var resultTestModelID: String?
+    @State private var resultTestMode: Refinement?
+    @State private var resultActionStatus = ""
     private func t(_ en: String, _ zh: String) -> String { state.label(en, zh) }
 
     var body: some View {
@@ -1277,6 +1280,16 @@ struct MainView: View {
         }
     }
 
+    private func refinementName(_ mode: Refinement) -> String {
+        switch mode {
+        case .original: return t("Original", "原文")
+        case .light: return t("Light", "轻度")
+        case .balanced: return t("Moderate", "适度")
+        case .moderate: return t("Deep", "深度")
+        case .rewrite: return t("Professional Rewrite", "专业改写")
+        }
+    }
+
     private var recovery: some View {
         VStack(alignment: .leading, spacing: 20) {
             // 1. Direct Speech Recognition Output (Raw)
@@ -1318,11 +1331,58 @@ struct MainView: View {
             // 2. Refined & Optimized Output
             settingsCard(title: t("Refined & Optimized Output", "优化润色结果 (最终文本)")) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(t("Final text polished by punctuation rules or on-device LLM.", "经口语消除、标点符号自动规整或端侧大语言模型重构润色后的最终文本。"))
+                    Text(t("Compare models and refinement levels using the same original transcript.", "使用同一份原始识别文本，对比不同模型与整理档位的输出效果。"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                    Picker(t("Test Model", "测试模型"), selection: Binding(
+                        get: { resultTestModelID ?? state.preferences.textModel },
+                        set: { resultTestModelID = $0 }
+                    )) {
+                        ForEach(TextModelSpec.allModels) { model in
+                            Text(model.name + " · " + model.quantization
+                                 + (model.id == state.preferences.textModel ? t(" (Default)", "（默认）") : "")
+                                 + (state.cachedTextModelIDs.contains(model.id) ? "" : t(" — Not downloaded", " — 未下载")))
+                                .tag(model.id)
+                        }
+                    }
+                    .disabled(state.testingRefinement)
+
+                    ForEach(Refinement.allCases) { mode in
+                        HStack {
+                            Image(systemName: (resultTestMode ?? state.preferences.refinement) == mode ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle((resultTestMode ?? state.preferences.refinement) == mode ? Color.accentColor : .secondary)
+                            Text(refinementName(mode))
+                            if mode == state.preferences.refinement {
+                                Text(t("Default", "默认"))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button(t("Test", "测试")) {
+                                resultTestMode = mode
+                                let modelID = resultTestModelID ?? state.preferences.textModel
+                                Task { await state.testRefinement(mode: mode, modelID: modelID) }
+                            }
+                            .controlSize(.small)
+                            .disabled(state.original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.testingRefinement || state.busy || state.recording)
+                            .accessibilityLabel(t("Test ", "测试") + refinementName(mode))
+                        }
+                    }
+                    HStack {
+                        if state.testingRefinement { ProgressView().controlSize(.small) }
+                        Text(state.refinementTestStatus)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if !state.refinementTestSummary.isEmpty {
+                        Text(state.refinementTestSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     TextEditor(text: $state.result)
+                        .disabled(state.testingRefinement)
                         .font(.system(.body, design: .default))
                         .frame(minHeight: 110, maxHeight: 180)
                         .padding(4)
@@ -1333,31 +1393,32 @@ struct MainView: View {
                     HStack(spacing: 12) {
                         Button {
                             state.copyResult()
+                            resultActionStatus = state.status
                         } label: {
                             Label(t("Copy Result", "复制润色结果"), systemImage: "doc.on.clipboard")
                         }
                         .controlSize(.small)
-                        .disabled(state.result.isEmpty)
+                        .disabled(state.result.isEmpty || state.testingRefinement)
                         .accessibilityLabel(t("Copy Result", "复制润色结果"))
 
                         Button {
-                            if !state.insertIfSafe(state.result) {
+                            if state.insertIfSafe(state.result) {
+                                resultActionStatus = t("Insertion queued", "已安排插入")
+                            } else {
                                 state.status = state.insertFailure
+                                resultActionStatus = state.insertFailure
                             }
                         } label: {
                             Label(t("Insert into Active App", "直接插入光标处"), systemImage: "arrow.down.doc")
                         }
                         .controlSize(.small)
                         .buttonStyle(.borderedProminent)
-                        .disabled(state.result.isEmpty)
+                        .disabled(state.result.isEmpty || state.testingRefinement)
                         .accessibilityLabel(t("Insert into Active App", "直接插入光标处"))
 
                         Spacer()
-
-                        if !state.status.isEmpty {
-                            Text(state.status)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        if !resultActionStatus.isEmpty {
+                            Text(resultActionStatus).font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }
