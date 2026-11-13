@@ -462,6 +462,8 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             let output: String
             if mode == .original {
                 output = source
+            } else if mode == .light {
+                output = TextCleanup.light(source)
             } else {
                 // A separate engine keeps model selection and readiness for dictation intact.
                 let tester = LocalModels()
@@ -559,7 +561,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                     self.checkModelCacheStatus()
 
                     // If user has no downloaded model for active preferences, or this is active and needsModel is true, activate it
-                    if (self.preferences.textModel == id && self.preferences.refinement.needsModel) || !self.cachedTextModelIDs.contains(self.preferences.textModel) {
+                    if self.preferences.refinement.needsModel && (self.preferences.textModel == id || !self.cachedTextModelIDs.contains(self.preferences.textModel)) {
                         self.preferences.textModel = id
                         self.loadActiveEditorModel()
                     }
@@ -613,7 +615,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     }
 
     func prepareEditor(id: String? = nil, completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
-        guard !isActivatingTextModel && !recording else { completion?(false); return }
+        guard preferences.refinement.needsModel, !isActivatingTextModel && !recording else { completion?(false); return }
         isActivatingTextModel = true
         editorPreparing = true
         let targetId = id ?? preferences.textModel

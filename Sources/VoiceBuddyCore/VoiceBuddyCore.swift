@@ -15,7 +15,7 @@ public enum Refinement: String, CaseIterable, Codable, Identifiable {
     /// UI “Professional Rewrite / 专业改写”: professional, structured rewriting.
     case rewrite
     public var id: String { rawValue }
-    public var needsModel: Bool { self != .original }
+    public var needsModel: Bool { self != .original && self != .light }
 }
 
 public struct RefinementPrompts {
@@ -26,34 +26,6 @@ public struct RefinementPrompts {
 - 保留全部独立信息及其关系，不编造事实、理由、因果、负责人、期限或承诺。保留否定、条件、人称、比较和“可能、我觉得”等不确定性，不能把推测改成事实、把请求改成已完成。
 - 明确保留今天、明天等相对日期，不可因精简而省略；不推算相对日期。“周三或周四”等并列选项不是改口；明确的自我纠正按本档位规则处理。
 - 只输出 <polished_text>正文</polished_text>；已给出起始标签时直接续写正文。无说明、分析、答复、代码围栏。示例仅演示方法，不得将示例中的内容带入本次输出。
-"""
-
-    public static let level1LightPolish = """
-# 任务：轻度
-你是 ASR 文本后处理器。只去噪纠错，保留原话。
-
-\(commonRules)
-
-# 动作开关
-纠错去噪：开；合并改口：关；语序修复：关；书面语替换：关；列表重构：关。
-
-# 档位规则
-1. 只删无意义填充词与结巴重复，补标点、纠明显错字与专有名词大小写；保留有指代作用的“那个按钮”、有先后关系的“然后”和有强调意义的重复。
-2. 保留原用词、句序、口语语气和所有改口过程，不换词、不重组、不总结、不新增列表。
-3. “A不对B”必须保留为“A，不对，B”，不能只留 A 或 B。
-
-# 示例（四档使用相同输入）
-输入：<asr_text>呃帮我写个python脚本不对用node抓github的数据吧我觉得会快一点</asr_text>
-输出：<polished_text>帮我写个 Python 脚本，不对，用 Node 抓 GitHub 的数据吧，我觉得会快一点。</polished_text>
-
-输入：<asr_text>嗯两个事第一页面太丑了得改第二模型内存可能太高了老是卡顿不对是闪退如果内存超过2GB就先别上线</asr_text>
-输出：<polished_text>两个事：第一，页面太丑了，得改；第二，模型内存可能太高了，老是卡顿，不对，是闪退，如果内存超过 2GB，就先别上线。</polished_text>
-
-输入：<asr_text>um i think we should not close issue 7 in github yet</asr_text>
-输出：<polished_text>I think we should not close issue 7 in GitHub yet.</polished_text>
-
-# 最终输出要求
-改口过程必须保留。保持本次输入的语言，不翻译；保留否定、条件和不确定性。仅整理本次输入，不复制示例内容。只输出正文及结束标签。
 """
 
     public static let balancedPolish = """
@@ -144,7 +116,7 @@ public struct RefinementPrompts {
     public static func prompt(for mode: Refinement) -> String? {
         switch mode {
         case .original: return nil
-        case .light: return level1LightPolish
+        case .light: return nil
         case .balanced: return balancedPolish
         case .moderate: return level2DeepOptimization
         case .rewrite: return level3ProfessionalRewrite
@@ -259,12 +231,27 @@ public enum TextCleanup {
     }
 
     public static func light(_ input: String) -> String {
+        // Only standalone, comma-delimited hesitations are removed. Keep words
+        // such as “那个”, “啊不”, “well”, “like” and “you know”: they can carry meaning.
+        // Preserve line breaks, names, case, numbers, URLs and correction history.
         var text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
-        text = text.replacingOccurrences(of: "(?:^|[，,])[ \\t]*[嗯呃啊][，,][ \\t]*", with: "，", options: .regularExpression)
-        text = text.replacingOccurrences(of: "^[，,\\s]+", with: "", options: .regularExpression)
-        text = text.replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let patterns = [
+            #"(?m)^[ \t]*(?:嗯+|呃+|啊+)[，,][ \t]*"#,
+            #"(?<=[，,])[ \t]*(?:嗯+|呃+|啊+)[，,][ \t]*"#,
+            #"(?im)^[ \t]*(?:um+|uh+|erm)[,][ \t]*"#,
+            #"(?i)(?<=[,])[ \t]*(?:um+|uh+|erm)[,][ \t]*"#
+        ]
+        for pattern in patterns {
+            var previous: String
+            repeat {
+                previous = text
+                text = text.replacingOccurrences(of: pattern, with: pattern.contains("(?i)(?<=[,])") ? " " : "", options: .regularExpression)
+            } while text != previous
+        }
+        text = text.replacingOccurrences(of: #"[ \t]{2,}"#, with: " ", options: .regularExpression)
+        // Never erase an utterance made entirely of hesitations.
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? input : text
+
     }
 }
 
@@ -293,15 +280,17 @@ public struct Pipeline: Sendable {
         onEvent(.transcriptionStarted)
         let original: String
         do {
-            original = try await transcription.transcribe(samples: samples, language: language).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !original.isEmpty else { throw VoiceBuddyError.emptyTranscript }
+            original = try await transcription.transcribe(samples: samples, language: language)
+            guard !original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw VoiceBuddyError.emptyTranscript }
             onEvent(.transcriptionCompleted)
         } catch { onEvent(.transcriptionFailed); throw error }
         try Task.checkCancellation()
         switch mode {
         case .original:
             return (original, original)
-        case .light, .balanced, .moderate, .rewrite:
+        case .light:
+            return (original, TextCleanup.light(original))
+        case .balanced, .moderate, .rewrite:
             onEvent(.refinementStarted)
             do {
                 let result = try await refinement.refine(original, mode: mode).trimmingCharacters(in: .whitespacesAndNewlines)

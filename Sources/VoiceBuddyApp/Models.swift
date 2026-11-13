@@ -560,6 +560,7 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
     }
     func refine(_ text: String, mode: Refinement) async throws -> String {
+        if mode == .light { return TextCleanup.light(text) }
         guard let instruction = RefinementPrompts.prompt(for: mode) else {
             return text
         }

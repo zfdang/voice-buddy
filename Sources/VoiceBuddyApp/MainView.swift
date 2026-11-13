@@ -266,7 +266,7 @@ struct MainView: View {
 
         let textSubtitle: String = {
             if !state.preferences.refinement.needsModel {
-                return t("Light mode (No LLM needed)", "轻度调整 (无需大模型)")
+                return t("Original / Light (No LLM needed)", "原文 / 轻度（无需大模型）")
             }
             if state.isActivatingTextModel { return t("Loading into memory…", "载入内存中…") }
             if isCurrentTextDownloading { return t("Downloading…", "下载中…") }
@@ -1177,7 +1177,7 @@ struct MainView: View {
                 } else {
                     settingRow(
                         title: t("Active Refinement Model", "当前生效模型"),
-                        subtitle: t("Local LLM used for all refinement modes except Original", "用于轻度、适度、深度和专业改写的端侧大语言模型")
+                        subtitle: t("Local LLM used for Moderate, Deep and Professional Rewrite", "用于适度、深度和专业改写的端侧大语言模型")
                     ) {
                         Picker("", selection: Binding(
                             get: { state.preferences.textModel },
@@ -1215,7 +1215,7 @@ struct MainView: View {
                         } else if !state.preferences.refinement.needsModel {
                             Image(systemName: "info.circle")
                                 .foregroundStyle(.secondary)
-                            Text(t("Current mode is Original (no text model required, so not loaded into memory).", "当前选择的是原文模式，不需要使用文本模型，因此未载入内存。"))
+                            Text(t("Original and Light modes do not require a text model.", "原文和轻度模式不需要加载文本模型；轻度使用本地规则整理。"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
@@ -1257,7 +1257,8 @@ struct MainView: View {
                     HStack(alignment: .top, spacing: 10) {
                         Text("•")
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(t("Light, Moderate, Deep & Professional Rewrite", "轻度、适度、深度与专业改写模式")).font(.subheadline.bold())
+                            Text(t("Light uses local rules to normalize whitespace and remove standalone hesitations; it preserves self-corrections and does not load a text model.", "轻度使用本地规则整理空白、去除独立填充词，保留改口过程，不加载文本模型。")).font(.caption).foregroundStyle(.secondary)
+                            Text(t("Moderate, Deep & Professional Rewrite", "适度、深度与专业改写模式")).font(.subheadline.bold())
                             Text(t("Run 100% locally via Apple Silicon unified memory to polish speech, fix homophone errors, remove oral fillers, or reconstruct formal lists. If the text model is ever unavailable, the system automatically degrades gracefully to inputting the original transcript.", "在 Apple 统一内存上本地调用轻量端侧大模型，进行同音纠错、口癖过滤、语病自改与条理化重构。全程 100% 离线隐私。若大模型尚未就绪或遇到异常，系统将自动优雅降级，直接输入识别原文，绝不耽误输入。")).font(.caption).foregroundStyle(.secondary)
                         }
                     }

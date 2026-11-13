@@ -69,7 +69,7 @@ final class PipelineTests: XCTestCase {
         let p = Pipeline(detector: Detector(value: true), transcription: ASR(text: "  hello   world  "), refinement: Editor(text: "edited"))
         let raw = try await p.run(samples: [1], language: "en", mode: .original)
         let light = try await p.run(samples: [1], language: "en", mode: .light)
-        XCTAssertEqual(raw.result, "hello   world"); XCTAssertEqual(light.result, "edited")
+        XCTAssertEqual(raw.result, "  hello   world  "); XCTAssertEqual(light.result, "hello world")
     }
     func testRefinementAndEmptyResponse() async throws {
         let p = Pipeline(detector: Detector(value: true), transcription: ASR(text: "hello"), refinement: Editor(text: "rewritten"))
@@ -82,7 +82,7 @@ final class PipelineTests: XCTestCase {
         XCTAssertEqual(Refinement.allCases, [.original, .light, .balanced, .moderate, .rewrite])
         XCTAssertNil(RefinementPrompts.prompt(for: .original))
         let prompts = Refinement.allCases.dropFirst().compactMap { RefinementPrompts.prompt(for: $0) }
-        XCTAssertEqual(Set(prompts).count, 4)
+        XCTAssertEqual(Set(prompts).count, 3)
         let legacy = try JSONDecoder().decode(Preferences.self, from: Data(#"{"refinement":"moderate"}"#.utf8))
         XCTAssertEqual(legacy.refinement, .moderate)
         XCTAssertEqual(RefinementPrompts.prompt(for: legacy.refinement), RefinementPrompts.level2DeepOptimization)
@@ -167,6 +167,23 @@ extension PipelineTests {
         let output = TextCleanup.light(input)
         XCTAssertEqual(output, "明天，啊不，周五跟小王讨论预算，大概十万")
         XCTAssertEqual(TextCleanup.light("嗯，今天天气真好"), "今天天气真好")
+    }
+    func testRuleOnlyModesAndConservativeEnglishCleanup() async throws {
+        XCTAssertFalse(Refinement.original.needsModel)
+        XCTAssertFalse(Refinement.light.needsModel)
+        XCTAssertNil(RefinementPrompts.prompt(for: .light))
+        XCTAssertTrue(Refinement.balanced.needsModel)
+        XCTAssertEqual(TextCleanup.light("Um, send it, uh, tomorrow."), "send it, tomorrow.")
+        for text in ["Well, I like that.", "那个按钮不要删", "啊不，是两点", "嗯", "https://example.com/a_b?x=1", "I paid 1,000.50 dollars."] {
+            XCTAssertEqual(TextCleanup.light(text), text)
+        }
+        let raw = "  hello   world\n"
+        let pipeline = Pipeline(detector: Detector(value: true), transcription: ASR(text: raw), refinement: Editor(text: ""))
+        let original = try await pipeline.run(samples: [1], language: "en", mode: .original)
+        XCTAssertEqual(original.result, raw)
+        let light = try await pipeline.run(samples: [1], language: "en", mode: .light)
+        XCTAssertEqual(light.result, "hello world")
+        XCTAssertEqual(light.original, raw)
     }
     func testPreferencesDefaults() {
         let prefs = Preferences()
