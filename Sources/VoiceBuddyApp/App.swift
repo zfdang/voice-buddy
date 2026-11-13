@@ -1117,6 +1117,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         targetElement: AXUIElement? = nil,
         sessionID: UUID? = nil
     ) -> Bool {
+        let fallbackChangeCount = NSPasteboard.general.changeCount
         let effPID = targetPID ?? self.targetPID
         let initialElement = targetElement ?? self.targetElement
         let logSession = diagnosticSession
@@ -1156,12 +1157,18 @@ public enum AppTab: Int, CaseIterable, Identifiable {
            currentFrontPID != effPID && currentFrontPID != myPID {
             DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=frontmost_changed front_pid=\(currentFrontPID)")
             insertFailure = label("Target application changed; open Result to review the text.", "目标应用已切换，请打开结果页查看文字。")
+            if TemporaryPasteboard.copyForManualPaste(text, expectedChangeCount: fallbackChangeCount, sensitive: sensitiveTarget || TargetAccessibility.isSensitiveDestination(element: currentFocus.element)) {
+                insertFailure = label("Focus changed; text copied. Press ⌘V to paste manually.", "焦点已变化，文字已复制，可按 ⌘V 手动粘贴。")
+            }
             return false
         }
         // 4b. Check if focused element switched within the same application (fail-closed for security)
         guard let initial = initialElement, let current = currentElem, CFEqual(initial, current) else {
             DiagnosticLog.shared.record("insert.rejected id=\(logSession) reason=focus_unverified")
             insertFailure = label("Cannot verify the focused input; open Result to review the text.", "无法确认输入框焦点，请打开结果页查看文字。")
+            if TemporaryPasteboard.copyForManualPaste(text, expectedChangeCount: fallbackChangeCount, sensitive: sensitiveTarget || TargetAccessibility.isSensitiveDestination(element: currentFocus.element)) {
+                insertFailure = label("Focus changed; text copied. Press ⌘V to paste manually.", "焦点已变化，文字已复制，可按 ⌘V 手动粘贴。")
+            }
             return false
         }
         // 5. Universal Insertion via Clipboard + Hardware-level Synthesized ⌘V (100% of apps supported)
@@ -1218,10 +1225,13 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 let sensitive = TargetAccessibility.isSensitiveDestination(element: liveFocus)
                 DiagnosticLog.shared.record("insert.final_check id=\(logSession) front_pid=\(frontPID) focus_present=\(liveFocus != nil) focus_matches=\(focusMatches) sensitive=\(sensitive)")
                 guard frontPID == effPID, focusMatches, (!sensitive || sensitiveTarget) else {
-                    _ = temporaryClipboard.restore()
+                    let copied = temporaryClipboard.retainForManualPaste(text, sensitive: sensitiveTarget || sensitive)
+                    if !copied { _ = temporaryClipboard.restore() }
                     if self.activePasteboardSession === temporaryClipboard { self.activePasteboardSession = nil }
-                    DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=final_focus_unverified")
-                    self.status = self.label("Could not verify the target. Open Result to review the text.", "无法确认目标输入框，请打开结果页查看文字。")
+                    DiagnosticLog.shared.record("insert.cancelled id=\(logSession) reason=final_focus_unverified manual_copy=\(copied)")
+                    self.status = copied
+                        ? self.label("Focus changed; text copied. Press ⌘V to paste manually.", "焦点已变化，文字已复制，可按 ⌘V 手动粘贴。")
+                        : self.label("Could not verify the target. Open Result to review the text.", "无法确认目标输入框，请打开结果页查看文字。")
                     self.overlay.showStatus(state: self)
                     return
                 }
