@@ -10,10 +10,16 @@ let package = Package(
         .package(url: "https://github.com/zfdang/speech-swift.git", revision: "d4b9b9a67863bafcf60e37e06e6ffcb324a53407"),
         .package(url: "https://github.com/sindresorhus/LaunchAtLogin.git", from: "5.0.0"),
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts.git", from: "1.9.0"),
-        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0")
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
+        .package(url: "https://github.com/xzjh/chinese-itn-swift.git", from: "0.3.0")
     ],
     targets: [
-        .target(name: "VoiceBuddyCore"),
+        .target(
+            name: "VoiceBuddyCore",
+            dependencies: [
+                .product(name: "ChineseITN", package: "chinese-itn-swift")
+            ]
+        ),
         .executableTarget(
             name: "VoiceBuddyApp",
             dependencies: [
