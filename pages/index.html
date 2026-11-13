@@ -50,8 +50,8 @@
   <div class="bg-ink text-white text-xs sm:text-sm py-2 px-4 border-b border-white/10">
     <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
       <div class="flex items-center gap-2">
-        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-limeAccent text-ink">LOCAL</span>
-        <span>100% 本地端侧 AI 语音输入搭子</span>
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-limeAccent text-ink">NEW v1.2.0</span>
+        <span>100% 本地端侧 AI 语音输入搭子 · 现已支持五档智能润色、轻度本地规整与毫秒级响应</span>
       </div>
       <a href="https://remote.zfdang.com/" target="_blank" rel="noopener" class="text-limeAccent hover:underline font-medium inline-flex items-center gap-1">
         寻找「遥控搭子 Remote Buddy」？前往 remote.zfdang.com →
@@ -88,8 +88,8 @@
           <span>🌐</span>
           <span>EN</span>
         </a>
-        <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.1.1" target="_blank" rel="noopener" class="px-3.5 py-2 rounded-xl bg-ink text-white hover:bg-neutral-800 text-xs sm:text-sm font-semibold transition shadow-sm">
-          下载 v1.1.1 ↗
+        <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.2.0" target="_blank" rel="noopener" class="px-3.5 py-2 rounded-xl bg-ink text-white hover:bg-neutral-800 text-xs sm:text-sm font-semibold transition shadow-sm">
+          下载 v1.2.0 ↗
         </a>
       </div>
     </div>
@@ -115,12 +115,12 @@
 
         <!-- 主下载按钮组 -->
         <div class="pt-2 flex flex-wrap items-center gap-3">
-          <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.dmg" class="px-6 py-3.5 rounded-2xl bg-ink text-white hover:bg-neutral-800 font-bold text-sm sm:text-base flex items-center gap-2.5 shadow-lg shadow-black/10 transition transform hover:-translate-y-0.5">
+          <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.2.0/Voice-Buddy-v1.2.0-macOS.dmg" class="px-6 py-3.5 rounded-2xl bg-ink text-white hover:bg-neutral-800 font-bold text-sm sm:text-base flex items-center gap-2.5 shadow-lg shadow-black/10 transition transform hover:-translate-y-0.5">
             <span>↓</span>
             <span>下载 macOS 安装包 (.dmg)</span>
-            <span class="text-xs px-2 py-0.5 rounded-md bg-limeAccent text-ink font-mono font-bold">v1.1.1</span>
+            <span class="text-xs px-2 py-0.5 rounded-md bg-limeAccent text-ink font-mono font-bold">v1.2.0</span>
           </a>
-          <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.zip" class="px-5 py-3.5 rounded-2xl bg-white hover:bg-neutral-100 text-ink border border-black/15 font-semibold text-sm sm:text-base transition">
+          <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.2.0/Voice-Buddy-v1.2.0-macOS.zip" class="px-5 py-3.5 rounded-2xl bg-white hover:bg-neutral-100 text-ink border border-black/15 font-semibold text-sm sm:text-base transition">
             ZIP 绿色便携版
           </a>
           <a href="https://github.com/zfdang/voice-buddy" target="_blank" rel="noopener" class="px-4 py-3.5 rounded-2xl text-neutral-600 hover:text-ink font-medium text-sm flex items-center gap-1 transition">
@@ -131,7 +131,7 @@
 
         <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-neutral-500 font-medium pt-1">
           <span>💻 适用于 Apple Silicon (M 系列芯片) · macOS 15.0+</span>
-          <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.1.1" target="_blank" rel="noopener" class="underline hover:text-ink">查看 v1.1.1 发行说明 →</a>
+          <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.2.0" target="_blank" rel="noopener" class="underline hover:text-ink">查看 v1.2.0 发行说明 →</a>
         </div>
       </div>
 
@@ -175,7 +175,7 @@
           <!-- 底部小字标注 -->
           <div class="mt-5 pt-3 border-t border-black/5 flex items-center justify-between w-full text-[11px] text-neutral-500 font-mono z-10">
             <span>✳ 思路不打断，文字自然来。</span>
-            <span class="font-bold">纯本地端侧 AI <span class="text-lime-600">v1.1.1</span></span>
+            <span class="font-bold">纯本地端侧 AI <span class="text-lime-600">v1.2.0</span></span>
           </div>
         </div>
       </div>
@@ -256,14 +256,15 @@
           </p>
         </div>
 
-        <!-- 4 档整理力度切换标签 -->
+        <!-- 5 档整理力度切换标签 -->
         <div class="flex flex-col gap-1.5">
-          <span class="text-xs text-neutral-500 font-semibold">点击体验 4 档文字整理力度：</span>
-          <div class="inline-flex p-1 rounded-2xl bg-cream border border-black/10 text-xs sm:text-sm font-semibold" role="tablist" aria-label="文字整理力度">
-            <button type="button" role="tab" id="tab-raw" aria-controls="polishedTextBox" aria-selected="false" data-level="raw" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">原文 (无整理)</button>
-            <button type="button" role="tab" id="tab-light" aria-controls="polishedTextBox" aria-selected="true" data-level="light" class="level-tab px-3 py-1.5 rounded-xl bg-ink text-white shadow-sm transition">轻度整理 (Level 1 · 默认)</button>
-            <button type="button" role="tab" id="tab-moderate" aria-controls="polishedTextBox" aria-selected="false" data-level="moderate" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">深度优化 (Level 2)</button>
-            <button type="button" role="tab" id="tab-rewrite" aria-controls="polishedTextBox" aria-selected="false" data-level="rewrite" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">专业重构 (Level 3)</button>
+          <span class="text-xs text-neutral-500 font-semibold">点击体验 5 档文字整理力度：</span>
+          <div class="inline-flex p-1 rounded-2xl bg-cream border border-black/10 text-xs sm:text-sm font-semibold flex-wrap" role="tablist" aria-label="文字整理力度">
+            <button type="button" role="tab" id="tab-raw" aria-controls="polishedTextBox" aria-selected="false" data-level="raw" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">原文直出</button>
+            <button type="button" role="tab" id="tab-light" aria-controls="polishedTextBox" aria-selected="true" data-level="light" class="level-tab px-3 py-1.5 rounded-xl bg-ink text-white shadow-sm transition">轻度规整 (Level 1 · 默认)</button>
+            <button type="button" role="tab" id="tab-moderate" aria-controls="polishedTextBox" aria-selected="false" data-level="moderate" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">适度优化 (Level 2)</button>
+            <button type="button" role="tab" id="tab-deep" aria-controls="polishedTextBox" aria-selected="false" data-level="deep" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">深度润色 (Level 3)</button>
+            <button type="button" role="tab" id="tab-rewrite" aria-controls="polishedTextBox" aria-selected="false" data-level="rewrite" class="level-tab px-3 py-1.5 rounded-xl text-neutral-600 hover:text-ink transition">结构总结 (Level 4)</button>
           </div>
         </div>
       </div>
@@ -275,7 +276,7 @@
           <div class="space-y-3">
             <div class="flex items-center justify-between">
               <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-neutral-200 text-neutral-700">原始语音识别</span>
-              <span class="text-xs font-mono text-neutral-500">Qwen3-ASR / Whisper Turbo</span>
+              <span class="text-xs font-mono text-neutral-500">Qwen3-ASR / Whisper Turbo / SenseVoice</span>
             </div>
             <blockquote id="rawTranscriptBox" class="text-base sm:text-lg text-neutral-600 leading-relaxed italic">
               “呃李经理那个关于下周排期计划我们下午两点开个短会过一下然后测试同学记得把用例准备好就这样”
@@ -291,15 +292,15 @@
           <div class="space-y-3">
             <div class="flex items-center justify-between">
               <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-limeAccent text-ink" id="polCardBadge">AI 智能整理结果</span>
-              <span id="activeLevelTag" class="text-xs font-mono text-limeAccent">本地 Qwen 模型 · 轻度整理 (Level 1 · 默认)</span>
+              <span id="activeLevelTag" class="text-xs font-mono text-limeAccent">纯本地规则清洗 · 轻度规整 (Level 1 · 默认)</span>
             </div>
             <blockquote id="polishedTextBox" class="text-lg sm:text-xl text-white font-semibold leading-relaxed">
               “李经理，关于下周排期计划，我们下午两点开个短会过一下，测试同学记得把用例准备好。”
             </blockquote>
           </div>
           <div class="pt-3 border-t border-white/10 flex items-center justify-between text-xs text-emerald-300">
-            <span id="polCardFoot">✓ 基础清洁 · 剔除语气废话与口癖 · 补全标点并保持原意原调</span>
-            <span class="font-mono">v1.1.1 结果中心实测</span>
+            <span id="polCardFoot">✓ 纯本地规则清洗 · 去除多余空格与逗号孤立口癖 · 零模型开销与毫秒级即时响应</span>
+            <span class="font-mono">v1.2.0 结果中心实测</span>
           </div>
         </div>
       </div>
@@ -307,7 +308,7 @@
       <div class="p-4 sm:p-5 rounded-2xl bg-lavender/60 border border-indigo-200 text-xs sm:text-sm text-neutral-700 flex items-center gap-3">
         <span class="text-lg">✨</span>
         <p>
-          <strong>客户端中的 4 档整理力度：</strong>你可以在客户端「通用设置 → 文字整理力度」中按需选择：<strong>原文 (无整理)</strong>、<strong>轻度整理 (Level 1)</strong>、<strong>深度优化 (Level 2)</strong> 或 <strong>专业重构 (Level 3)</strong>。在结果面板中，更可随时一键对比两版并重新插入！
+          <strong>客户端中的 5 档整理力度：</strong>你可以在客户端「通用设置 → 文字整理力度」中按需选择：<strong>原文直出</strong>、<strong>轻度规整 (Level 1 · 纯本地规则零延迟)</strong>、<strong>适度优化 (Level 2)</strong>、<strong>深度润色 (Level 3)</strong> 或 <strong>结构总结 (Level 4 · 自动提炼与排版)</strong>。在结果面板中，更可针对单次录音随时快速切换对比并重新插入！
         </p>
       </div>
     </div>
@@ -517,14 +518,14 @@
       </p>
 
       <div class="pt-2 flex flex-wrap items-center justify-center gap-4">
-        <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.dmg" class="px-7 py-4 rounded-2xl bg-limeAccent text-ink hover:brightness-95 font-extrabold text-sm sm:text-base transition shadow-lg">
-          <span>↓ 下载 Voice Buddy v1.1.1 (DMG)</span>
+        <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.2.0/Voice-Buddy-v1.2.0-macOS.dmg" class="px-7 py-4 rounded-2xl bg-limeAccent text-ink hover:brightness-95 font-extrabold text-sm sm:text-base transition shadow-lg">
+          <span>↓ 下载 Voice Buddy v1.2.0 (DMG)</span>
         </a>
-        <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.zip" class="px-6 py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white border border-white/15 font-semibold text-sm sm:text-base transition">
+        <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.2.0/Voice-Buddy-v1.2.0-macOS.zip" class="px-6 py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white border border-white/15 font-semibold text-sm sm:text-base transition">
           ZIP 绿色便携版
         </a>
-        <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.1.1" target="_blank" rel="noopener" class="px-5 py-4 rounded-2xl text-neutral-300 hover:text-white text-sm font-medium underline">
-          发行说明 (v1.1.1) ↗
+        <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.2.0" target="_blank" rel="noopener" class="px-5 py-4 rounded-2xl text-neutral-300 hover:text-white text-sm font-medium underline">
+          发行说明 (v1.2.0) ↗
         </a>
       </div>
 
@@ -564,22 +565,24 @@
       });
     }
 
-    // 4 档文字整理力度样本与特性说明
+    // 5 档文字整理力度样本与特性说明
     const refineSamples = {
       raw: '“呃李经理那个关于下周排期计划我们下午两点开个短会过一下然后测试同学记得把用例准备好就这样”',
       light: '“李经理，关于下周排期计划，我们下午两点开个短会过一下，测试同学记得把用例准备好。”',
-      moderate: '“关于下周排期计划，我们下午 2 点开短会集中讨论。请测试团队提前备好测试用例。”',
-      rewrite: '“李经理您好，关于下周版本排期计划，建议今日 14:00 召开评审短会，请测试团队提前备齐相关测试用例。”'
+      moderate: '“李经理，关于下周排期计划，我们下午两点开个短会过一下。测试同学记得提前把用例准备好。”',
+      deep: '“李经理您好，关于下周排期计划，我们下午 14:00 集中开短会过一下，请测试团队提前备齐相关测试用例。”',
+      rewrite: '“【下周排期评审短会】\n• 时间：今日下午 14:00\n• 事项：过下周排期计划\n• 准备：测试团队备齐相关测试用例”'
     };
 
     const levelFooters = {
-      raw: '— 声学直出转录 · 未经本地大语言模型二次处理',
-      light: '✓ 基础清洁 · 剔除语气废话与口癖 · 补全标点并保持原意原调',
-      moderate: '✓ 消除口误改口 · 修复病句语序倒装 · 顺滑为自然流畅书面语',
-      rewrite: '✓ 彻底脱离口语 · 提炼要点与结构化 · 高效专业重构'
+      raw: '— 声学直出转录 · 未经任何模型与规则处理',
+      light: '✓ 纯本地规则清洗 · 去除多余空格与逗号孤立口癖 · 零模型开销与毫秒级即时响应',
+      moderate: '✓ 端侧小模型优化 · 标点精确补全 · 轻微语病修剪并紧密贴合原句',
+      deep: '✓ 端侧模型深度梳理 · 消除改口与语序倒装 · 表达通顺得体书面化',
+      rewrite: '✓ 结构化重构 · 核心要点清晰提炼 · 适用于会议记录、通知与正式文档'
     };
 
-    // 4 档整理力度切换
+    // 5 档整理力度切换
     document.querySelectorAll('.level-tab').forEach(btn => {
       btn.addEventListener('click', () => {
         const level = btn.getAttribute('data-level');
@@ -595,7 +598,10 @@
         const tagEl = document.getElementById('activeLevelTag');
         if (level === 'raw') {
           if (badgeEl) badgeEl.textContent = '原始文本直出';
-          if (tagEl) tagEl.textContent = '本地大模型：未启用';
+          if (tagEl) tagEl.textContent = '文本模型：未启用（声学直接输出）';
+        } else if (level === 'light') {
+          if (badgeEl) badgeEl.textContent = '本地规则清洗';
+          if (tagEl) tagEl.textContent = '纯本地规则引擎 · ' + btn.textContent;
         } else {
           if (badgeEl) badgeEl.textContent = 'AI 智能整理结果';
           if (tagEl) tagEl.textContent = '本地 Qwen 模型 · ' + btn.textContent;

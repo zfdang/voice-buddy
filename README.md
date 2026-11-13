@@ -3,7 +3,7 @@
 > **100% 本地运行的 macOS 语音输入搭子 · 零数据上云 · 隐私安全**
 >
 > 🌐 **官方网站**：[https://myvoicebuddy.com](https://myvoicebuddy.com)  
-> 📦 **最新版本**：[v1.1.0 Releases](https://github.com/zfdang/voice-buddy/releases/tag/v1.1.0) · 适用于 Apple Silicon (M1/M2/M3/M4) · macOS 15.0+
+> 📦 **最新版本**：[v1.2.0 Releases](https://github.com/zfdang/voice-buddy/releases/tag/v1.2.0) · 适用于 Apple Silicon (M1/M2/M3/M4) · macOS 15.0+
 
 Voice Buddy 是一款从底层遵循「本地优先（Local-First）」哲学打造的 macOS 极速语音输入工具。无论是在微信、飞书、文档、浏览器还是终端中，长按快捷键说话，松手即可直接在当前光标位置自动完成端侧转写、大模型智能润色并键入文字。
 
@@ -21,25 +21,31 @@ Voice Buddy 是一款从底层遵循「本地优先（Local-First）」哲学打
 - **零 API 费用与额度焦虑**：无需配置 OpenAI、DeepSeek、百度等云端 Key，无需按字按次扣费，无使用门槛。
 - **密码框拦截与剪贴板防护**：焦点移入密码输入控件时自动拦截，防止敏感信息误注入；剪贴板写入自带 macOS Transient 瞬态隐私标记，不污染 Raycast、Paste、Maccy 等剪贴板历史工具。
 
-### 2. 语音识别 + 本地大模型智能整理润色（双重效果对比）
-- **声学识别与大模型协同**：说话时不可避免的口癖、倒装与停顿，由本地大模型毫秒级消除“嗯、啊、那个、就是说”等语气词，自动规范标点、修整语法。
+### 2. 语音识别 + 本地智能整理润色（双重效果对比）
+- **声学识别与端侧智能协同**：说话时不可避免的口癖、倒装与停顿，毫秒级消除“嗯、啊、那个、就是说”等语气词，自动规范标点、修整语法。
 - **全新「结果」中心与双列对比**：
-  - 支持直观对比「原始语音识别结果」与「AI 整理润色结果」。
-  - 支持历史结果回溯、一键复制，或直接一键再次插入到光标所在处。
-- **多档位整理力度自由切换**：
-  - **原文直出（Original）**：纯声学识别结果，保留原生词句。
-  - **轻微整理（Light，默认推荐）**：毫秒级过滤语气助词与口癖，补齐标点。
-  - **适度整理（Moderate）**：由本地大语言模型进行语法重构与书面化转换。
-  - **完全重写（Rewrite）**：由本地大模型进行书面表达提炼与深度润色。
+  - 直观对比「原始语音识别结果」与「AI 整理润色结果」。
+  - 支持多档位重选测试（Test）、一键复制，或直接再次插入到当前应用光标处。
+- **五档文字整理力度自由切换**：
+  - **原文直出（Original）**：纯声学识别结果直出，不加载文本模型，零额外开销。
+  - **轻度规整（Light，默认推荐）**：纯本地确定性规则清洗，规范多余空格与逗号孤立口癖词，保护原始语意与改口历史，零模型内存开销与毫秒级即时响应。
+  - **适度优化（Moderate）**：由轻量端侧大模型补全标点、修剪语病，严密保留原句原意。
+  - **深度润色（Deep）**：由端侧大模型深度梳理语句结构与倒装，使书面表达更加流畅得体。
+  - **结构总结 / 专业重构（Professional Rewrite / Summarized）**：自动提炼口语核心要点，分条列项排版，适合会议纪要与长篇构思。
 
 ### 3. 多引擎声学模型自由适配
 - **Whisper Large-v3 Turbo** (CoreML · 980 MB)：全球 90+ 语言全覆盖，专业多语言与纯英文霸主，支持 Apple Neural Engine (ANE) 硬件加速。
 - **SenseVoice Small** (CoreML · 230 MB)：30~80ms 极速瞬间响应，中英粤日韩五语首选，超低显存开销。
-- **Qwen3-ASR** (MLX · 1.5 GB)：旗舰中英混说识别，技术术语与专业词汇高精听写。
+- **Qwen3-ASR** (MLX · 960 MB ~ 1.7 GB)：旗舰中英混说识别，技术术语与专业词汇高精听写。
 - **Apple Speech** (系统原生 · 0 MB)：系统内置听写服务，0 磁盘占用，免下载即刻可用。
 
-### 4. 为 macOS 深度定制的输入体验
-- **跨应用光标直入**：全局系统级唤醒，无需切换到专门的录音或记事窗口，在当前文本框直接打字。
+### 4. 4 款分级本地文本模型矩阵
+- **Qwen 3.5 0.8B (INT5 / INT8)**：极速轻量，显存占用极低，日常快速听写与标点整理首选。
+- **Qwen 3 1.7B (Dense 4-bit)**：逻辑进阶，倒装句理顺与口语重构更自然，理解力强。
+- **Qwen 3 4B (4-bit)**：深度重写与旗舰级指令遵循，深度段落逻辑重构与书面文风润色。
+
+### 5. 为 macOS 深度定制的输入体验
+- **跨应用光标直入与粘贴保护**：全局系统级唤醒，无需切换应用窗口；若遇无法直接输入的特殊控件，自动保留在剪贴板并提示一键 `Cmd+V` 粘贴。
 - **极简单键长按（Fn / 🌐 键）**：单手长按键盘左下角的 Fn / 🌐 地球键即可自由倾诉，松手即打字。
 - **智能背景音乐暂停**：录音时自动检测并暂停 Apple Music、IINA、Movist Pro、QuickTime 等背景播放器，松手后无缝恢复，告别杂音干扰。
 - **随按随消**：说话中途轻按 `Esc` 键即可即时放弃本次输入，不打扰当前节奏。
@@ -65,14 +71,28 @@ Voice Buddy 是一款从底层遵循「本地优先（Local-First）」哲学打
 
 | 交付形式 | 下载链接 | 说明 |
 | :--- | :--- | :--- |
-| **DMG 安装镜像 (推荐)** | [Voice-Buddy-v1.1.1-macOS.dmg](https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.dmg) | 双击打开并将 Voice Buddy 拖入「应用程序」即可 |
-| **ZIP 绿色压缩包** | [Voice-Buddy-v1.1.1-macOS.zip](https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/Voice-Buddy-v1.1.1-macOS.zip) | 解压即用 |
-| **校验和文件** | [SHA256SUMS.txt](https://github.com/zfdang/voice-buddy/releases/download/v1.1.1/SHA256SUMS.txt) | SHA256 完整性校验 |
+| **DMG 安装镜像 (推荐)** | [Voice-Buddy-v1.2.0-macOS.dmg](https://github.com/zfdang/voice-buddy/releases/download/v1.2.0/Voice-Buddy-v1.2.0-macOS.dmg) | 双击打开并将 Voice Buddy 拖入「应用程序」即可 |
+| **ZIP 绿色压缩包** | [Voice-Buddy-v1.2.0-macOS.zip](https://github.com/zfdang/voice-buddy/releases/download/v1.2.0/Voice-Buddy-v1.2.0-macOS.zip) | 解压即用 |
+| **校验和文件** | [SHA256SUMS.txt](https://github.com/zfdang/voice-buddy/releases/download/v1.2.0/SHA256SUMS.txt) | SHA256 完整性校验 |
 
 ### 首次配置步骤
 1. 打开应用，按引导授予「麦克风」权限（用于录音）与「辅助功能」权限（用于自动向光标处键入文字）。
-2. 在「语音识别」设置中，一键下载你喜爱的端侧声学模型（如 Whisper Turbo 或 SenseVoice Small）。
+2. 在「语音识别」设置中，一键下载你喜爱的端侧声学模型（如 Whisper Turbo、SenseVoice Small 或 Qwen3 ASR）。
 3. 模型下载完成后，所有后续录音、识别与润色即可**100% 离线脱网运行**。
+
+---
+
+## 📸 软件界面预览
+
+采用 Remote Buddy 经典侧边栏架构，模块清晰，操作跟手：
+
+| 通用设置与五档润色 | 识别结果与多级测试 |
+| :---: | :---: |
+| ![通用设置](docs/images/01_settings_general.png) | ![识别结果对比](docs/images/06_settings_results.png) |
+
+| 多引擎语音识别模型 | 4 款分级端侧文本大模型 |
+| :---: | :---: |
+| ![语音识别模型](docs/images/02_settings_speech_model.png) | ![文本大模型](docs/images/03_settings_text_model.png) |
 
 ---
 
