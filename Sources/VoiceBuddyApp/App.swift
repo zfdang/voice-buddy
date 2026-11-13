@@ -458,7 +458,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         let started = Date()
         var loadDuration: TimeInterval = 0
         var refineDuration: TimeInterval = 0
-        var usedConservativeResult = false
         do {
             let output: String
             if mode == .original {
@@ -477,7 +476,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 let refineStarted = Date()
                 output = try await tester.refine(source, mode: mode)
                 refineDuration = Date().timeIntervalSince(refineStarted)
-                usedConservativeResult = await tester.refinementNotice != nil
                 if let reason = TextCleanup.unsafeReason(output, original: source) {
                     throw RefinementFailure(original: source, reason: reason)
                 }
@@ -499,9 +497,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 ? label("Load", "加载") + " \(String(format: "%.1f", loadDuration))s · " + label("Refine", "整理") + " \(String(format: "%.1f", refineDuration))s"
                 : label("Original text", "原文直出")
             refinementTestSummary = "\(names[mode] ?? mode.rawValue) · \(modelName) · \(timing)"
-            refinementTestStatus = usedConservativeResult
-                ? label("The rewrite lost content; showing a conservative version that preserves the original facts.", "模型改写未能完整保留原意，已使用保守整理版本。")
-                : label("Test complete", "测试完成")
+            refinementTestStatus = label("Test complete", "测试完成")
         } catch is CancellationError {
             refinementTestStatus = label("Test cancelled", "测试已取消")
         } catch {
@@ -1032,14 +1028,13 @@ public enum AppTab: Int, CaseIterable, Identifiable {
             }
             do {
                 let output = try await pipeline.run(samples: audio, language: settings.speechLanguage, mode: settings.refinement)
-                let refinementNotice = await models.refinementNotice
                 guard transcriptionGeneration == id else {
                     DiagnosticLog.shared.record("transcription.discarded id=\(logSession) reason=session_changed")
                     return
                 }
                 DiagnosticLog.shared.record("transcription.completed id=\(logSession) original_chars=\(output.original.count) refined_chars=\(output.result.count) mode=\(settings.refinement.rawValue)")
                 refinementTestSummary = ""
-                refinementTestStatus = refinementNotice == nil ? "" : label("The rewrite lost content; a conservative version was used.", "模型改写未能完整保留原意，已使用保守整理版本。")
+                refinementTestStatus = ""
                 original = output.original
                 result = output.result
                 busy = false

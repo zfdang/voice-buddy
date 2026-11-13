@@ -18,7 +18,7 @@ final class ParentMeetingRefinementTests: XCTestCase {
             let start = Date()
             do {
                 let output = try await engine.refine(input, mode: mode)
-                let item: [String: Any] = ["mode": mode.rawValue, "output": output, "seconds": Date().timeIntervalSince(start), "safety": TextCleanup.unsafeReason(output, original: input) ?? "accepted", "fallback": await engine.refinementNotice ?? "none"]
+                let item: [String: Any] = ["mode": mode.rawValue, "output": output, "seconds": Date().timeIntervalSince(start), "safety": TextCleanup.unsafeReason(output, original: input) ?? "accepted"]
                 let data = try JSONSerialization.data(withJSONObject: item, options: [.sortedKeys, .withoutEscapingSlashes])
                 FileHandle.standardError.write(Data("PROBE ".utf8) + data + Data("\n".utf8))
                 XCTAssertTrue(output.contains("三帆中学"), output)

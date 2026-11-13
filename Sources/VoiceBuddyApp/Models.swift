@@ -156,7 +156,6 @@ public struct TextModelSpec: Identifiable, Hashable, Sendable {
 }
 
 actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
-    private(set) var refinementNotice: String?
     private var asr: Qwen3ASRModel?
     private var whisper: WhisperASRModel?
     private var senseVoice: SenseVoiceASRModel?
@@ -561,12 +560,10 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
     }
     func refine(_ text: String, mode: Refinement) async throws -> String {
-        refinementNotice = nil
         guard let instruction = RefinementPrompts.prompt(for: mode) else {
             return text
         }
-        let input = mode == .light ? text : ExplicitCorrections.resolve(text)
-        let userMessage = "<asr_text>\(input)</asr_text>"
+        let userMessage = "<asr_text>\(text)</asr_text>"
         let tokenBudget = max(512, min(text.count * 4 + 128, 2048))
         let messages: [ChatMessage] = [
             .init(role: .system, content: instruction),
@@ -627,13 +624,6 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         let tokenCount = tokenizer.encode(trimmed).count
         if tokenCount >= tokenBudget || (text.count >= 40 && trimmed.count < max(12, text.count / 3)) {
             throw RefinementFailure(original: text, reason: "Refinement output exceeded token budget (\(tokenCount)/\(tokenBudget)) or was truncated (\(trimmed.count) chars)")
-        }
-        let correctionFailure = mode == .light ? nil : ExplicitCorrections.unsafeReason(trimmed, original: text)
-        let missingNouns = mode == .balanced ? RefinementContentGuard.missingNouns(in: trimmed, original: input) : []
-        if correctionFailure != nil || !missingNouns.isEmpty {
-            refinementNotice = "Content preservation fallback"
-            DiagnosticLog.shared.record("model.text.conservative_fallback mode=\(mode.rawValue) time_guard=\(correctionFailure != nil) missing_nouns=\(missingNouns.count)")
-            return TextCleanup.light(input)
         }
         DiagnosticLog.shared.record("model.text.refine_completed mode=\(mode.rawValue) duration_ms=\(elapsedMs) in_chars=\(text.count) out_chars=\(trimmed.count)")
         return trimmed
