@@ -1,5 +1,5 @@
 {
-  "originHash" : "273675e8834e39ce143910f12087ecfe66df5902b2736e199e0a57a094650e76",
+  "originHash" : "0a01d127dccc8f705f51a8945bb3a22c16eeece2e264329148794e169664b5f5",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "d2dfb39bcb0fafd1834ec6e6334c1755360f856e",
         "version" : "1.37.0"
+      }
+    },
+    {
+      "identity" : "chinese-itn-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/xzjh/chinese-itn-swift.git",
+      "state" : {
+        "revision" : "540add91e83f8e9b8ddd81a6d1fb7c47d74bbc33",
+        "version" : "0.3.0"
       }
     },
     {

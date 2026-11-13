@@ -1,4 +1,5 @@
 import Foundation
+import ChineseITN
 
 public enum Refinement: String, CaseIterable, Codable, Identifiable {
     /// Raw transcript; the only mode that does not require a text model.
@@ -230,28 +231,16 @@ public enum TextCleanup {
         return unsafeReason(result, original: original) == nil
     }
 
-    public static func light(_ input: String) -> String {
-        // Only standalone, comma-delimited hesitations are removed. Keep words
-        // such as “那个”, “啊不”, “well”, “like” and “you know”: they can carry meaning.
-        // Preserve line breaks, names, case, numbers, URLs and correction history.
-        var text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        let patterns = [
-            #"(?m)^[ \t]*(?:嗯+|呃+|啊+)[，,][ \t]*"#,
-            #"(?<=[，,])[ \t]*(?:嗯+|呃+|啊+)[，,][ \t]*"#,
-            #"(?im)^[ \t]*(?:um+|uh+|erm)[,][ \t]*"#,
-            #"(?i)(?<=[,])[ \t]*(?:um+|uh+|erm)[,][ \t]*"#
-        ]
-        for pattern in patterns {
-            var previous: String
-            repeat {
-                previous = text
-                text = text.replacingOccurrences(of: pattern, with: pattern.contains("(?i)(?<=[,])") ? " " : "", options: .regularExpression)
-            } while text != previous
-        }
-        text = text.replacingOccurrences(of: #"[ \t]{2,}"#, with: " ", options: .regularExpression)
-        // Never erase an utterance made entirely of hesitations.
-        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? input : text
+    private static let itnConfig = ChineseITNConfig(
+        removeInterjections: false
+    )
 
+    public static func light(_ input: String) -> String {
+        // Two-stage lightweight cleanup without loading large language models:
+        // 1. Rule-based denoiser: strips standalone filler words, stuttering, and repairs punctuation.
+        // 2. Inverse Text Normalization (ChineseITN): converts spoken Chinese numbers/dates/times to standard written forms.
+        let denoised = RuleBasedPolisher.polish(input)
+        return ChineseITN.normalize(denoised, config: itnConfig)
     }
 }
 

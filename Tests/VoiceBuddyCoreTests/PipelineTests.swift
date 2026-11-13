@@ -165,7 +165,7 @@ extension PipelineTests {
     func testLightRemovesFillersAndPreservesSelfCorrection() {
         let input = "明天，啊不，周五跟小王讨论预算，嗯，大概十万"
         let output = TextCleanup.light(input)
-        XCTAssertEqual(output, "明天，啊不，周五跟小王讨论预算，大概十万")
+        XCTAssertEqual(output, "明天，啊不，周五跟小王讨论预算，大概100000")
         XCTAssertEqual(TextCleanup.light("嗯，今天天气真好"), "今天天气真好")
     }
     func testRuleOnlyModesAndConservativeEnglishCleanup() async throws {
