@@ -1213,7 +1213,7 @@ struct MainView: View {
                         } else if !state.preferences.refinement.needsModel {
                             Image(systemName: "info.circle")
                                 .foregroundStyle(.secondary)
-                            Text(t("Current mode is Light/Original (no text model required, so not loaded into memory).", "当前选择的是轻微整理/原文模式，不需要使用 text 模型，所以没有加载。"))
+                            Text(t("Current mode is Original (no text model required, so not loaded into memory).", "当前选择的是原文模式，不需要使用文本模型，因此未载入内存。"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
