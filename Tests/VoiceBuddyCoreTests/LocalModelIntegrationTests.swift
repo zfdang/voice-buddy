@@ -124,10 +124,15 @@ extension LocalModelIntegrationTests {
 }
 
 private func cachedTextModel() async throws -> Qwen35MLXChat {
+    let modelID = ProcessInfo.processInfo.environment["VOICE_BUDDY_TEST_TEXT_MODEL"] ?? "qwen35-text-0.8b-int5"
+    let variant = modelID == "qwen35-text-0.8b-int8" ? "int8" : "int5"
+    guard ["qwen35-text-0.8b-int5", "qwen35-text-0.8b-int8"].contains(modelID) else {
+        throw XCTSkip("This evaluation supports the cached 0.8B int5 and int8 models.")
+    }
     let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("VoiceBuddy/Models/qwen35-text-0.8b-int5/int5")
+        .appendingPathComponent("VoiceBuddy/Models/\(modelID)/\(variant)")
     guard FileManager.default.fileExists(atPath: directory.appendingPathComponent("model.safetensors").path) else {
-        throw XCTSkip("Download the Qwen3.5 int5 text model in the app before running local prompt evaluations.")
+        throw XCTSkip("Download the selected text model in the app before running local prompt evaluations.")
     }
     return try await Qwen35MLXChat.fromLocal(directory: directory)
 }
