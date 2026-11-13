@@ -30,7 +30,7 @@ extension LocalModelIntegrationTests {
     func testLocallyCachedTextModelProducesResponse() async throws {
         guard ProcessInfo.processInfo.environment["VOICE_BUDDY_TEST_TEXT"] == "1" else { throw XCTSkip("Set VOICE_BUDDY_TEST_TEXT=1 to run real text model test.") }
         let model = try await cachedTextModel()
-        let sampling = ChatSamplingConfig(temperature: 0.15, maxTokens: 512, repetitionPenalty: 1.05)
+        let sampling = ChatSamplingConfig(temperature: 0.15, maxTokens: 512, repetitionPenalty: 1.0)
 
         for mode in [Refinement.light, Refinement.balanced, Refinement.moderate, Refinement.rewrite] {
             guard let prompt = RefinementPrompts.prompt(for: mode) else { continue }
@@ -68,7 +68,7 @@ extension LocalModelIntegrationTests {
             throw XCTSkip("Set VOICE_BUDDY_TEST_TEXT=1 to evaluate refinement prompts with the cached text model.")
         }
         let model = try await cachedTextModel()
-        let sampling = ChatSamplingConfig(temperature: 0.15, maxTokens: 512, repetitionPenalty: 1.05)
+        let sampling = ChatSamplingConfig(temperature: 0.15, maxTokens: 512, repetitionPenalty: 1.0)
         let inputs = [
             "呃会议是周三不对周四下午两点",
             "这个版本可能有bug如果测试没通过就先别发布",
