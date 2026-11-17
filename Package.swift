@@ -7,10 +7,12 @@ let package = Package(
     platforms: [.macOS("15.0")],
     products: [.executable(name: "VoiceBuddy", targets: ["VoiceBuddyApp"])],
     dependencies: [
+        // Includes project-specific chat-template fixes beyond the latest v0.0.29 tag.
+        // Review the fork changes before replacing this revision with a release tag.
         .package(url: "https://github.com/zfdang/speech-swift.git", revision: "d4b9b9a67863bafcf60e37e06e6ffcb324a53407"),
-        .package(url: "https://github.com/sindresorhus/LaunchAtLogin.git", from: "5.0.0"),
-        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts.git", from: "1.9.0"),
-        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
+        .package(url: "https://github.com/sindresorhus/LaunchAtLogin.git", from: "5.0.2"),
+        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts.git", from: "3.1.0"),
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.10.1"),
         .package(url: "https://github.com/xzjh/chinese-itn-swift.git", from: "0.3.0")
     ],
     targets: [
