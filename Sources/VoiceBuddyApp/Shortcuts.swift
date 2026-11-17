@@ -2,5 +2,5 @@ import Foundation
 import KeyboardShortcuts
 
 extension KeyboardShortcuts.Name {
-    static let toggleDictation = Self("toggleDictation", default: .init(.space, modifiers: [.control, .option]))
+    static let toggleDictation = Self("toggleDictation", initial: .init(.space, modifiers: [.control, .option]))
 }
