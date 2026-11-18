@@ -8,7 +8,8 @@ import Foundation
 enum DeveloperASRContext {
     static let terms: [String] = [
         // Git & CI/CD
-        "Git", "GitHub", "GitLab", "rebase", "squash", "cherry-pick",
+        "Git", "GitHub", "GitLab", "PR", "pull request", "commit", "push", "remote", "origin",
+        "review", "merge", "rebase", "squash", "cherry-pick",
         // Apple / macOS / Swift
         "macOS", "Xcode", "Swift", "SwiftUI", "SwiftPM", "AppKit",
         "CoreML", "MLX", "Metal", "arm64", "codesign", "TestFlight", "Sparkle", "appcast",

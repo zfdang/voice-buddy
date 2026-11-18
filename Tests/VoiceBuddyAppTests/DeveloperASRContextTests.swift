@@ -30,7 +30,7 @@ final class DeveloperASRContextTests: XCTestCase {
         }
 
         // Core proper nouns remain
-        for required in ["GitHub", "SwiftUI", "Kubernetes", "PostgreSQL", "TypeScript", "rebase", "Qwen"] {
+        for required in ["GitHub", "PR", "commit", "push", "merge", "SwiftUI", "Kubernetes", "PostgreSQL", "TypeScript", "rebase", "Qwen"] {
             XCTAssertTrue(terms.contains(required))
         }
     }
