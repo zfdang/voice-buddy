@@ -8,6 +8,10 @@ on:
         required: false
         default: ''
         type: string
+      sign_existing:
+        description: 'Only sign an existing local-build release ZIP for Sparkle'
+        type: boolean
+        default: false
       prerelease:
         description: 'Mark as pre-release'
         required: false
@@ -29,6 +33,7 @@ env:
 
 jobs:
   release:
+    if: github.event_name != 'workflow_dispatch' || !inputs.sign_existing
     runs-on: macos-15
     timeout-minutes: 60
     env:
@@ -417,3 +422,22 @@ jobs:
           if [[ -f "$keychain" ]]; then
             security delete-keychain "$keychain" || true
           fi
+
+  sign-existing:
+    if: github.event_name == 'workflow_dispatch' && inputs.sign_existing
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download, verify, and sign the existing release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SPARKLE_ED_KEY: ${{ secrets.SPARKLE_ED_KEY }}
+          TAG: ${{ inputs.tag }}
+        run: bash scripts/sign-existing-release.sh
+      - name: Save signed update feed
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-appcast-${{ inputs.tag }}
+          path: dist/appcast.xml
+          if-no-files-found: error
