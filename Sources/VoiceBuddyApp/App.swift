@@ -899,6 +899,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         liveTranscriptState.clear()
         liveTranscript = ""
         let lang = preferences.speechLanguage
+        let asrContext = DeveloperASRContext.context(enabled: preferences.developerContextEnabled)
         let logSession = diagnosticSession
         DiagnosticLog.shared.record("stream.started id=\(logSession)")
         liveTask = Task.detached(priority: .userInitiated) { [weak self] in
@@ -913,7 +914,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 guard samples.count >= 5600, samples.count >= lastCount + 3200 else { continue }
                 lastCount = samples.count
                 do {
-                    let text = try await self.models.transcribe(samples: samples, language: lang)
+                    let text = try await self.models.transcribe(samples: samples, language: lang, context: asrContext)
                     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty {
                         await MainActor.run {
@@ -1067,7 +1068,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 }
             }
             do {
-                let output = try await pipeline.run(samples: audio, language: settings.speechLanguage, mode: settings.refinement)
+                let output = try await pipeline.run(
+                    samples: audio,
+                    language: settings.speechLanguage,
+                    mode: settings.refinement,
+                    context: DeveloperASRContext.context(enabled: settings.developerContextEnabled)
+                )
                 guard transcriptionGeneration == id else {
                     DiagnosticLog.shared.record("transcription.discarded id=\(logSession) reason=session_changed")
                     return

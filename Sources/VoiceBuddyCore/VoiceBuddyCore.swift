@@ -125,6 +125,82 @@ public struct RefinementPrompts {
     }
 }
 
+public enum DeveloperASRContext {
+    /// Curated programmer & engineering terms passed to Qwen3-ASR via `context`
+    /// when developer vocabulary enhancement is enabled.
+    public static let terms: [String] = [
+        // Git, CI/CD & Collaboration
+        "Git", "GitHub", "GitLab", "Bitbucket", "PR", "MR", "CI", "CD", "GitHub Actions",
+        "workflow", "commit", "branch", "merge", "rebase", "cherry-pick", "squash", "stash",
+        "diff", "fetch", "pull", "push", "fork", "clone", "tag", "release", "issue", "repo",
+        "main", "HEAD", "origin", "fast-forward", "changelog", "semver",
+
+        // Languages & Runtimes
+        "Swift", "SwiftUI", "SwiftPM", "Objective-C", "Python", "TypeScript", "JavaScript",
+        "Node.js", "Go", "Golang", "Rust", "C++", "Java", "Kotlin", "Dart", "Ruby", "PHP",
+        "SQL", "HTML", "CSS", "Sass", "Bash", "zsh", "Shell", "WebAssembly", "WASM",
+
+        // Apple, macOS & iOS Ecosystem
+        "macOS", "iOS", "iPadOS", "Xcode", "AppKit", "UIKit", "Foundation", "Combine",
+        "CoreML", "CoreAudio", "AVFoundation", "MLX", "Metal", "metallib", "Neural Engine",
+        "Apple Silicon", "arm64", "codesign", "notarytool", "stapler", "Entitlements",
+        "Info.plist", "Bundle", "Sparkle", "appcast", "TestFlight", "Universal Binary",
+        "Accessibility", "AXUIElement", "Hardened Runtime",
+
+        // AI, LLM & Speech Engineering
+        "AI", "LLM", "VLM", "ASR", "TTS", "VAD", "RAG", "MCP", "Agent", "agentic",
+        "Subagent", "prompt", "system prompt", "context", "context window", "token",
+        "tokenizer", "embedding", "transformer", "attention", "KV cache", "prefill",
+        "decode", "logits", "temperature", "top-p", "repetition penalty", "greedy",
+        "quantization", "INT4", "INT5", "INT8", "FP16", "BF16", "4-bit", "8-bit",
+        "LoRA", "fine-tuning", "eval", "benchmark", "hallucination",
+        "Qwen", "Qwen3", "Qwen3.5", "Whisper", "SenseVoice", "Silero VAD", "PyTorch",
+        "Hugging Face", "safetensors", "Ollama", "vLLM", "llama.cpp", "OpenAI",
+        "Claude", "Anthropic", "Gemini", "Cursor", "Codex", "Copilot",
+
+        // Backend, APIs & Distributed Systems
+        "API", "REST", "RESTful", "GraphQL", "gRPC", "RPC", "Protobuf", "WebSocket",
+        "SSE", "HTTP", "HTTPS", "JSON", "YAML", "TOML", "XML", "CSV", "Markdown",
+        "SDK", "CLI", "SPI", "webhook", "endpoint", "payload", "middleware", "router",
+        "controller", "microservice", "monorepo", "serverless", "Edge", "CDN",
+
+        // Cloud, DevOps & Databases
+        "Docker", "Dockerfile", "Docker Compose", "Kubernetes", "k8s", "Helm", "Pod",
+        "Terraform", "Ansible", "Linux", "Ubuntu", "Nginx", "Caddy", "Cloudflare",
+        "AWS", "S3", "EC2", "Lambda", "GCP", "Vercel", "Netlify", "SSH", "TLS", "SSL",
+        "mTLS", "DNS", "IP", "TCP", "UDP", "CORS", "CSP", "OAuth", "OIDC", "JWT",
+        "SAML", "RBAC", "ACL", "PostgreSQL", "Postgres", "MySQL", "SQLite", "Redis",
+        "MongoDB", "Kafka", "RabbitMQ", "Elasticsearch", "ORM", "migration", "index",
+
+        // Frontend & Cross-Platform Frameworks
+        "React", "Next.js", "Vue", "Nuxt", "Svelte", "Angular", "Vite", "Webpack",
+        "Rollup", "esbuild", "Tailwind CSS", "npm", "pnpm", "yarn", "bun", "DOM",
+        "SSR", "CSR", "SPA", "ISR", "hydrate", "Electron", "Tauri", "Flutter", "React Native",
+
+        // Testing, Debugging & Core CS Terms
+        "bug", "fix", "hotfix", "patch", "crash", "stack trace", "backtrace", "dump",
+        "core dump", "OOM", "memory leak", "deadlock", "race condition", "thread",
+        "concurrency", "async", "await", "actor", "Sendable", "MainActor", "Task",
+        "callback", "closure", "delegate", "protocol", "struct", "enum", "generic",
+        "interface", "class", "singleton", "dependency injection", "refactor",
+        "debug", "breakpoint", "LLDB", "profiler", "Instruments", "log", "telemetry",
+        "metric", "trace", "latency", "throughput", "P95", "P99", "cache", "cache hit",
+        "cache miss", "timeout", "retry", "backoff", "circuit breaker", "idempotent",
+        "unit test", "integration test", "E2E", "XCTest", "Pytest", "Jest", "Vitest",
+        "Playwright", "mock", "stub", "fixture", "lint", "ESLint", "SwiftLint",
+        "schema", "config", "env", "dotenv", "stdout", "stderr", "stdin", "EOF", "TTY",
+        "PID", "UID", "UUID", "URI", "URL", "regex", "cron", "daemon", "symlink",
+        "sandbox", "workspace", "VoiceBuddy", "ChineseITN", "KeyboardShortcuts"
+    ]
+
+    public static let contextString: String =
+        "Software engineering & programming vocabulary context. Terms: " + terms.joined(separator: ", ")
+
+    public static func context(enabled: Bool) -> String? {
+        enabled ? contextString : nil
+    }
+}
+
 public struct Preferences: Codable, Equatable {
     public var interfaceLanguage = "system"
     public var speechLanguage = "auto"
@@ -132,6 +208,7 @@ public struct Preferences: Codable, Equatable {
     public var speechModel = "qwen-asr-0.6b"
     public var textModel = "qwen35-text-0.8b-int5"
     public var refinement: Refinement = .light
+    public var developerContextEnabled = true
     public var holdToTalk: Bool? = nil // nil preserves older settings and defaults to hold
     public var useFnKey = false
     public var sounds = true
@@ -160,6 +237,7 @@ public struct Preferences: Codable, Equatable {
         }
         textModel = try container.decodeIfPresent(String.self, forKey: .textModel) ?? "qwen35-text-0.8b-int5"
         refinement = try container.decodeIfPresent(Refinement.self, forKey: .refinement) ?? .light
+        developerContextEnabled = try container.decodeIfPresent(Bool.self, forKey: .developerContextEnabled) ?? true
         holdToTalk = try container.decodeIfPresent(Bool.self, forKey: .holdToTalk)
         useFnKey = try container.decodeIfPresent(Bool.self, forKey: .useFnKey) ?? false
         sounds = try container.decodeIfPresent(Bool.self, forKey: .sounds) ?? true
@@ -191,6 +269,12 @@ public struct RefinementFailure: LocalizedError {
 
 public protocol TranscriptionEngine: Sendable {
     func transcribe(samples: [Float], language: String) async throws -> String
+    func transcribe(samples: [Float], language: String, context: String?) async throws -> String
+}
+public extension TranscriptionEngine {
+    func transcribe(samples: [Float], language: String, context: String?) async throws -> String {
+        try await transcribe(samples: samples, language: language)
+    }
 }
 public protocol TextRefinementEngine: Sendable {
     func refine(_ text: String, mode: Refinement) async throws -> String
@@ -259,7 +343,7 @@ public struct Pipeline: Sendable {
         self.detector = detector; self.transcription = transcription; self.refinement = refinement
         self.onEvent = onEvent
     }
-    public func run(samples: [Float], language: String, mode: Refinement) async throws -> (original: String, result: String) {
+    public func run(samples: [Float], language: String, mode: Refinement, context: String? = nil) async throws -> (original: String, result: String) {
         onEvent(.detectionStarted)
         do {
             guard !samples.isEmpty, try await detector.containsSpeech(samples) else { throw VoiceBuddyError.noSpeech }
@@ -269,7 +353,7 @@ public struct Pipeline: Sendable {
         onEvent(.transcriptionStarted)
         let original: String
         do {
-            original = try await transcription.transcribe(samples: samples, language: language)
+            original = try await transcription.transcribe(samples: samples, language: language, context: context)
             guard !original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw VoiceBuddyError.emptyTranscript }
             onEvent(.transcriptionCompleted)
         } catch { onEvent(.transcriptionFailed); throw error }
