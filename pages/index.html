@@ -27,8 +27,10 @@
   <link rel="icon" type="image/svg+xml" href="assets/icon.svg" />
   <link rel="apple-touch-icon" href="assets/voice_buddy_color_512.png" />
 
-  <!-- Pre-compiled Standalone Production Stylesheet -->
+  <!-- Pre-compiled Standalone Production Stylesheet & AI Tech Theme -->
+  <meta name="color-scheme" content="light" />
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="theme-tech.css" />
 
   <!-- Instant Language Preference Route (Prevents Flash) -->
   <script>
@@ -49,10 +51,7 @@
   <!-- 顶部公告栏 -->
   <div class="bg-ink text-white text-xs sm:text-sm py-2 px-4 border-b border-white/10">
     <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
-      <div class="flex items-center gap-2">
-        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-limeAccent text-ink">NEW v1.2.1</span>
-        <span>100% 本地端侧 AI 语音输入搭子 · 现已支持五档智能润色、轻度本地规整与毫秒级响应</span>
-      </div>
+      <div aria-hidden="true"></div>
       <a href="https://remote.zfdang.com/" target="_blank" rel="noopener" class="text-limeAccent hover:underline font-medium inline-flex items-center gap-1">
         寻找「遥控搭子 Remote Buddy」？前往 remote.zfdang.com →
       </a>
@@ -88,8 +87,8 @@
           <span>🌐</span>
           <span>EN</span>
         </a>
-        <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.2.1" target="_blank" rel="noopener" class="px-3.5 py-2 rounded-xl bg-ink text-white hover:bg-neutral-800 text-xs sm:text-sm font-semibold transition shadow-sm">
-          下载 v1.2.1 ↗
+        <a href="#download" class="px-3.5 py-2 rounded-xl bg-ink text-white hover:bg-neutral-800 text-xs sm:text-sm font-semibold transition shadow-sm">
+          下载 <span data-vb-version>v1.3.0</span> ↓
         </a>
       </div>
     </div>
@@ -102,7 +101,7 @@
       <div class="lg:col-span-6 space-y-6">
         <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-black/10 shadow-sm text-xs font-semibold text-neutral-700">
           <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>100% 本地端侧推理 · 零云端 API 费用 · 支持中英混说</span>
+          <span>100% 本地端侧推理 · 隐私安全有保障 · 零云端 API 费用 · 支持中英混说</span>
         </div>
 
         <h1 class="text-4xl sm:text-5xl lg:text-[54px] font-black tracking-tight leading-[1.12] text-ink">
@@ -113,25 +112,24 @@
           不必停下来打字。在任意应用中按住快捷键说话，松手瞬间，端侧声学模型与本地大语言模型协同工作，自动过滤口癖、修整语法、润色标点，文字直接飞入当前光标处。
         </p>
 
-        <!-- 主下载按钮组 -->
-        <div class="pt-2 flex flex-wrap items-center gap-3">
-          <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.2.1/Voice-Buddy-v1.2.1-macOS.dmg" class="px-6 py-3.5 rounded-2xl bg-ink text-white hover:bg-neutral-800 font-bold text-sm sm:text-base flex items-center gap-2.5 shadow-lg shadow-black/10 transition transform hover:-translate-y-0.5">
-            <span>↓</span>
-            <span>下载 macOS 安装包 (.dmg)</span>
-            <span class="text-xs px-2 py-0.5 rounded-md bg-limeAccent text-ink font-mono font-bold">v1.2.1</span>
-          </a>
-          <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.2.1/Voice-Buddy-v1.2.1-macOS.zip" class="px-5 py-3.5 rounded-2xl bg-white hover:bg-neutral-100 text-ink border border-black/15 font-semibold text-sm sm:text-base transition">
-            ZIP 绿色便携版
-          </a>
-          <a href="https://github.com/zfdang/voice-buddy" target="_blank" rel="noopener" class="px-4 py-3.5 rounded-2xl text-neutral-600 hover:text-ink font-medium text-sm flex items-center gap-1 transition">
-            <span>GitHub</span>
-            <span>↗</span>
-          </a>
+        <!-- 端侧双阶段 AI 神经推理管线展示 -->
+        <div class="ai-pipeline-box" aria-label="端侧 AI 语音与大模型推理管线">
+          <div class="ai-pipeline-header">
+            <span>◈ ON-DEVICE AI NEURAL PIPELINE</span>
+            <span>MLX · Metal GPU · ANE</span>
+          </div>
+          <div class="ai-pipeline-steps">
+            <span class="ai-node">🎙️ 端侧声学模型 <small class="text-neutral-400 font-mono">(Qwen3-ASR / Whisper / SenseVoice)</small></span>
+            <span class="ai-arrow">→</span>
+            <span class="ai-node ai-node-highlight">🧠 本地 Qwen 大模型润色 <small class="font-mono">(5 档智能规整)</small></span>
+            <span class="ai-arrow">→</span>
+            <span class="ai-node">⚡ 光标毫秒直出</span>
+          </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-neutral-500 font-medium pt-1">
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-neutral-500 font-medium pt-2">
           <span>💻 适用于 Apple Silicon (M 系列芯片) · macOS 15.0+</span>
-          <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.2.1" target="_blank" rel="noopener" class="underline hover:text-ink">查看 v1.2.1 发行说明 →</a>
+          <span>🔒 零数据上云 · 完全免费开源</span>
         </div>
       </div>
 
@@ -152,8 +150,8 @@
           </div>
 
           <!-- 悬浮窗 Retina 高清截图 -->
-          <div class="relative z-10 w-full max-w-[500px] my-2 transform hover:scale-[1.02] transition duration-300 filter drop-shadow-[0_20px_35px_rgba(30,20,50,0.22)]">
-            <img src="assets/dictation.png" width="500" height="227" alt="Voice Buddy 实时语音动态悬浮窗" class="w-full h-auto rounded-2xl block" loading="eager" decoding="async" />
+          <div class="relative z-10 w-full max-w-[500px] my-2 hero-hud-shot">
+            <img src="assets/dictation.png" width="500" height="227" alt="Voice Buddy 实时语音动态悬浮窗" class="w-full h-auto rounded-2xl block" loading="eager" fetchpriority="high" decoding="sync" />
           </div>
 
           <!-- 悬浮窗下方特性胶囊 -->
@@ -175,7 +173,7 @@
           <!-- 底部小字标注 -->
           <div class="mt-5 pt-3 border-t border-black/5 flex items-center justify-between w-full text-[11px] text-neutral-500 font-mono z-10">
             <span>✳ 思路不打断，文字自然来。</span>
-            <span class="font-bold">纯本地端侧 AI <span class="text-lime-600">v1.2.1</span></span>
+            <span class="font-bold">纯本地端侧 AI</span>
           </div>
         </div>
       </div>
@@ -518,14 +516,14 @@
       </p>
 
       <div class="pt-2 flex flex-wrap items-center justify-center gap-4">
-        <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.2.1/Voice-Buddy-v1.2.1-macOS.dmg" class="px-7 py-4 rounded-2xl bg-limeAccent text-ink hover:brightness-95 font-extrabold text-sm sm:text-base transition shadow-lg">
-          <span>↓ 下载 Voice Buddy v1.2.1 (DMG)</span>
+        <a href="https://myvoicebuddy.com/downloads/Voice-Buddy-v1.3.0-macOS.dmg" class="px-7 py-4 rounded-2xl bg-limeAccent text-ink hover:brightness-95 font-extrabold text-sm sm:text-base transition shadow-lg">
+          <span>↓ 下载 Voice Buddy <span data-vb-version>v1.3.0</span> (DMG)</span>
         </a>
-        <a href="https://github.com/zfdang/voice-buddy/releases/download/v1.2.1/Voice-Buddy-v1.2.1-macOS.zip" class="px-6 py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white border border-white/15 font-semibold text-sm sm:text-base transition">
+        <a href="https://myvoicebuddy.com/downloads/Voice-Buddy-v1.3.0-macOS.zip" class="px-6 py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white border border-white/15 font-semibold text-sm sm:text-base transition">
           ZIP 绿色便携版
         </a>
-        <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.2.1" target="_blank" rel="noopener" class="px-5 py-4 rounded-2xl text-neutral-300 hover:text-white text-sm font-medium underline">
-          发行说明 (v1.2.1) ↗
+        <a href="https://github.com/zfdang/voice-buddy/releases/tag/v1.3.0" target="_blank" rel="noopener" class="px-5 py-4 rounded-2xl text-neutral-300 hover:text-white text-sm font-medium underline">
+          发行说明 (<span data-vb-version>v1.3.0</span>) ↗
         </a>
       </div>
 
@@ -631,11 +629,18 @@
       });
     });
 
-    // 优先使用 Pages 镜像下载地址（避免 GitHub 下载受阻）
-    fetch('downloads/latest.json')
+    // 优先使用 Pages 镜像下载地址并同步最新版本号
+    fetch('downloads/latest.json', { cache: 'no-store' })
       .then(res => res.json())
       .then(data => {
-        if (data && data.packages) {
+        if (!data) return;
+        if (data.tag) {
+          document.querySelectorAll('[data-vb-version]').forEach(el => el.textContent = data.tag);
+        }
+        if (data.releasesUrl) {
+          document.querySelectorAll('a[href*="/releases/tag/"]').forEach(el => el.href = data.releasesUrl);
+        }
+        if (data.packages) {
           if (data.packages.dmg && data.packages.dmg.url) {
             document.querySelectorAll('a[href*=".dmg"]').forEach(el => el.href = data.packages.dmg.url);
           }

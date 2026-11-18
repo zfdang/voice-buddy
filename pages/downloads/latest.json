@@ -1,17 +1,23 @@
 {
-  "tag": "v1.0.0",
-  "version": "1.0.0",
-  "publishedAt": "2026-11-08T00:26:41Z",
-  "releasesUrl": "https://github.com/zfdang/voice-buddy/releases/tag/v1.0.0",
+  "tag": "v1.3.0",
+  "version": "1.3.0",
+  "publishedAt": "2026-11-18T05:40:39Z",
+  "releasesUrl": "https://github.com/zfdang/voice-buddy/releases/tag/v1.3.0",
   "appcastUrl": "https://myvoicebuddy.com/appcast.xml",
   "packages": {
     "dmg": {
-      "name": "Voice-Buddy-v1.0.0-macOS.dmg",
-      "url": "https://myvoicebuddy.com/downloads/Voice-Buddy-v1.0.0-macOS.dmg"
+      "name": "Voice-Buddy-v1.3.0-macOS.dmg",
+      "url": "https://myvoicebuddy.com/downloads/Voice-Buddy-v1.3.0-macOS.dmg",
+      "size": 59549355
     },
     "zip": {
-      "name": "Voice-Buddy-v1.0.0-macOS.zip",
-      "url": "https://myvoicebuddy.com/downloads/Voice-Buddy-v1.0.0-macOS.zip"
+      "name": "Voice-Buddy-v1.3.0-macOS.zip",
+      "url": "https://myvoicebuddy.com/downloads/Voice-Buddy-v1.3.0-macOS.zip",
+      "size": 51023992
+    },
+    "checksums": {
+      "name": "SHA256SUMS.txt",
+      "url": "https://myvoicebuddy.com/downloads/SHA256SUMS.txt"
     }
   }
 }

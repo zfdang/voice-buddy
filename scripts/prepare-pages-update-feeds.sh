@@ -151,4 +151,10 @@ if [[ -f "$work/candidate/downloads/latest.json" ]]; then
     echo "Staged latest.json to pages/downloads/."
 fi
 
+if [[ -f "$root/pages/downloads/latest.json" ]]; then
+    python3 "$root/scripts/verify-pages-update-feeds.py" \
+        "$root/pages" "$work/release.json" --sync-pages "$root/pages" 2>>"$work/error.log" || true
+    echo "Synchronized homepage version badges and download links in pages/index.html & pages/en.html."
+fi
+
 echo "Pages update feeds and release binaries successfully prepared."
