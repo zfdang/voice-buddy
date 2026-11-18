@@ -156,8 +156,6 @@ jobs:
 
       - name: Build and package signed release
         id: build
-        env:
-          HARDENED_RUNTIME: "true"
         run: |
           tag="${{ steps.tag.outputs.tag }}"
           keychain="$RUNNER_TEMP/voice-buddy-signing.keychain-db"
@@ -184,6 +182,10 @@ jobs:
           echo "$sig_info"
           if echo "$sig_info" | grep -q "Signature=adhoc"; then
             echo "::error::Release build was signed with ad-hoc signature! Expected valid certificate."
+            exit 1
+          fi
+          if echo "$sig_info" | grep -q "flags=.*(runtime)" && echo "$sig_info" | grep -q "TeamIdentifier=not set"; then
+            echo "::error::Release build enabled Hardened Runtime without a TeamIdentifier; embedded frameworks would fail dyld Team ID check."
             exit 1
           fi
 
