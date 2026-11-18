@@ -18,20 +18,22 @@ private actor ContextCapturingTranscriber: TranscriptionEngine {
 }
 
 final class DeveloperASRContextTests: XCTestCase {
-    func testDeveloperVocabularyIsCompactDeduplicatedAndFreeOfEverydayAmbiguousWords() {
-        let terms = DeveloperASRContext.terms
-        XCTAssertTrue((55...85).contains(terms.count), "Expected compact vocabulary in 55...85, got \(terms.count)")
-        XCTAssertEqual(Set(terms).count, terms.count, "Duplicate terms found in DeveloperASRContext.terms")
+    func testDeveloperVocabularyIsCuratedAndDeduplicated() {
+        let terms = DeveloperASRContext.allTerms
+        XCTAssertEqual(terms.count, 120, "Expected curated 120-term developer dictionary, got \(terms.count)")
+        XCTAssertEqual(DeveloperASRContext.terms, DeveloperASRContext.allTerms)
+        XCTAssertEqual(DeveloperASRContext.contextString, DeveloperASRContext.contextPrompt)
+        XCTAssertEqual(Set(terms).count, terms.count, "Duplicate terms found in DeveloperASRContext.allTerms")
         XCTAssertTrue(terms.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
 
-        // Verify semantic duplicates and common everyday homographs are excluded
-        for excluded in ["k8s", "Postgres", "Go", "main", "log", "class", "index", "bug", "fix", "cache"] {
-            XCTAssertFalse(terms.contains(excluded), "Ambiguous or duplicate term '\(excluded)' should be excluded")
-        }
-
-        // Core proper nouns remain
-        for required in ["GitHub", "PR", "commit", "push", "merge", "SwiftUI", "Kubernetes", "PostgreSQL", "TypeScript", "rebase", "Qwen"] {
-            XCTAssertTrue(terms.contains(required))
+        // Core proper nouns, Git CLI/GitHub flow, Apple, Web, Infra & AI terms
+        for required in [
+            "GitHub", "PR", "Pull Request", "commit", "stash", "reflog", "worktree",
+            "HEAD", "gitignore", "LGTM", "SemVer", "Dependabot", "SwiftUI", "Homebrew",
+            "notarization", "Info.plist", "pnpm", "Next.js", "Kubernetes", "K8s",
+            "PostgreSQL", "TypeScript", "rebase", "Qwen", "LoRA", "HuggingFace"
+        ] {
+            XCTAssertTrue(terms.contains(required), "Missing expected term '\(required)'")
         }
     }
 
