@@ -182,12 +182,12 @@ flowchart TD
 ## 7. 自动化测试保障
 
 相关单测位于 `Tests/` 目录，CI 与本地可通过 `swift test` 验证：
-* [`Tests/VoiceBuddyCoreTests/MediaPlaybackControllerTests.swift`](file:///Users/zfdang/workspaces/voice-buddy-private/Tests/VoiceBuddyCoreTests/MediaPlaybackControllerTests.swift)：
+* [`Tests/VoiceBuddyCoreTests/MediaPlaybackControllerTests.swift`](../Tests/VoiceBuddyCoreTests/MediaPlaybackControllerTests.swift)：
   * 验证第一层（MediaRemote）与第二层（Fallback）的优先次序与生命周期；
   * 验证开局未暂停时，结束时绝不发送恢复按键；
   * 验证原本已知处于暂停状态的应用绝不被意外唤醒；
   * 验证验证暂停失败时不进入已暂停状态。
-* [`Tests/VoiceBuddyAppTests/AccessibleMediaPlaybackTests.swift`](file:///Users/zfdang/workspaces/voice-buddy-private/Tests/VoiceBuddyAppTests/AccessibleMediaPlaybackTests.swift)：
+* [`Tests/VoiceBuddyAppTests/AccessibleMediaPlaybackTests.swift`](../Tests/VoiceBuddyAppTests/AccessibleMediaPlaybackTests.swift)：
   * 验证播放菜单名（`Playback`、`Controls`、`播放`、`控制`）识别规范；
   * 验证各语言菜单项（“暂停”、“Pause”、“播放”、“Play”）状态解析；
   * 验证虚拟麦克风（`BuddyMic2ch_UID`）排除逻辑，确保不干扰音频检测。

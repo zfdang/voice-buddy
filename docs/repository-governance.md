@@ -8,11 +8,11 @@
 
 ## 1. 架构定位与设计哲学
 
-Voice Buddy 现已完成仓库架构整合，由早期的双仓库分工演进为**统一公共代码与分发仓库**（`zfdang/voice-buddy`）：
+**Voice Buddy** 源代码、自动化测试、官方网站与安装包分发均维护在 [`zfdang/voice-buddy`](https://github.com/zfdang/voice-buddy) 仓库中：
 
 ```mermaid
 flowchart TD
-    subgraph Repo["voice-buddy (统一公共仓库)"]
+    subgraph Repo["zfdang/voice-buddy"]
         Code["核心源码 Sources/"]
         Tests["自动化测试 Tests/"]
         BuildConf["构建配置 Package.swift"]
@@ -45,9 +45,8 @@ flowchart TD
 
 ## 2. 核心红线与行为准则
 
-1. **按需控制 CI 触发范围（公开仓库合入后自动验证）**：
-   - 本仓库（`zfdang/voice-buddy`）现为公开仓库，标准 GitHub Actions Runner 无私有额度限制，并已启用 SwiftPM 与 Metal 增量缓存。
-   - `.github/workflows/macos.yml` 允许在 **合入/推送 `main` 分支时自动触发**（`push: branches: [main]`，配合 `workflow_dispatch` 手动触发）；暂不默认在每次 `pull_request` 事件自动触发 macOS runner，避免 PR 频繁提交期间重复排队。
+1. **按需控制 CI 触发范围**：
+   - `.github/workflows/macos.yml` 在合入/推送 `main` 分支时自动触发测试与构建验证（忽略仅涉及 `pages/**`、`docs/**`、`**/*.md` 的变更），并支持 `workflow_dispatch` 手动触发；暂不默认在每次 `pull_request` 事件自动触发 macOS runner，避免 PR 频繁提交期间重复排队。
    - 发布工作流 `.github/workflows/release.yml` **仅允许**在打版本标签（`v*`）或手动 `workflow_dispatch` 时运行，严禁随每次 `push` 到 `main` 自动发版。
 2. **绝对禁止直接 Push 到 `main` 分支 (严格遵守 PR 流程)**：
    - **严禁任何开发者或 AI 助理向 `main` 分支执行 `git push origin main`**。
