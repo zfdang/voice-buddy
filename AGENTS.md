@@ -2,12 +2,12 @@
 
 > **CRITICAL & INVIOLABLE DIRECTIVES FOR ALL AI AGENTS & AUTOMATION SCRIPTS**
 >
-> This workspace is the unified repository for **Voice Buddy** (`zfdang/voice-buddy`).
+> This repository holds the source code, tests, website, and distribution configuration for **Voice Buddy** (`zfdang/voice-buddy`).
 > It contains the complete source code, tests, documentation, GitHub Pages landing site (`pages/`), and Sparkle update distribution configuration (`appcast.xml`).
 
 ---
 
-## 1. Repository Architecture & Layout (统一仓库职责与目录规范)
+## 1. Repository Architecture & Layout (仓库职责与目录规范)
 
 | 目录/文件 | 核心职责 | 说明 |
 | :--- | :--- | :--- |
@@ -22,9 +22,8 @@
 
 ## 2. Inviolable Red Lines (不可逾越的绝对红线)
 
-1. **按需控制 CI 触发范围（公开仓库合入后自动验证）**：
-   - 本仓库（`zfdang/voice-buddy`）现为公开仓库，标准 GitHub Actions Runner 无私有额度限制，并已启用 SwiftPM 与 Metal 增量缓存。
-   - `.github/workflows/macos.yml` 允许在 **合入/推送 `main` 分支时自动触发**（`push: branches: [main]`，配合 `workflow_dispatch` 手动触发）；仍禁止在未经明确要求的情况下为每次 `pull_request` 事件自动触发 macOS runner。
+1. **按需控制 CI 触发范围**：
+   - `.github/workflows/macos.yml` 在合入/推送 `main` 分支时自动触发测试与构建验证（忽略仅涉及 `pages/**`、`docs/**`、`**/*.md` 的变更），并支持 `workflow_dispatch` 手动触发；仍禁止在未经明确要求的情况下为每次 `pull_request` 事件自动触发 macOS runner。
    - 发布工作流 `.github/workflows/release.yml` **仅允许**在打版本标签（`v*`）或手动 `workflow_dispatch` 时运行，严禁随每次 `push` 到 `main` 自动发版。
 2. **绝对禁止直接 Push 到 `main` 分支 (严格遵守 PR 流程)**：
    - **严禁任何开发者或 AI 助理向 `main` 分支执行 `git push origin main`**。
@@ -50,4 +49,4 @@ flowchart TD
     I --> J[GitHub Actions 自动部署 pages/ 到 myvoicebuddy.com]
 ```
 
-详细操作规范与检查清单请参阅：[`docs/repository-governance.md`](file:///Users/zfdang/workspaces/voice-buddy-private/docs/repository-governance.md)。
+详细操作规范与检查清单请参阅：[`docs/repository-governance.md`](docs/repository-governance.md)。
