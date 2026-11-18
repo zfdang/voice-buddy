@@ -4,6 +4,7 @@ import argparse
 import base64
 import json
 from pathlib import Path
+import re
 import sys
 import xml.etree.ElementTree as ET
 
@@ -148,6 +149,44 @@ def verify(directory, release, *, require_packages=False):
                     raise ValueError(f'{filename} exceeds max size limit ({actual_size} bytes)')
 
 
+def sync_homepage_versions(pages_dir: Path, manifest: dict):
+    """Synchronize static version badges and release links in pages/index.html and pages/en.html."""
+    tag = manifest.get('tag')
+    if not tag:
+        return
+    packages = manifest.get('packages', {})
+    dmg_url = (packages.get('dmg') or {}).get('url') or f'{PAGES_DOWNLOADS_BASE}/Voice-Buddy-{tag}-macOS.dmg'
+    zip_url = (packages.get('zip') or {}).get('url') or f'{PAGES_DOWNLOADS_BASE}/Voice-Buddy-{tag}-macOS.zip'
+    release_url = manifest.get('releasesUrl') or f'https://github.com/zfdang/voice-buddy/releases/tag/{tag}'
+
+    for filename in ('index.html', 'en.html'):
+        html_path = pages_dir / filename
+        if not html_path.is_file():
+            continue
+        text = html_path.read_text(encoding='utf-8')
+        text = re.sub(
+            r'(<span\b[^>]*\bdata-vb-version\b[^>]*>)([^<]*)(</span>)',
+            rf'\g<1>{tag}\g<3>',
+            text,
+        )
+        text = re.sub(
+            r'https://github\.com/zfdang/voice-buddy/releases/tag/v[0-9]+\.[0-9]+\.[0-9]+[^\s"\'<>]*',
+            release_url,
+            text,
+        )
+        text = re.sub(
+            r'https://(?:github\.com/zfdang/voice-buddy/releases/download/[^/]+|myvoicebuddy\.com/downloads)/Voice-Buddy-[^"\'<>]+\.dmg',
+            dmg_url,
+            text,
+        )
+        text = re.sub(
+            r'https://(?:github\.com/zfdang/voice-buddy/releases/download/[^/]+|myvoicebuddy\.com/downloads)/Voice-Buddy-[^"\'<>]+\.zip',
+            zip_url,
+            text,
+        )
+        html_path.write_text(text, encoding='utf-8')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('directory', type=Path)
@@ -155,6 +194,7 @@ def main():
     parser.add_argument('--require-packages', action='store_true')
     parser.add_argument('--write-manifest', action='store_true')
     parser.add_argument('--rewrite-github-enclosures', action='store_true')
+    parser.add_argument('--sync-pages', type=Path, default=None, help='Path to pages/ to sync HTML versions')
     args = parser.parse_args()
 
     release = json.loads(args.release_json.read_text(encoding='utf-8'))
@@ -162,8 +202,14 @@ def main():
         rewrite_github_release_enclosures(args.directory, release)
     # Always verify before writing manifest
     verify(args.directory, release, require_packages=args.require_packages)
+    manifest_path = None
     if args.write_manifest:
-        write_latest_manifest(args.directory, release)
+        manifest_path = write_latest_manifest(args.directory, release)
+    if args.sync_pages is not None:
+        manifest_file = manifest_path or (args.directory / 'downloads' / 'latest.json')
+        if manifest_file.is_file():
+            manifest = json.loads(manifest_file.read_text(encoding='utf-8'))
+            sync_homepage_versions(args.sync_pages, manifest)
 
 
 if __name__ == '__main__':
