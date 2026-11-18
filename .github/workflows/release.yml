@@ -1,26 +1,30 @@
 name: Release macOS App
 
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing release tag to build (e.g. v0.1.0)'
+        description: 'Release version tag (e.g. v1.2.2)'
         required: true
         type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags: ['v*']
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-app-public-distribution
+  group: release-app-${{ github.ref }}
   cancel-in-progress: false
 
 env:
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
-  PUBLIC_REPO: zfdang/voice-buddy
 
 jobs:
   release:
@@ -29,7 +33,6 @@ jobs:
     env:
       CERTIFICATE_BASE64: ${{ secrets.VOICE_BUDDY_SIGNING_P12_BASE64 }}
       P12_PASSWORD: ${{ secrets.VOICE_BUDDY_SIGNING_P12_PASSWORD }}
-      PUBLIC_REPO_TOKEN: ${{ secrets.VOICE_BUDDY_REPO_ACCESS_TOKEN }}
       SPARKLE_ED_KEY: ${{ secrets.SPARKLE_ED_KEY }}
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -46,22 +49,36 @@ jobs:
         run: |
           tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
           if ! printf '%s' "$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
-            echo '::error::expected v<semver>, e.g. v0.1.0 or v1.0.0-rc1'
+            echo '::error::expected v<semver>, e.g. v0.1.0 or v1.2.2'
             exit 1
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
         with:
-          ref: refs/tags/${{ steps.tag.outputs.tag }}
           fetch-depth: 0
 
-      - name: Verify release commit is on main
+      - name: Resolve and verify release commit
         id: commit
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
+          set -euo pipefail
+          git fetch --tags --quiet origin
           git fetch --quiet origin +refs/heads/main:refs/remotes/origin/main
+
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG exists in repository. Checking out existing tag commit..."
+            git checkout -f "refs/tags/$TAG"
+          else
+            echo "Tag $TAG does not exist yet. Using current checked-out commit on main..."
+          fi
+
           sha="$(git rev-parse HEAD)"
-          git merge-base --is-ancestor "$sha" origin/main
+          git merge-base --is-ancestor "$sha" origin/main || {
+            echo "::error::Commit $sha must be an ancestor of origin/main"
+            exit 1
+          }
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "short=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -158,43 +175,54 @@ jobs:
               --issuer "$APPLE_API_ISSUER" \
               --wait
             xcrun stapler staple "dist/Voice Buddy.app"
-            # Recreate zip, dmg, and checksums with stapled app ticket
-            (cd dist && rm -f "$(basename "$zip_file")" && ditto -c -k --keepParent "Voice Buddy.app" "$(basename "$zip_file")")
-            (cd dist && rm -f "$(basename "$dmg_file")" && hdiutil create -volname "Voice Buddy" -srcfolder "Voice Buddy.app" -ov -format UDZO "$(basename "$dmg_file")")
-            (cd dist && shasum -a 256 "$(basename "$dmg_file")" "$(basename "$zip_file")" > SHA256SUMS.txt)
-            echo "Notarization and stapling succeeded."
+            xcrun notarytool submit "$dmg_file" \
+              --key "$api_key_path" \
+              --key-id "$APPLE_API_KEY_ID" \
+              --issuer "$APPLE_API_ISSUER" \
+              --wait
+            xcrun stapler staple "$dmg_file"
           elif [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
-            echo "Notarizing artifacts via Apple ID..."
+            echo "Notarizing artifacts via Apple ID and App-Specific Password..."
             xcrun notarytool submit "$zip_file" \
               --apple-id "$APPLE_ID" \
               --password "$APPLE_APP_SPECIFIC_PASSWORD" \
               --team-id "$APPLE_TEAM_ID" \
               --wait
             xcrun stapler staple "dist/Voice Buddy.app"
-            # Recreate zip, dmg, and checksums with stapled app ticket
-            (cd dist && rm -f "$(basename "$zip_file")" && ditto -c -k --keepParent "Voice Buddy.app" "$(basename "$zip_file")")
-            (cd dist && rm -f "$(basename "$dmg_file")" && hdiutil create -volname "Voice Buddy" -srcfolder "Voice Buddy.app" -ov -format UDZO "$(basename "$dmg_file")")
-            (cd dist && shasum -a 256 "$(basename "$dmg_file")" "$(basename "$zip_file")" > SHA256SUMS.txt)
-            echo "Notarization and stapling succeeded."
+            xcrun notarytool submit "$dmg_file" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+            xcrun stapler staple "$dmg_file"
           else
-            echo "::notice::Apple Notarization credentials not configured. Build will proceed with valid codesign certificate, but without Apple Gatekeeper notarization ticket."
+            echo "Skipping notarization: Apple API credentials not provided."
           fi
 
-      - name: Generate Sparkle Appcast
-        id: appcast
+          # If stapling succeeded, recreate the zip so the stapled ticket is included in the archive
+          if [[ -n "${APPLE_API_KEY_BASE64:-}" || -n "${APPLE_ID:-}" ]]; then
+            echo "Re-archiving zip to include notarization staple ticket..."
+            rm -f "$zip_file"
+            ditto -c -k --keepParent "dist/Voice Buddy.app" "$zip_file"
+          fi
+
+          # Recompute SHA256 checksums
+          (cd dist && shasum -a 256 "${zip_file##*/}" "${dmg_file##*/}" > SHA256SUMS.txt)
+
+      - name: Generate Sparkle Appcast and Signature
+        id: sparkle
         env:
           TAG: ${{ steps.tag.outputs.tag }}
+          COMMIT: ${{ steps.commit.outputs.sha }}
           SPARKLE_ED_KEY: ${{ secrets.SPARKLE_ED_KEY }}
         run: |
           set -euo pipefail
           raw_tag="${TAG#v}"
           zip_file="dist/Voice-Buddy-${TAG}-macOS.zip"
-          if [[ ! -f "$zip_file" ]]; then
-            zip_file="dist/Voice-Buddy-${raw_tag}-macOS.zip"
-          fi
+          [[ -f "$zip_file" ]] || zip_file="dist/Voice-Buddy-${raw_tag}-macOS.zip"
 
           if [[ -z "${SPARKLE_ED_KEY:-}" ]]; then
-            echo "::error::SPARKLE_ED_KEY secret is not configured. Sparkle EdDSA update signing is mandatory for all releases."
+            echo "::error::SPARKLE_ED_KEY secret is required for signing release updates!"
             exit 1
           fi
 
@@ -225,8 +253,10 @@ jobs:
           mkdir -p "$appcast_stage"
           cp "$zip_file" "$appcast_stage/"
 
-          # Fetch existing appcast.xml from public repo if available to keep update history
-          curl -fsSL "https://raw.githubusercontent.com/${PUBLIC_REPO}/main/appcast.xml" -o "$appcast_stage/appcast.xml" || true
+          # Fetch existing appcast.xml from local repo to preserve update history
+          if [[ -f appcast.xml ]]; then
+            cp appcast.xml "$appcast_stage/appcast.xml"
+          fi
 
           appcast_tool="$(find .build -name generate_appcast -type f -perm +111 2>/dev/null | head -n 1 || true)"
           if [[ -z "$appcast_tool" ]]; then
@@ -235,7 +265,8 @@ jobs:
             appcast_tool="$(find .build -name generate_appcast -type f -perm +111 2>/dev/null | head -n 1)"
           fi
 
-          download_prefix="https://github.com/${PUBLIC_REPO}/releases/download/${TAG}/"
+          # Sparkle downloads point directly to myvoicebuddy.com for fast local access without GitHub blocking
+          download_prefix="https://myvoicebuddy.com/downloads/"
 
           channel_args=()
           if [[ "$raw_tag" =~ -(alpha|beta|rc) ]]; then
@@ -250,23 +281,19 @@ jobs:
           echo "Generated dist/appcast.xml:"
           cat "dist/appcast.xml"
 
-      - name: Publish Release to Public Repository
+      - name: Publish Release to GitHub
         id: publish
         env:
           TAG: ${{ steps.tag.outputs.tag }}
           COMMIT: ${{ steps.commit.outputs.sha }}
-          GH_TOKEN: ${{ secrets.VOICE_BUDDY_REPO_ACCESS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           raw_tag="${TAG#v}"
           zip_file="dist/Voice-Buddy-${TAG}-macOS.zip"
-          if [[ ! -f "$zip_file" ]]; then
-            zip_file="dist/Voice-Buddy-${raw_tag}-macOS.zip"
-          fi
+          [[ -f "$zip_file" ]] || zip_file="dist/Voice-Buddy-${raw_tag}-macOS.zip"
           dmg_file="dist/Voice-Buddy-${TAG}-macOS.dmg"
-          if [[ ! -f "$dmg_file" ]]; then
-            dmg_file="dist/Voice-Buddy-${raw_tag}-macOS.dmg"
-          fi
+          [[ -f "$dmg_file" ]] || dmg_file="dist/Voice-Buddy-${raw_tag}-macOS.dmg"
           checksum_file="dist/SHA256SUMS.txt"
           appcast_file="dist/appcast.xml"
 
@@ -276,65 +303,65 @@ jobs:
           fi
 
           prerelease_flag=""
-          if [[ "$raw_tag" =~ - ]]; then
+          if [[ "${{ github.event.inputs.prerelease }}" == "true" || "$raw_tag" =~ - ]]; then
             prerelease_flag="--prerelease"
             echo "Configuring GitHub Release as pre-release for tag ${TAG}."
           fi
 
-          release_notes="## Voice Buddy ${TAG}
+          notes_file="$RUNNER_TEMP/release-notes.md"
+          python3 scripts/generate-release-notes.py \
+            --tag "$TAG" \
+            --commit "$COMMIT" \
+            --dmg-file "$dmg_file" \
+            --checksums-file "$checksum_file" \
+            --repository "${GITHUB_REPOSITORY:-zfdang/voice-buddy}" \
+            --output "$notes_file"
 
-          - **Commit**: \`${COMMIT}\`
-          - **Architecture**: Apple Silicon (arm64, M-Series M1+) / macOS 15.0+
-          - **Offline-first voice typing with local Qwen3-ASR and Qwen LLM**
-
-          ### Sparkle Update Feed
-          - Automated update feed available at: \`https://raw.githubusercontent.com/${PUBLIC_REPO}/main/appcast.xml\`
-
-          ### SHA256 Checksums
-          \`\`\`
-          $(cat "$checksum_file")
-          \`\`\`"
-
-          echo "Checking if release $TAG exists in $PUBLIC_REPO..."
-          if gh release view "$TAG" --repo "$PUBLIC_REPO" >/dev/null 2>&1; then
-            echo "Release $TAG exists in $PUBLIC_REPO, uploading assets and updating notes..."
-            gh release upload "$TAG" "$dmg_file" "$zip_file" "$checksum_file" "$appcast_file" --repo "$PUBLIC_REPO" --clobber
-            gh release edit "$TAG" --repo "$PUBLIC_REPO" --notes "$release_notes" $prerelease_flag
+          echo "Checking if release $TAG exists in $GITHUB_REPOSITORY..."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists, uploading assets and updating notes..."
+            gh release upload "$TAG" "$dmg_file" "$zip_file" "$checksum_file" "$appcast_file" --clobber
+            gh release edit "$TAG" --notes-file "$notes_file" $prerelease_flag
           else
-            echo "Creating new release for $TAG in $PUBLIC_REPO..."
+            echo "Creating new release for $TAG in $GITHUB_REPOSITORY..."
             gh release create "$TAG" "$dmg_file" "$zip_file" "$checksum_file" "$appcast_file" \
-              --repo "$PUBLIC_REPO" \
               --title "Voice Buddy ${TAG}" \
-              --notes "$release_notes" \
+              --notes-file "$notes_file" \
+              --target "$COMMIT" \
               $prerelease_flag
           fi
 
-      - name: Update appcast.xml in Public Repository
+      - name: Update appcast.xml in main branch
         env:
           TAG: ${{ steps.tag.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ -z "${PUBLIC_REPO_TOKEN:-}" ]]; then
-            echo "::warning::PUBLIC_REPO_TOKEN is not set, skipping appcast.xml push to public repo"
-            exit 0
-          fi
-
-          pub_stage="$RUNNER_TEMP/public-repo"
-          rm -rf "$pub_stage"
-          git -c credential.helper= clone "https://${PUBLIC_REPO_TOKEN}@github.com/${PUBLIC_REPO}.git" "$pub_stage"
-          cd "$pub_stage"
-          cp "$GITHUB_WORKSPACE/dist/appcast.xml" ./appcast.xml
-
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          cp dist/appcast.xml ./appcast.xml
           git add appcast.xml
           if ! git diff --cached --quiet; then
-            git commit -m "chore(release): update appcast.xml for ${TAG}"
-            git -c credential.helper= push origin main
-            echo "Successfully updated appcast.xml in ${PUBLIC_REPO} main branch."
+            git commit -m "chore(release): update appcast.xml for ${TAG} [skip ci]"
+            git push origin main
+            echo "Successfully updated appcast.xml in main branch."
           else
-            echo "appcast.xml already up to date in ${PUBLIC_REPO}."
+            echo "appcast.xml already up to date in main."
           fi
+
+      - name: Upload website update feeds artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-update-feeds
+          path: |
+            dist/appcast.xml
+            dist/Voice-Buddy-*.dmg
+            dist/Voice-Buddy-*.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Deployment Summary
         env:
@@ -342,9 +369,10 @@ jobs:
           COMMIT: ${{ steps.commit.outputs.sha }}
         run: |
           {
-            echo "## Release $TAG published to $PUBLIC_REPO"
+            echo "## Release $TAG published"
             echo "- **Source Commit**: $COMMIT"
-            echo "- **Public Release**: https://github.com/${PUBLIC_REPO}/releases/tag/${TAG}"
+            echo "- **GitHub Release**: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+            echo "- **Pages Download Mirror**: https://myvoicebuddy.com/downloads/"
             echo "- **Artifacts**:"
             echo "  - \`dist/Voice-Buddy-${TAG}-macOS.dmg\`"
             echo "  - \`dist/Voice-Buddy-${TAG}-macOS.zip\`"

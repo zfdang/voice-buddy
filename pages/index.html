@@ -630,6 +630,21 @@
         });
       });
     });
+
+    // 优先使用 Pages 镜像下载地址（避免 GitHub 下载受阻）
+    fetch('downloads/latest.json')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.packages) {
+          if (data.packages.dmg && data.packages.dmg.url) {
+            document.querySelectorAll('a[href*=".dmg"]').forEach(el => el.href = data.packages.dmg.url);
+          }
+          if (data.packages.zip && data.packages.zip.url) {
+            document.querySelectorAll('a[href*=".zip"]').forEach(el => el.href = data.packages.zip.url);
+          }
+        }
+      })
+      .catch(() => {});
   </script>
 </body>
 </html>

@@ -139,7 +139,8 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ## 🔄 自动更新 (Sparkle)
 
 Voice Buddy 集成了 Sparkle 框架以支持无缝静默更新检测：
-- 官方升级订阅源：`https://raw.githubusercontent.com/zfdang/voice-buddy/main/appcast.xml`
+- 官方升级订阅源：`https://myvoicebuddy.com/appcast.xml`（备用镜像：`https://raw.githubusercontent.com/zfdang/voice-buddy/main/appcast.xml`）
+- 更新安装包优先通过官网镜像（`https://myvoicebuddy.com/downloads/`）直链下载，无需代理即可快速更新，彻底避免直接访问 GitHub 出现网络受阻或超时。
 - 可在「关于」面板中随时手动点击「检查更新」。
 
 ---

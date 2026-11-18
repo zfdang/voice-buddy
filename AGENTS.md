@@ -40,11 +40,14 @@
 ```mermaid
 flowchart TD
     A[日常开发 / 特性分支 / PR] --> B[本地运行测试 swift test]
-    B --> C[执行 scripts/build-app.sh 打包签名]
-    C --> D[生成 dist/*.dmg, dist/*.zip, 并在 appcast.xml 登记]
-    D --> E[提交 PR 合入 main 分支]
-    E --> F[发布 GitHub Releases vX.Y.Z 挂载二进制产物]
-    E --> G[GitHub Actions 自动部署 pages/ 到 myvoicebuddy.com]
+    B --> C[提交 PR 审查并合入 main 分支]
+    C --> D[手动触发 release.yml 或打 v* Tag]
+    D --> E[macOS Runner: 编译、Apple 证书代码签名与公证]
+    E --> F[Sparkle 私钥签名生成 appcast.xml]
+    F --> G[发布 GitHub Releases 挂载 DMG/ZIP 产物]
+    G --> H[自动触发 static.yml 部署工作流]
+    H --> I[scripts/prepare-pages-update-feeds.sh 镜像二进制与 appcast 到 pages/]
+    I --> J[GitHub Actions 自动部署 pages/ 到 myvoicebuddy.com]
 ```
 
 详细操作规范与检查清单请参阅：[`docs/repository-governance.md`](file:///Users/zfdang/workspaces/voice-buddy-private/docs/repository-governance.md)。
