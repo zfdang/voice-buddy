@@ -114,13 +114,17 @@ public enum AppTab: Int, CaseIterable, Identifiable {
 
     var waitingForSystemSettingsReturn = false
 
-    init() {
+    /// - Parameter skipModelPreload: When true, skips `autoPreloadModels()`. Used by unit tests
+    ///   that instantiate an AppState without wanting to initialize MLX/Metal (unavailable on CI).
+    init(skipModelPreload: Bool = false) {
         preferences = UserDefaults.standard.data(forKey: defaultsKey).flatMap { try? JSONDecoder().decode(Preferences.self, from: $0) } ?? Preferences()
         DiagnosticLog.shared.record("app.start version=\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown")")
         refreshPermissions()
         setupKeyboardShortcuts()
         configureShortcutMode()
-        autoPreloadModels()
+        if !skipModelPreload {
+            autoPreloadModels()
+        }
         menuBarController = MenuBarController(appState: self)
     }
     private func setupKeyboardShortcuts() {
@@ -1601,8 +1605,10 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
     /// silently stalls, because the normal quit path never runs.
     private var sparkleRelaunchPending = false
 
-    override init() {
-        let state = AppState()
+    /// - Parameter skipModelPreload: Forwarded to `AppState` so unit tests can construct a
+    ///   delegate without triggering MLX/Metal model preloading (unavailable on CI runners).
+    init(skipModelPreload: Bool = false) {
+        let state = AppState(skipModelPreload: skipModelPreload)
         self.appState = state
         super.init()
         VoiceBuddyAppDelegate.shared = self

@@ -12,7 +12,9 @@ final class UpdateTerminationTests: XCTestCase {
     private var delegate: VoiceBuddyAppDelegate!
 
     override func setUp() async throws {
-        delegate = VoiceBuddyAppDelegate()
+        // Skip model preloading: it initializes MLX/Metal on a background task, which aborts
+        // the process on CI runners without a Metal shader cache. Termination logic is independent.
+        delegate = VoiceBuddyAppDelegate(skipModelPreload: true)
     }
 
     override func tearDown() async throws {
