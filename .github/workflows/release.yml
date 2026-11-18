@@ -55,7 +55,7 @@ jobs:
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -128,7 +128,7 @@ jobs:
 
       - name: Restore SwiftPM release cache
         id: swift-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm/artifacts
@@ -140,8 +140,9 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-swift-v2-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved', 'Package.swift') }}-
             ${{ runner.os }}-${{ runner.arch }}-swift-v2-${{ steps.xcode.outputs.xcode_id }}-
 
-      - name: Cache MLX Metal shader library
-        uses: actions/cache@v4
+      - name: Restore MLX Metal shader cache
+        id: metallib-cache
+        uses: actions/cache/restore@v6
         with:
           path: .build/mlx-metallib-cache
           key: ${{ runner.os }}-${{ runner.arch }}-mlx-metallib-v1-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved') }}
@@ -342,13 +343,20 @@ jobs:
           echo "Generated dist/appcast.xml:"
           cat "dist/appcast.xml"
 
+      - name: Save MLX Metal shader cache
+        if: steps.metallib-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .build/mlx-metallib-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-mlx-metallib-v1-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved') }}
+
       - name: Record build cache commit marker
         if: steps.swift-cache.outputs.cache-hit != 'true'
         run: python3 scripts/restore-git-mtimes.py --marker-file .build/.cached-git-sha --write-marker
 
       - name: Save SwiftPM release cache
         if: steps.swift-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm/artifacts
@@ -416,19 +424,28 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin main
-          git checkout main
+          git checkout -B main origin/main
           cp dist/appcast.xml ./appcast.xml
           git add appcast.xml
           if ! git diff --cached --quiet; then
             git commit -m "chore(release): update appcast.xml for ${TAG} [skip ci]"
-            git push origin main
-            echo "Successfully updated appcast.xml in main branch."
+            for attempt in 1 2 3; do
+              if git pull --rebase origin main && git push origin main; then
+                echo "Successfully updated appcast.xml in main branch."
+                break
+              fi
+              if [[ "$attempt" -eq 3 ]]; then
+                echo "::error::Failed to push updated appcast.xml to main after 3 attempts."
+                exit 1
+              fi
+              sleep 2
+            done
           else
             echo "appcast.xml already up to date in main."
           fi
 
       - name: Upload website update feeds artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: website-update-feeds
           path: |
@@ -473,7 +490,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Download, verify & sign existing release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -481,7 +498,7 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: bash scripts/sign-existing-release.sh
       - name: Upload signed appcast.xml
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: signed-appcast-${{ inputs.tag }}
           path: dist/appcast.xml

@@ -14,7 +14,7 @@
 | **`Sources/`** | 核心 Swift 源码 | `VoiceBuddyApp` (主应用与 UI), `VoiceBuddyCore` (文本清洗与 ITN 管道) |
 | **`Tests/`** | 单元测试与端到端测试 | 覆盖模型管理、文本清洗、系统弹性、无障碍控制等测试用例 |
 | **`scripts/`** | 构建打包与签名脚本 | 本地构建脚本 `build-app.sh`、图标生成脚本与发布辅助工具 |
-| **`pages/`** | 官方网站 (`myvoicebuddy.com`) | 静态展示站，由 `.github/workflows/static.yml` 自动部署至 GitHub Pages |
+| **`pages/`** | 官方网站 (`myvoicebuddy.com`) | 静态展示站，由 `.github/workflows/deploy-pages.yml` 自动部署至 GitHub Pages |
 | **`appcast.xml`** | Sparkle 自动更新源 | 维护各版本下载链接、版本号、硬件要求与 EdDSA 签名 |
 | **`docs/`** | 内部设计与公共预览资产 | 包含架构文档、依赖约束以及用于 README 的软件界面截图 (`docs/images/`) |
 
@@ -23,7 +23,7 @@
 ## 2. Inviolable Red Lines (不可逾越的绝对红线)
 
 1. **按需控制 CI 触发范围**：
-   - `.github/workflows/macos.yml` 在合入/推送 `main` 分支时自动触发测试与构建验证（忽略仅涉及 `pages/**`、`docs/**`、`**/*.md` 的变更），并支持 `workflow_dispatch` 手动触发；仍禁止在未经明确要求的情况下为每次 `pull_request` 事件自动触发 macOS runner。
+   - `.github/workflows/ci.yml` 在合入/推送 `main` 分支时自动触发测试与构建验证（忽略仅涉及 `pages/**`、`docs/**`、`**/*.md` 的变更），并支持 `workflow_dispatch` 手动触发；仍禁止在未经明确要求的情况下为每次 `pull_request` 事件自动触发 macOS runner。
    - 发布工作流 `.github/workflows/release.yml` **仅允许**在打版本标签（`v*`）或手动 `workflow_dispatch` 时运行，严禁随每次 `push` 到 `main` 自动发版。
 2. **绝对禁止直接 Push 到 `main` 分支 (严格遵守 PR 流程)**：
    - **严禁任何开发者或 AI 助理向 `main` 分支执行 `git push origin main`**。
@@ -44,7 +44,7 @@ flowchart TD
     D --> E[macOS Runner: 编译、Apple 证书代码签名与公证]
     E --> F[Sparkle 私钥签名生成 appcast.xml]
     F --> G[发布 GitHub Releases 挂载 DMG/ZIP 产物]
-    G --> H[自动触发 static.yml 部署工作流]
+    G --> H[自动触发 deploy-pages.yml 部署工作流]
     H --> I[scripts/prepare-pages-update-feeds.sh 镜像二进制与 appcast 到 pages/]
     I --> J[GitHub Actions 自动部署 pages/ 到 myvoicebuddy.com]
 ```

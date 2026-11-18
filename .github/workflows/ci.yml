@@ -21,7 +21,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -45,7 +45,7 @@ jobs:
 
       - name: Restore SwiftPM build cache
         id: swift-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm/artifacts
@@ -56,8 +56,9 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-swift-tests-v2-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved', 'Package.swift') }}-
             ${{ runner.os }}-${{ runner.arch }}-swift-tests-v2-${{ steps.xcode.outputs.xcode_id }}-
 
-      - name: Cache MLX Metal shader library
-        uses: actions/cache@v4
+      - name: Restore MLX Metal shader cache
+        id: metallib-cache
+        uses: actions/cache/restore@v6
         with:
           path: .build/mlx-metallib-cache
           key: ${{ runner.os }}-${{ runner.arch }}-mlx-metallib-v1-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved') }}
@@ -82,13 +83,20 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "dist/Voice Buddy.app/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Print :SUFeedURL" "dist/Voice Buddy.app/Contents/Info.plist"
 
+      - name: Save MLX Metal shader cache
+        if: steps.metallib-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .build/mlx-metallib-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-mlx-metallib-v1-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved') }}
+
       - name: Record build cache commit marker
         if: steps.swift-cache.outputs.cache-hit != 'true'
         run: python3 scripts/restore-git-mtimes.py --marker-file .build/.cached-git-sha --write-marker
 
       - name: Save SwiftPM build cache
         if: steps.swift-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm/artifacts
@@ -108,7 +116,7 @@ jobs:
       P12_PASSWORD: ${{ secrets.VOICE_BUDDY_SIGNING_P12_PASSWORD }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -132,7 +140,7 @@ jobs:
 
       - name: Restore SwiftPM release cache
         id: swift-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm/artifacts
@@ -144,8 +152,9 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-swift-v2-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved', 'Package.swift') }}-
             ${{ runner.os }}-${{ runner.arch }}-swift-v2-${{ steps.xcode.outputs.xcode_id }}-
 
-      - name: Cache MLX Metal shader library
-        uses: actions/cache@v4
+      - name: Restore MLX Metal shader cache
+        id: metallib-cache
+        uses: actions/cache/restore@v6
         with:
           path: .build/mlx-metallib-cache
           key: ${{ runner.os }}-${{ runner.arch }}-mlx-metallib-v1-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved') }}
@@ -190,13 +199,20 @@ jobs:
 
           ditto -c -k --keepParent 'dist/Voice Buddy.app' "$RUNNER_TEMP/Voice-Buddy-development.zip"
 
+      - name: Save MLX Metal shader cache
+        if: steps.metallib-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .build/mlx-metallib-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-mlx-metallib-v1-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved') }}
+
       - name: Record build cache commit marker
         if: steps.swift-cache.outputs.cache-hit != 'true'
         run: python3 scripts/restore-git-mtimes.py --marker-file .build/.cached-git-sha --write-marker
 
       - name: Save SwiftPM release cache
         if: steps.swift-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm/artifacts
@@ -213,7 +229,7 @@ jobs:
             security delete-keychain "$keychain" || true
           fi
       - name: Upload signed dev build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Voice-Buddy-development
           path: ${{ runner.temp }}/Voice-Buddy-development.zip
