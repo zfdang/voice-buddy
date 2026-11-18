@@ -1595,7 +1595,6 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
     private var isSettingsWindowOpen = false
     private var applicationShortcutMonitor: Any?
     private var workspaceObservers: [NSObjectProtocol] = []
-    private var sparkleRelaunchObserver: NSObjectProtocol?
     private var allowTermination = false
     /// Set by Sparkle immediately before it asks the host app to terminate for a relaunch.
     /// A menu-bar (LSUIElement) app otherwise vetoes that termination and "Install & Relaunch"
@@ -1633,6 +1632,14 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
     func prepareForSparkleRelaunch() {
         DiagnosticLog.shared.record("app.sparkle_relaunch_pending")
         sparkleRelaunchPending = true
+    }
+
+    /// Resets the pending Sparkle relaunch flag if the update aborts before termination
+    /// (e.g., user cancels admin authorization or installation fails), restoring normal veto behavior.
+    func cancelSparkleRelaunch() {
+        guard sparkleRelaunchPending else { return }
+        DiagnosticLog.shared.record("app.sparkle_relaunch_cancelled")
+        sparkleRelaunchPending = false
     }
 
     private func configureApplicationMenu() {
@@ -1939,30 +1946,11 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
             }
         }
         workspaceObservers = [obs1, obs2, obs3, obsSleep, obsSessionResign, obsScreensSleep]
-
-        // Sparkle posts this on relaunch before terminating the host app. Observing it provides
-        // a second, delegate-independent path to allow termination (the primary path is
-        // UpdaterViewModel.updaterWillRelaunchApplication -> prepareForSparkleRelaunch()).
-        // The SUUpdaterWillRestartNotification symbol's actual string value carries a "Name"
-        // suffix (verified against Sparkle 2.x source: `@"SUUpdaterWillRestartNotificationName"`).
-        sparkleRelaunchObserver = NotificationCenter.default.addObserver(
-            forName: Notification.Name("SUUpdaterWillRestartNotificationName"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.prepareForSparkleRelaunch()
-            }
-        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         workspaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
         workspaceObservers.removeAll()
-        if let sparkleRelaunchObserver {
-            NotificationCenter.default.removeObserver(sparkleRelaunchObserver)
-            self.sparkleRelaunchObserver = nil
-        }
     }
 
     private func handleSystemSettingsEvent(notification: Notification) {
