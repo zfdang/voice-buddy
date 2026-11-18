@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release version tag (e.g. v1.2.2)'
-        required: true
+        description: 'Release version tag (e.g. v1.3.0). Leave empty to auto-calculate from Conventional Commits'
+        required: false
+        default: ''
         type: string
       prerelease:
         description: 'Mark as pre-release'
@@ -24,7 +25,7 @@ concurrency:
 
 env:
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+  DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
 
 jobs:
   release:
@@ -42,21 +43,48 @@ jobs:
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode toolchain (Swift 6.2+ / Xcode 26+)
+        run: |
+          for xcode_path in "/Applications/Xcode_26.3.app" "/Applications/Xcode_26.2.app" "/Applications/Xcode_26.1.1.app" "/Applications/Xcode_26.0.1.app" "/Applications/Xcode.app"; do
+            if [ -d "$xcode_path/Contents/Developer" ]; then
+              echo "Selecting toolchain at $xcode_path..."
+              sudo xcode-select -s "$xcode_path/Contents/Developer"
+              echo "DEVELOPER_DIR=$xcode_path/Contents/Developer" >> "$GITHUB_ENV"
+              export DEVELOPER_DIR="$xcode_path/Contents/Developer"
+              break
+            fi
+          done
+          echo "Selected Swift toolchain version:"
+          swift --version
+
       - name: Resolve release tag
         id: tag
         env:
           INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
-          tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          set -euo pipefail
+          git fetch --tags --quiet origin || true
+
+          tag="${INPUT_TAG:-}"
+          if [[ -z "$tag" && "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"
+          fi
+
+          if [[ -z "$tag" ]]; then
+            echo "No release tag provided. Calculating next Semantic Version based on Conventional Commits..."
+            tag="$(python3 scripts/compute-next-version.py --format tag)"
+            echo "Auto-computed next Semantic Version: $tag"
+          fi
+
           if ! printf '%s' "$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
-            echo '::error::expected v<semver>, e.g. v0.1.0 or v1.2.2'
+            echo "::error::Invalid version format '$tag'. Expected v<semver>, e.g. v0.1.0 or v1.3.0"
             exit 1
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Resolve and verify release commit
         id: commit
@@ -64,8 +92,8 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          git fetch --tags --quiet origin
-          git fetch --quiet origin +refs/heads/main:refs/remotes/origin/main
+          git fetch --tags --quiet origin || true
+          git fetch --quiet origin +refs/heads/main:refs/remotes/origin/main || true
 
           if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG exists in repository. Checking out existing tag commit..."
