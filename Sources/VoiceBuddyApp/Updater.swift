@@ -26,7 +26,7 @@ final class UpdaterViewModel: NSObject, ObservableObject, SPUUpdaterDelegate, @p
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleSparkleWillRestart(_:)),
-            name: SUUpdaterWillRestartNotification,
+            name: NSNotification.Name.SUUpdaterWillRestart,
             object: nil
         )
     }

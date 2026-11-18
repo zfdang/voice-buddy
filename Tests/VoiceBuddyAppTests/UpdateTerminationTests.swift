@@ -39,7 +39,7 @@ final class UpdateTerminationTests: XCTestCase {
 
     func testSparkleWillRestartNotificationAllowsTermination() {
         NotificationCenter.default.post(
-            name: SUUpdaterWillRestartNotification,
+            name: NSNotification.Name.SUUpdaterWillRestart,
             object: nil
         )
 
