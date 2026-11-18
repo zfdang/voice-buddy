@@ -631,6 +631,21 @@
         });
       });
     });
+
+    // Prefer Pages domain mirror for direct downloads
+    fetch('downloads/latest.json')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.packages) {
+          if (data.packages.dmg && data.packages.dmg.url) {
+            document.querySelectorAll('a[href*=".dmg"]').forEach(el => el.href = data.packages.dmg.url);
+          }
+          if (data.packages.zip && data.packages.zip.url) {
+            document.querySelectorAll('a[href*=".zip"]').forEach(el => el.href = data.packages.zip.url);
+          }
+        }
+      })
+      .catch(() => {});
   </script>
 </body>
 </html>

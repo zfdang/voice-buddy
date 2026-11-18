@@ -33,8 +33,13 @@ flowchart TD
 ### 1.1 核心组件与分工
 - **代码与测试套件**：包含 100% 完整的 Swift 源码（`Sources/`）与单元/系统弹性测试套件（`Tests/`）。
 - **官方展示网站**：位于 `pages/` 目录，通过 `.github/workflows/static.yml` 自动部署至 GitHub Pages 并绑定独立域名 `https://myvoicebuddy.com`。
-- **Sparkle 自动更新源**：根目录下维护 `appcast.xml`，客户端通过读取 `https://raw.githubusercontent.com/zfdang/voice-buddy/main/appcast.xml` 获取最新升级信息。
-- **发布分发渠道**：通过 GitHub Releases 挂载编译、签名好的 `.dmg`、`.zip` 与 `SHA256SUMS.txt` 交付物。
+- **Sparkle 自动更新与镜像分发**：
+  - 根目录与 `pages/` 同步维护 `appcast.xml`。
+  - Sparkle 升级订阅源设置为 `https://myvoicebuddy.com/appcast.xml`（备用镜像为 GitHub raw）。
+  - 更新源内部 enclosure 下载直链优先指向 `https://myvoicebuddy.com/downloads/Voice-Buddy-*.zip`，确保国内用户不翻墙也能高速稳定自动更新。
+- **发布与部署自动化**：
+  - 手动触发 `release.yml`（通过 Actions 页面输入 tag 或推送 `v*` tag），运行编译打包、Apple 代码签名及 Sparkle 密钥验签。
+  - 发布完成后自动触发 `static.yml`，将产物与 appcast 同步至 `pages/downloads/` 并部署到 `myvoicebuddy.com`。
 
 ---
 

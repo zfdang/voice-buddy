@@ -2,28 +2,39 @@
 name: Deploy static content to Pages
 
 on:
-  # Runs on pushes targeting the default branch
+  # Automatically triggered after successful release build
+  workflow_run:
+    workflows: ["Release macOS App"]
+    types: [completed]
+
+  # Runs on pushes targeting pages content on the main branch
   push:
     branches: ["main"]
+    paths:
+      - "pages/**"
+      - ".github/workflows/static.yml"
+      - "scripts/prepare-pages-update-feeds.sh"
+      - "scripts/verify-pages-update-feeds.py"
 
-  # Allows you to run this workflow manually from the Actions tab
+  # Allows manual run from Actions tab
   workflow_dispatch:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
-  # Single deploy job since we're just deploying
+  # Deploy job
   deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -31,13 +42,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Include latest published update feeds & binary releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PAGES_UPDATE_RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: scripts/prepare-pages-update-feeds.sh
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
           path: './pages'
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
