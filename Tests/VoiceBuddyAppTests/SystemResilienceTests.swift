@@ -220,4 +220,9 @@ final class SystemResilienceTests: XCTestCase {
         XCTAssertFalse(state.editorReady, "Selecting a text model while in Light mode must not mark it ready")
         XCTAssertFalse(state.isActivatingTextModel, "Selecting a text model while in Light mode must not activate it")
     }
+
+    func testUnloadingIdleEditorDoesNotInvokeGPUCacheClear() async {
+        let models = LocalModels()
+        await models.unloadEditor()
+    }
 }
