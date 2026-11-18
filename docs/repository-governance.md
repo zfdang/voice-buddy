@@ -45,10 +45,10 @@ flowchart TD
 
 ## 2. 核心红线与行为准则
 
-1. **严格禁止开启 CI 自动触发 (Actions 运行额度保护)**：
-   - 仓库包含运行时间长达 45 分钟的 macOS 15 虚拟机测试和打包任务。
-   - **严禁**为 `.github/workflows/macos.yml` 添加 `push` 或 `pull_request` 自动触发器！该工作流**仅允许保留 `workflow_dispatch` 手动触发**。
-   - 严禁任何自作主张恢复 CI 自动触发的行为。发布工作流 `.github/workflows/release.yml` 仅在打版本标签（`v*`）或手动分发时运行。
+1. **按需控制 CI 触发范围（公开仓库合入后自动验证）**：
+   - 本仓库（`zfdang/voice-buddy`）现为公开仓库，标准 GitHub Actions Runner 无私有额度限制，并已启用 SwiftPM 与 Metal 增量缓存。
+   - `.github/workflows/macos.yml` 允许在 **合入/推送 `main` 分支时自动触发**（`push: branches: [main]`，配合 `workflow_dispatch` 手动触发）；暂不默认在每次 `pull_request` 事件自动触发 macOS runner，避免 PR 频繁提交期间重复排队。
+   - 发布工作流 `.github/workflows/release.yml` **仅允许**在打版本标签（`v*`）或手动 `workflow_dispatch` 时运行，严禁随每次 `push` 到 `main` 自动发版。
 2. **绝对禁止直接 Push 到 `main` 分支 (严格遵守 PR 流程)**：
    - **严禁任何开发者或 AI 助理向 `main` 分支执行 `git push origin main`**。
    - 所有的新增功能、Bug 修复、工作流调整或文档更改，**必须**首先在独立的特性分支（如 `feat/...`、`fix/...`、`docs/...`、`chore/...`）上进行。
