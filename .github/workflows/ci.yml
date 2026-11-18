@@ -7,7 +7,18 @@ on:
       - 'pages/**'
       - 'docs/**'
       - '**/*.md'
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - 'pages/**'
+      - 'docs/**'
+      - '**/*.md'
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -15,6 +26,7 @@ permissions:
 jobs:
   tests:
     name: Test & Build App Bundle
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: macos-15
     timeout-minutes: 45
     env:
@@ -84,18 +96,18 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :SUFeedURL" "dist/Voice Buddy.app/Contents/Info.plist"
 
       - name: Save MLX Metal shader cache
-        if: steps.metallib-cache.outputs.cache-hit != 'true'
+        if: steps.metallib-cache.outputs.cache-hit != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: actions/cache/save@v6
         with:
           path: .build/mlx-metallib-cache
           key: ${{ runner.os }}-${{ runner.arch }}-mlx-metallib-v1-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved') }}
 
       - name: Record build cache commit marker
-        if: steps.swift-cache.outputs.cache-hit != 'true'
+        if: steps.swift-cache.outputs.cache-hit != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         run: python3 scripts/restore-git-mtimes.py --marker-file .build/.cached-git-sha --write-marker
 
       - name: Save SwiftPM build cache
-        if: steps.swift-cache.outputs.cache-hit != 'true'
+        if: steps.swift-cache.outputs.cache-hit != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: actions/cache/save@v6
         with:
           path: |

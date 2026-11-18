@@ -46,7 +46,7 @@ flowchart TD
 ## 2. 核心红线与行为准则
 
 1. **按需控制 CI 触发范围**：
-   - `.github/workflows/ci.yml` 在合入/推送 `main` 分支时自动触发测试与构建验证（忽略仅涉及 `pages/**`、`docs/**`、`**/*.md` 的变更），并支持 `workflow_dispatch` 手动触发；暂不默认在每次 `pull_request` 事件自动触发 macOS runner，避免 PR 频繁提交期间重复排队。
+   - `.github/workflows/ci.yml` 在合入/推送 `main` 分支，以及向 `main` 发起或更新**非 Draft PR**（`opened`、`synchronize`、`reopened`、`ready_for_review` 且 `draft == false`）时自动触发测试与构建验证（忽略仅涉及 `pages/**`、`docs/**`、`**/*.md` 的变更），同一 PR 新提交自动取消旧队列，并支持 `workflow_dispatch` 手动触发；Draft PR 期间跳过自动跑 CI，避免频繁草稿提交消耗 macOS runner 资源。
    - 发布工作流 `.github/workflows/release.yml` **仅允许**在打版本标签（`v*`）或手动 `workflow_dispatch` 时运行，严禁随每次 `push` 到 `main` 自动发版。
 2. **绝对禁止直接 Push 到 `main` 分支 (严格遵守 PR 流程)**：
    - **严禁任何开发者或 AI 助理向 `main` 分支执行 `git push origin main`**。
