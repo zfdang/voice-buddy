@@ -1,0 +1,376 @@
+/*
+ * Voice Buddy — "Light-First AI Tech with Dark Contrast Rhythm" Theme Layer
+ * Loaded after style.css. Keeps the overall site crisp and bright (#F6F8FC
+ * pearl canvas, blueprint grid, frosted white cards) while preserving and
+ * upgrading the signature dark contrast bands (top announcement bar, feature
+ * ticker band, AI refined output card, and bottom download panel) into a
+ * refined deep-slate neural tech finish.
+ */
+
+:root {
+  color-scheme: light;
+  --vb-bg: #f6f8fc;
+  --vb-bg-soft: #eef2f9;
+  --vb-surface: rgba(255, 255, 255, 0.9);
+  --vb-dark-panel: #090e1c;
+  --vb-dark-panel-2: #0f172a;
+  --vb-line: rgba(15, 23, 42, 0.09);
+  --vb-text: #0f172a;
+  --vb-text-2: #475569;
+  --vb-text-3: #64748b;
+  --vb-indigo: #4f46e5;
+  --vb-cyan: #22d3ee;
+  --vb-cyan-soft: #67e8f9;
+  --vb-mint: #5eead4;
+  --vb-grad: linear-gradient(120deg, #06b6d4 0%, #4f46e5 52%, #9333ea 100%);
+  --vb-grad-soft: linear-gradient(120deg, rgba(6, 182, 212, 0.12), rgba(79, 70, 229, 0.12), rgba(147, 51, 234, 0.12));
+  --vb-glow: 0 0 0 1px rgba(79, 70, 229, 0.28), 0 16px 40px -14px rgba(79, 70, 229, 0.16);
+}
+
+/* ---------- Light AI Canvas & Subtle Blueprint Grid ---------- */
+html {
+  color-scheme: light;
+  background: var(--vb-bg);
+}
+
+body.bg-cream {
+  background-color: transparent;
+  color: var(--vb-text);
+}
+
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
+body::before {
+  background-image:
+    linear-gradient(rgba(79, 70, 229, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79, 70, 229, 0.055) 1px, transparent 1px);
+  background-size: 52px 52px;
+  -webkit-mask-image: radial-gradient(ellipse 85% 65% at 50% 0%, #000 35%, transparent 88%);
+  mask-image: radial-gradient(ellipse 85% 65% at 50% 0%, #000 35%, transparent 88%);
+}
+
+body::after {
+  background:
+    radial-gradient(46rem 28rem at 10% -5%, rgba(6, 182, 212, 0.14), transparent 70%),
+    radial-gradient(42rem 30rem at 92% 4%, rgba(124, 58, 237, 0.12), transparent 70%),
+    radial-gradient(48rem 32rem at 50% 105%, rgba(79, 70, 229, 0.09), transparent 70%);
+}
+
+::selection {
+  background: rgba(79, 70, 229, 0.16);
+  color: var(--vb-text);
+}
+
+/* ---------- Light Section Typography ---------- */
+.text-ink { color: var(--vb-text); }
+.text-neutral-800 { color: #1e293b; }
+.text-neutral-700 { color: #334155; }
+.text-neutral-600 { color: var(--vb-text-2); }
+.text-neutral-500 { color: var(--vb-text-3); }
+.text-sage,
+.text-sageDark,
+.text-sky-700 { color: var(--vb-indigo); }
+
+h1 .underline {
+  text-decoration: none;
+  background: var(--vb-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tracking-widest.text-sageDark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  letter-spacing: 0.18em;
+  color: var(--vb-indigo);
+}
+.tracking-widest.text-sageDark::before {
+  content: "";
+  width: 22px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--vb-grad);
+}
+
+/* ---------- Light Surfaces & Frosted Glass ---------- */
+.bg-cream { background-color: var(--vb-bg-soft); }
+.bg-white { background-color: var(--vb-surface); }
+
+.glass-nav {
+  background: rgba(248, 250, 252, 0.82);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.rounded-3xl.bg-white,
+.rounded-3xl.bg-cream,
+.rounded-2xl.bg-cream,
+.model-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9));
+  border: 1px solid var(--vb-line);
+  box-shadow: 0 4px 20px -6px rgba(15, 23, 42, 0.05);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.rounded-3xl.bg-white:hover,
+.model-card:hover {
+  border-color: rgba(79, 70, 229, 0.36);
+  box-shadow: var(--vb-glow);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rounded-3xl.bg-white,
+  .model-card {
+    transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+  }
+  .rounded-3xl.bg-white:hover,
+  .model-card:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.bg-limeAccent\/40 {
+  background: var(--vb-grad-soft);
+  box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.2);
+}
+
+/* Hero right-hand AI HUD showcase card — light holographic frame */
+.from-\[\#EDE7FF\] {
+  background:
+    radial-gradient(75% 65% at 85% 0%, rgba(147, 51, 234, 0.12), transparent 70%),
+    radial-gradient(65% 65% at 0% 100%, rgba(6, 182, 212, 0.14), transparent 70%),
+    linear-gradient(#ffffff, #f8fafc) padding-box,
+    linear-gradient(135deg, rgba(6, 182, 212, 0.55), rgba(79, 70, 229, 0.45), rgba(147, 51, 234, 0.55)) border-box;
+  border: 1.5px solid transparent;
+  box-shadow: 0 28px 70px -24px rgba(79, 70, 229, 0.2);
+}
+
+/* Lock aspect ratio & replace heavy alpha drop-shadow filter with stable GPU shadow to prevent refresh flicker */
+.hero-hud-shot {
+  aspect-ratio: 500 / 227;
+}
+.hero-hud-shot img {
+  box-shadow: 0 14px 28px -10px rgba(15, 23, 42, 0.22);
+}
+.from-\[\#EDE7FF\] .bg-white\/90 {
+  background-color: #ffffff;
+  border-color: rgba(79, 70, 229, 0.16);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+}
+
+/* ==========================================================================
+   DARK CONTRAST TECH SECTIONS (Alternating Light / Dark Rhythm)
+   ========================================================================== */
+
+/* 1. Top Announcement Bar (Dark Tech Strip) */
+div.bg-ink.border-b {
+  background: linear-gradient(90deg, #070b16 0%, #0d1528 50%, #080c18 100%);
+  color: #e2e8f0;
+  border-bottom: 1px solid rgba(34, 211, 238, 0.24);
+}
+div.bg-ink.border-b a.text-limeAccent {
+  color: var(--vb-cyan-soft);
+}
+div.bg-ink.border-b a.text-limeAccent:hover {
+  color: #ffffff;
+}
+
+/* 2. Feature Ticker Band below Hero (Dark Tech Strip) */
+section.bg-ink {
+  background: linear-gradient(90deg, #070b16 0%, #0f172e 50%, #070b16 100%);
+  color: #f1f5f9;
+  border-top: 1px solid rgba(34, 211, 238, 0.25);
+  border-bottom: 1px solid rgba(168, 85, 247, 0.25);
+  box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.65);
+}
+section.bg-ink .text-limeAccent {
+  color: var(--vb-cyan);
+}
+
+/* 3. AI Refined Output Card in #ai-refine (Dark Neural Terminal Card) */
+.rounded-3xl.bg-ink {
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgba(168, 85, 247, 0.18), transparent 60%),
+    radial-gradient(90% 70% at 0% 100%, rgba(34, 211, 238, 0.14), transparent 60%),
+    linear-gradient(var(--vb-dark-panel), var(--vb-dark-panel-2)) padding-box,
+    var(--vb-grad) border-box;
+  color: #f8fafc;
+  border: 1.5px solid transparent;
+  box-shadow: 0 26px 65px -24px rgba(15, 23, 42, 0.55);
+}
+.rounded-3xl.bg-ink #polishedTextBox {
+  color: #ffffff;
+}
+.rounded-3xl.bg-ink #activeLevelTag {
+  color: var(--vb-mint);
+}
+.rounded-3xl.bg-ink .bg-limeAccent {
+  background: linear-gradient(120deg, #5eead4, #22d3ee);
+  color: #04121d;
+  border: none;
+}
+
+/* 4. Bottom #download Section (Dark AI Holographic Showcase Panel) */
+.rounded-\[32px\].bg-ink {
+  background:
+    radial-gradient(60% 80% at 15% 0%, rgba(34, 211, 238, 0.22), transparent 65%),
+    radial-gradient(60% 80% at 85% 100%, rgba(168, 85, 247, 0.24), transparent 65%),
+    linear-gradient(160deg, #080d1a 0%, #0d152a 100%) padding-box,
+    var(--vb-grad) border-box;
+  color: #f8fafc;
+  border: 1.5px solid transparent;
+  box-shadow: 0 36px 90px -32px rgba(15, 23, 42, 0.65);
+}
+.rounded-\[32px\].bg-ink::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(56, 189, 248, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.08) 1px, transparent 1px);
+  background-size: 32px 32px;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 22%, transparent 78%);
+  mask-image: radial-gradient(ellipse at center, #000 22%, transparent 78%);
+  pointer-events: none;
+}
+.rounded-\[32px\].bg-ink > * { position: relative; }
+.rounded-\[32px\].bg-ink h2 { color: #ffffff; }
+.rounded-\[32px\].bg-ink .text-limeAccent { color: var(--vb-mint); }
+.rounded-\[32px\].bg-ink .text-neutral-300 { color: #cbd5e1; }
+.rounded-\[32px\].bg-ink .text-neutral-400 { color: #94a3b8; }
+
+.rounded-\[32px\].bg-ink a.bg-limeAccent {
+  background: linear-gradient(120deg, #99f6e4 0%, #5eead4 45%, #22d3ee 100%);
+  color: #04121d;
+  border: none;
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.45), 0 16px 40px -12px rgba(34, 211, 238, 0.65);
+}
+.rounded-\[32px\].bg-ink a.bg-limeAccent:hover {
+  filter: brightness(1.06);
+}
+.rounded-\[32px\].bg-ink .bg-white\/10 {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.rounded-\[32px\].bg-ink .bg-white\/10:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(34, 211, 238, 0.5);
+}
+
+/* ---------- Light-Area Badges & Buttons ---------- */
+.bg-limeAccent {
+  background: linear-gradient(120deg, rgba(6, 182, 212, 0.14), rgba(79, 70, 229, 0.14));
+  color: var(--vb-indigo);
+  border: 1px solid rgba(79, 70, 229, 0.25);
+}
+
+/* Top-right CTA & active filter/level tabs */
+a.bg-ink,
+button.bg-ink {
+  background: var(--vb-grad);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 10px 24px -8px rgba(79, 70, 229, 0.45);
+  transition: box-shadow 0.25s ease, filter 0.2s ease;
+}
+a.bg-ink:hover,
+button.bg-ink:hover {
+  filter: brightness(1.06);
+  box-shadow: 0 14px 30px -8px rgba(6, 182, 212, 0.5);
+}
+
+kbd {
+  background: #eef2ff;
+  color: var(--vb-indigo);
+  border-color: rgba(79, 70, 229, 0.25);
+  box-shadow: inset 0 -1px 0 rgba(79, 70, 229, 0.2);
+}
+
+/* ---------- On-Device AI Neural Pipeline Component (Light Tech) ---------- */
+.ai-pipeline-box {
+  margin-top: 1.25rem;
+  padding: 1rem 1.15rem;
+  border-radius: 1.1rem;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(241, 245, 254, 0.94)) padding-box,
+    linear-gradient(120deg, rgba(6, 182, 212, 0.45), rgba(79, 70, 229, 0.45), rgba(147, 51, 234, 0.45)) border-box;
+  border: 1px solid transparent;
+  box-shadow: 0 12px 32px -14px rgba(79, 70, 229, 0.16);
+}
+
+.ai-pipeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+  font-family: SF Mono, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--vb-indigo);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ai-pipeline-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ai-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 0.6rem;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  color: var(--vb-text);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+.ai-node small {
+  color: var(--vb-text-3);
+}
+
+.ai-node-highlight {
+  background: linear-gradient(120deg, rgba(6, 182, 212, 0.1), rgba(79, 70, 229, 0.12), rgba(147, 51, 234, 0.1));
+  border-color: rgba(79, 70, 229, 0.35);
+  color: var(--vb-indigo);
+}
+.ai-node-highlight small {
+  color: var(--vb-indigo);
+}
+
+.ai-arrow {
+  color: var(--vb-indigo);
+  font-family: SF Mono, Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--vb-indigo);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse {
+    animation: none;
+  }
+}

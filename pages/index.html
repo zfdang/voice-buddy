@@ -27,8 +27,10 @@
   <link rel="icon" type="image/svg+xml" href="assets/icon.svg" />
   <link rel="apple-touch-icon" href="assets/voice_buddy_color_512.png" />
 
-  <!-- Pre-compiled Standalone Production Stylesheet -->
+  <!-- Pre-compiled Standalone Production Stylesheet & AI Tech Theme -->
+  <meta name="color-scheme" content="light" />
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="theme-tech.css" />
 
   <!-- Instant Language Preference Route (Prevents Flash) -->
   <script>
@@ -49,10 +51,7 @@
   <!-- 顶部公告栏 -->
   <div class="bg-ink text-white text-xs sm:text-sm py-2 px-4 border-b border-white/10">
     <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
-      <div class="flex items-center gap-2">
-        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-limeAccent text-ink">NEW <span data-vb-version>v1.3.0</span></span>
-        <span>100% 本地端侧 AI 语音输入搭子 · 现已支持五档智能润色、轻度本地规整与毫秒级响应</span>
-      </div>
+      <div aria-hidden="true"></div>
       <a href="https://remote.zfdang.com/" target="_blank" rel="noopener" class="text-limeAccent hover:underline font-medium inline-flex items-center gap-1">
         寻找「遥控搭子 Remote Buddy」？前往 remote.zfdang.com →
       </a>
@@ -113,6 +112,21 @@
           不必停下来打字。在任意应用中按住快捷键说话，松手瞬间，端侧声学模型与本地大语言模型协同工作，自动过滤口癖、修整语法、润色标点，文字直接飞入当前光标处。
         </p>
 
+        <!-- 端侧双阶段 AI 神经推理管线展示 -->
+        <div class="ai-pipeline-box" aria-label="端侧 AI 语音与大模型推理管线">
+          <div class="ai-pipeline-header">
+            <span>◈ ON-DEVICE AI NEURAL PIPELINE</span>
+            <span>MLX · Metal GPU · ANE</span>
+          </div>
+          <div class="ai-pipeline-steps">
+            <span class="ai-node">🎙️ 端侧声学模型 <small class="text-neutral-400 font-mono">(Qwen3-ASR / Whisper / SenseVoice)</small></span>
+            <span class="ai-arrow">→</span>
+            <span class="ai-node ai-node-highlight">🧠 本地 Qwen 大模型润色 <small class="font-mono">(5 档智能规整)</small></span>
+            <span class="ai-arrow">→</span>
+            <span class="ai-node">⚡ 光标毫秒直出</span>
+          </div>
+        </div>
+
         <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-neutral-500 font-medium pt-2">
           <span>💻 适用于 Apple Silicon (M 系列芯片) · macOS 15.0+</span>
           <span>🔒 零数据上云 · 完全免费开源</span>
@@ -136,8 +150,8 @@
           </div>
 
           <!-- 悬浮窗 Retina 高清截图 -->
-          <div class="relative z-10 w-full max-w-[500px] my-2 transform hover:scale-[1.02] transition duration-300 filter drop-shadow-[0_20px_35px_rgba(30,20,50,0.22)]">
-            <img src="assets/dictation.png" width="500" height="227" alt="Voice Buddy 实时语音动态悬浮窗" class="w-full h-auto rounded-2xl block" loading="eager" decoding="async" />
+          <div class="relative z-10 w-full max-w-[500px] my-2 hero-hud-shot">
+            <img src="assets/dictation.png" width="500" height="227" alt="Voice Buddy 实时语音动态悬浮窗" class="w-full h-auto rounded-2xl block" loading="eager" fetchpriority="high" decoding="sync" />
           </div>
 
           <!-- 悬浮窗下方特性胶囊 -->
