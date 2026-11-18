@@ -270,8 +270,12 @@ echo ""
 echo "==> Step 4/4: Signing ${APP_BUNDLE} with '${SIGN_IDENTITY}'..."
 
 RUNTIME_FLAGS=()
-if [[ "${SIGN_IDENTITY}" == *"Developer ID Application"* ]] || [ "${HARDENED_RUNTIME:-false}" = "true" ]; then
+if [[ "${SIGN_IDENTITY}" == *"Developer ID Application"* ]]; then
     RUNTIME_FLAGS=(--options runtime)
+elif [ "${HARDENED_RUNTIME:-false}" = "true" ] && [[ "${SIGN_IDENTITY}" == *"Apple "* || "${SIGN_IDENTITY}" == *"Developer "* ]]; then
+    RUNTIME_FLAGS=(--options runtime)
+elif [ "${HARDENED_RUNTIME:-false}" = "true" ]; then
+    echo "Note: Skipping Hardened Runtime (--options runtime) for identity '${SIGN_IDENTITY}' without Apple Team ID to prevent dyld library validation failures on embedded frameworks."
 fi
 
 sign_component() {
@@ -364,7 +368,15 @@ sign_component "${APP_BUNDLE}" ${MAIN_FLAGS[@]+"${MAIN_FLAGS[@]}"}
 
 echo "Verifying code signature..."
 codesign --verify --deep --strict "${APP_BUNDLE}"
-codesign -dvvv "${APP_BUNDLE}" 2>&1 | grep -E "(Identifier|Format|Authority|TeamIdentifier|Signature)" || true
+SIGN_DETAILS="$(codesign -dvvv --entitlements - "${APP_BUNDLE}" 2>&1 || true)"
+echo "${SIGN_DETAILS}" | grep -E "(Identifier|Format|Authority|TeamIdentifier|Signature|flags=)" || true
+
+if echo "${SIGN_DETAILS}" | grep -q "flags=.*(runtime)" && echo "${SIGN_DETAILS}" | grep -q "TeamIdentifier=not set"; then
+    if ! echo "${SIGN_DETAILS}" | grep -q "com.apple.security.cs.disable-library-validation"; then
+        echo "Error: Hardened Runtime is enabled on a certificate without a TeamIdentifier and without disable-library-validation; macOS dyld will reject embedded frameworks at launch." >&2
+        exit 1
+    fi
+fi
 
 echo "Smoke testing application binary startup..."
 python3 -c "
