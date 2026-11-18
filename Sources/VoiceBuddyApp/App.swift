@@ -114,9 +114,20 @@ public enum AppTab: Int, CaseIterable, Identifiable {
 
     var waitingForSystemSettingsReturn = false
 
-    /// - Parameter skipModelPreload: When true, skips `autoPreloadModels()`. Used by unit tests
-    ///   that instantiate an AppState without wanting to initialize MLX/Metal (unavailable on CI).
-    init(skipModelPreload: Bool = false) {
+    nonisolated static let isRunningUnitTests: Bool = {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || NSClassFromString("XCTestCase") != nil
+    }()
+
+    /// - Parameters:
+    ///   - skipModelPreload: When true, skips `autoPreloadModels()`. Defaults to `true` under XCTest
+    ///     so unit tests avoid initializing MLX/Metal in the background.
+    ///   - skipMenuBar: When true, skips registering a system `NSStatusItem`. Defaults to `true` under XCTest
+    ///     so unit tests do not pollute the macOS menu bar with status icons.
+    init(
+        skipModelPreload: Bool = AppState.isRunningUnitTests,
+        skipMenuBar: Bool = AppState.isRunningUnitTests
+    ) {
         preferences = UserDefaults.standard.data(forKey: defaultsKey).flatMap { try? JSONDecoder().decode(Preferences.self, from: $0) } ?? Preferences()
         DiagnosticLog.shared.record("app.start version=\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown")")
         refreshPermissions()
@@ -125,7 +136,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         if !skipModelPreload {
             autoPreloadModels()
         }
-        menuBarController = MenuBarController(appState: self)
+        menuBarController = skipMenuBar ? nil : MenuBarController(appState: self)
     }
     private func setupKeyboardShortcuts() {
         KeyboardShortcuts.onKeyDown(for: .toggleDictation) { [weak self] in
@@ -1343,6 +1354,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     func getActivePasteboardSessionForTesting() -> TemporaryPasteboard? {
         return self.activePasteboardSession
     }
+    var hasMenuBarControllerForTesting: Bool {
+        menuBarController != nil
+    }
     #endif
     static let menuBarMascotIcon: NSImage = {
         let size = NSSize(width: 22, height: 22)
@@ -1454,7 +1468,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
 
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
-    private var statusItem: NSStatusItem?
+    private nonisolated(unsafe) var statusItem: NSStatusItem?
     private var statusMenu: NSMenu?
     private weak var appState: AppState?
 
@@ -1462,6 +1476,21 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         self.appState = appState
         super.init()
         setupStatusItem()
+    }
+
+    deinit {
+        guard let item = statusItem else { return }
+        statusItem = nil
+        nonisolated(unsafe) let statusItemToRemove = item
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                NSStatusBar.system.removeStatusItem(statusItemToRemove)
+            }
+        } else {
+            DispatchQueue.main.async {
+                NSStatusBar.system.removeStatusItem(statusItemToRemove)
+            }
+        }
     }
 
     func setupStatusItem() {
@@ -1605,10 +1634,15 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
     /// silently stalls, because the normal quit path never runs.
     private var sparkleRelaunchPending = false
 
-    /// - Parameter skipModelPreload: Forwarded to `AppState` so unit tests can construct a
-    ///   delegate without triggering MLX/Metal model preloading (unavailable on CI runners).
-    init(skipModelPreload: Bool = false) {
-        let state = AppState(skipModelPreload: skipModelPreload)
+    /// - Parameters:
+    ///   - skipModelPreload: Forwarded to `AppState` so unit tests can construct a
+    ///     delegate without triggering MLX/Metal model preloading.
+    ///   - skipMenuBar: Forwarded to `AppState` so unit tests do not register menu bar icons.
+    init(
+        skipModelPreload: Bool = AppState.isRunningUnitTests,
+        skipMenuBar: Bool = AppState.isRunningUnitTests
+    ) {
+        let state = AppState(skipModelPreload: skipModelPreload, skipMenuBar: skipMenuBar)
         self.appState = state
         super.init()
         VoiceBuddyAppDelegate.shared = self

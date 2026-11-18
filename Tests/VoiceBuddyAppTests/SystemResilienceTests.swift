@@ -225,4 +225,10 @@ final class SystemResilienceTests: XCTestCase {
         let models = LocalModels()
         await models.unloadEditor()
     }
+
+    func testAppStateSkipsMenuBarRegistrationDuringUnitTests() {
+        XCTAssertTrue(AppState.isRunningUnitTests, "XCTest environment should be detected cleanly")
+        let state = AppState()
+        XCTAssertFalse(state.hasMenuBarControllerForTesting, "Unit tests must not register system menu bar icons")
+    }
 }
