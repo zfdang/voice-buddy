@@ -27,6 +27,13 @@ final class UpdaterViewModel: NSObject, ObservableObject, SPUUpdaterDelegate, @p
         UpdaterViewModel.feedURLString
     }
 
+    /// Sparkle calls this immediately before terminating the host app to relaunch after an
+    /// update. The app is a menu-bar (LSUIElement) agent that vetoes ordinary termination
+    /// requests by default, so explicitly allow this one or "Install & Relaunch" stalls.
+    func updaterWillRelaunchApplication(_ updater: SPUUpdater) {
+        VoiceBuddyAppDelegate.shared?.prepareForSparkleRelaunch()
+    }
+
     func checkForUpdates() {
         let screen = NSApp.keyWindow?.screen
             ?? NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })

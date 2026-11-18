@@ -1595,7 +1595,12 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
     private var isSettingsWindowOpen = false
     private var applicationShortcutMonitor: Any?
     private var workspaceObservers: [NSObjectProtocol] = []
+    private var sparkleRelaunchObserver: NSObjectProtocol?
     private var allowTermination = false
+    /// Set by Sparkle immediately before it asks the host app to terminate for a relaunch.
+    /// A menu-bar (LSUIElement) app otherwise vetoes that termination and "Install & Relaunch"
+    /// silently stalls, because the normal quit path never runs.
+    private var sparkleRelaunchPending = false
 
     override init() {
         let state = AppState()
@@ -1613,12 +1618,21 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        DiagnosticLog.shared.record("app.should_terminate allow=\(allowTermination)")
-        if allowTermination {
+        let allowed = allowTermination || sparkleRelaunchPending
+        DiagnosticLog.shared.record("app.should_terminate allow=\(allowed) sparkle=\(sparkleRelaunchPending)")
+        if allowed {
             return .terminateNow
         }
         closeKeyWindow()
         return .terminateCancel
+    }
+
+    /// Called by the updater right before Sparkle relaunches the app. Without marking the
+    /// termination as allowed, `applicationShouldTerminate` would cancel Sparkle's quit request
+    /// and the update would never install. Kept internal so it can be exercised in unit tests.
+    func prepareForSparkleRelaunch() {
+        DiagnosticLog.shared.record("app.sparkle_relaunch_pending")
+        sparkleRelaunchPending = true
     }
 
     private func configureApplicationMenu() {
@@ -1925,11 +1939,30 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
             }
         }
         workspaceObservers = [obs1, obs2, obs3, obsSleep, obsSessionResign, obsScreensSleep]
+
+        // Sparkle posts this on relaunch before terminating the host app. Observing it provides
+        // a second, delegate-independent path to allow termination (the primary path is
+        // UpdaterViewModel.updaterWillRelaunchApplication -> prepareForSparkleRelaunch()).
+        // The SUUpdaterWillRestartNotification symbol's actual string value carries a "Name"
+        // suffix (verified against Sparkle 2.x source: `@"SUUpdaterWillRestartNotificationName"`).
+        sparkleRelaunchObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("SUUpdaterWillRestartNotificationName"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.prepareForSparkleRelaunch()
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         workspaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
         workspaceObservers.removeAll()
+        if let sparkleRelaunchObserver {
+            NotificationCenter.default.removeObserver(sparkleRelaunchObserver)
+            self.sparkleRelaunchObserver = nil
+        }
     }
 
     private func handleSystemSettingsEvent(notification: Notification) {
