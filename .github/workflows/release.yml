@@ -58,10 +58,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify release commit is on main
+      - name: Resolve and verify release commit
         id: commit
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
+          set -euo pipefail
+          git fetch --tags --quiet origin
           git fetch --quiet origin +refs/heads/main:refs/remotes/origin/main
+
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG exists in repository. Checking out existing tag commit..."
+            git checkout -f "refs/tags/$TAG"
+          else
+            echo "Tag $TAG does not exist yet. Using current checked-out commit on main..."
+          fi
+
           sha="$(git rev-parse HEAD)"
           git merge-base --is-ancestor "$sha" origin/main || {
             echo "::error::Commit $sha must be an ancestor of origin/main"
@@ -296,32 +308,25 @@ jobs:
             echo "Configuring GitHub Release as pre-release for tag ${TAG}."
           fi
 
-          release_notes="## Voice Buddy ${TAG}
-
-- **Commit**: \`${COMMIT}\`
-- **Architecture**: Apple Silicon (arm64, M-Series M1+) / macOS 15.0+
-- **Offline-first voice typing with local Qwen3-ASR and Qwen LLM**
-
-### Sparkle Update Feed & Mirrors
-- Direct Domain Update Feed: \`https://myvoicebuddy.com/appcast.xml\`
-- Direct Binary Download: \`https://myvoicebuddy.com/downloads/${dmg_file##*/}\`
-- GitHub Raw Mirror: \`https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/appcast.xml\`
-
-### SHA256 Checksums
-\`\`\`
-$(cat "$checksum_file")
-\`\`\`"
+          notes_file="$RUNNER_TEMP/release-notes.md"
+          python3 scripts/generate-release-notes.py \
+            --tag "$TAG" \
+            --commit "$COMMIT" \
+            --dmg-file "$dmg_file" \
+            --checksums-file "$checksum_file" \
+            --repository "${GITHUB_REPOSITORY:-zfdang/voice-buddy}" \
+            --output "$notes_file"
 
           echo "Checking if release $TAG exists in $GITHUB_REPOSITORY..."
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists, uploading assets and updating notes..."
             gh release upload "$TAG" "$dmg_file" "$zip_file" "$checksum_file" "$appcast_file" --clobber
-            gh release edit "$TAG" --notes "$release_notes" $prerelease_flag
+            gh release edit "$TAG" --notes-file "$notes_file" $prerelease_flag
           else
             echo "Creating new release for $TAG in $GITHUB_REPOSITORY..."
             gh release create "$TAG" "$dmg_file" "$zip_file" "$checksum_file" "$appcast_file" \
               --title "Voice Buddy ${TAG}" \
-              --notes "$release_notes" \
+              --notes-file "$notes_file" \
               --target "$COMMIT" \
               $prerelease_flag
           fi

@@ -3,8 +3,6 @@
 import argparse
 import base64
 import json
-import hashlib
-import re
 from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
@@ -39,17 +37,23 @@ def write_latest_manifest(directory, release):
     packages = {}
     for key, filename in packages_dict.items():
         pkg_path = downloads_dir / filename
-        size = pkg_path.stat().st_size if pkg_path.exists() else assets.get(filename, {}).get('size')
-        entry = {
-            'name': filename,
-            'url': f'{PAGES_DOWNLOADS_BASE}/{filename}',
-        }
-        if size is not None:
-            entry['size'] = int(size)
-        packages[key] = entry
+        if pkg_path.is_file():
+            size = pkg_path.stat().st_size
+            packages[key] = {
+                'name': filename,
+                'url': f'{PAGES_DOWNLOADS_BASE}/{filename}',
+                'size': int(size),
+            }
+
+    # Ensure at least one primary package is staged before writing manifest
+    if not any(k in packages for k in ('dmg', 'zip')):
+        raise FileNotFoundError(
+            f"Cannot write latest.json: neither DMG ({packages_dict.get('dmg')}) nor "
+            f"ZIP ({packages_dict.get('zip')}) is present in {downloads_dir}"
+        )
 
     checksum_path = downloads_dir / 'SHA256SUMS.txt'
-    if checksum_path.exists():
+    if checksum_path.is_file():
         packages['checksums'] = {
             'name': 'SHA256SUMS.txt',
             'url': f'{PAGES_DOWNLOADS_BASE}/SHA256SUMS.txt',
@@ -69,11 +73,13 @@ def write_latest_manifest(directory, release):
 
 
 def rewrite_github_release_enclosures(directory, release):
-    """Migrate GitHub Release enclosure URLs in appcast.xml to the Pages downloads mirror."""
+    """Migrate GitHub Release enclosure URLs in appcast.xml to the Pages downloads mirror.
+    Only rewrite enclosures for packages that actually exist in the downloads directory."""
     directory = Path(directory)
     path = directory / 'appcast.xml'
     if not path.exists():
         return
+    downloads_dir = directory / 'downloads'
     try:
         tree = ET.parse(path)
         modified = False
@@ -83,8 +89,10 @@ def rewrite_github_release_enclosures(directory, release):
                 url = enclosure.get('url', '')
                 if 'github.com' in url and '/releases/download/' in url:
                     filename = url.rsplit('/', 1)[-1]
-                    enclosure.set('url', f'{PAGES_DOWNLOADS_BASE}/{filename}')
-                    modified = True
+                    # Only rewrite if the package is actually present on disk in downloads/
+                    if (downloads_dir / filename).is_file():
+                        enclosure.set('url', f'{PAGES_DOWNLOADS_BASE}/{filename}')
+                        modified = True
         if modified:
             tree.write(path, encoding='utf-8', xml_declaration=True)
     except Exception as e:
@@ -95,7 +103,6 @@ def verify(directory, release, *, require_packages=False):
     directory = Path(directory)
     tag, assets, packages_dict = _release_packages(release)
     downloads_dir = directory / 'downloads'
-    check_packages = require_packages or downloads_dir.exists()
 
     path = directory / 'appcast.xml'
     if path.exists():
@@ -112,8 +119,27 @@ def verify(directory, release, *, require_packages=False):
                             raise ValueError(f'Invalid signature length: {len(decoded)} bytes')
                     except Exception as e:
                         raise ValueError(f'Invalid Sparkle edSignature: {e}')
+                elif require_packages:
+                    raise ValueError('Sparkle edSignature missing from latest enclosure')
+    elif require_packages:
+        raise FileNotFoundError(f"Required appcast.xml not found in {directory}")
 
-    if check_packages and downloads_dir.is_dir():
+    if require_packages:
+        if not downloads_dir.is_dir():
+            raise FileNotFoundError(f"Downloads directory missing: {downloads_dir}")
+        for key in ('dmg', 'zip'):
+            filename = packages_dict.get(key)
+            if not filename:
+                raise FileNotFoundError(f"Missing expected filename for package {key}")
+            file_path = downloads_dir / filename
+            if not file_path.is_file():
+                raise FileNotFoundError(f"Required release package missing: {filename} in {downloads_dir}")
+            actual_size = file_path.stat().st_size
+            if actual_size == 0:
+                raise ValueError(f"Required release package is empty (0 bytes): {filename}")
+            if actual_size > MAX_PAGES_FILE_BYTES:
+                raise ValueError(f"{filename} exceeds max size limit ({actual_size} bytes)")
+    elif downloads_dir.is_dir():
         for key, filename in packages_dict.items():
             file_path = downloads_dir / filename
             if file_path.is_file():
@@ -134,10 +160,10 @@ def main():
     release = json.loads(args.release_json.read_text(encoding='utf-8'))
     if args.rewrite_github_enclosures:
         rewrite_github_release_enclosures(args.directory, release)
+    # Always verify before writing manifest
+    verify(args.directory, release, require_packages=args.require_packages)
     if args.write_manifest:
         write_latest_manifest(args.directory, release)
-        return
-    verify(args.directory, release, require_packages=args.require_packages)
 
 
 if __name__ == '__main__':
