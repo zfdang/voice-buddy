@@ -15,6 +15,8 @@ struct MainView: View {
     @State private var diagnosticsError = false
     @State private var showPromptPreview = false
     @State private var copiedPromptTip = false
+    @State private var showDeveloperContextPreview = false
+    @State private var copiedDeveloperContextTip = false
     @State private var resultTestMode: Refinement?
     @State private var resultActionStatus = ""
     private func t(_ en: String, _ zh: String) -> String { state.label(en, zh) }
@@ -135,7 +137,7 @@ struct MainView: View {
         case .permissions: return t("Permissions", "权限检查")
         case .speech: return t("Speech", "语音识别")
         case .editor: return t("Text model", "文本模型")
-        case .recovery: return t("Result", "结果")
+        case .recovery: return t("Recognition Result", "识别结果")
         case .about: return t("About", "关于")
         }
     }
@@ -319,7 +321,7 @@ struct MainView: View {
                                 .foregroundStyle(.green)
                             Text(t("All 3 components ready · System is fully operational for dictation.", "核心组件已全部就绪（3/3）· 按下全局快捷键即可随时听写。"))
                                 .font(.caption.bold())
-                                .foregroundStyle(.green)
+                                .foregroundStyle(.primary)
                         } else {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
@@ -433,70 +435,14 @@ struct MainView: View {
                 }
 
                 if state.preferences.refinement != .original, let prompt = RefinementPrompts.prompt(for: state.preferences.refinement) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showPromptPreview.toggle()
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: showPromptPreview ? "chevron.down" : "chevron.right")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 14)
-                                Image(systemName: "text.bubble")
-                                    .foregroundStyle(.secondary)
-                                Text(t("View System Prompt", "查看当前级别的 System Prompt"))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-
-                        if showPromptPreview {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Text(t("System Prompt for active level (Read-Only Preview)", "当前级别生效的 System Prompt（只读预览）"))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                    Button(action: {
-                                        NSPasteboard.general.clearContents()
-                                        NSPasteboard.general.setString(prompt, forType: .string)
-                                        copiedPromptTip = true
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                            copiedPromptTip = false
-                                        }
-                                    }) {
-                                        Label(copiedPromptTip ? t("Copied", "已复制") : t("Copy Prompt", "复制提示词"),
-                                              systemImage: copiedPromptTip ? "checkmark" : "doc.on.doc")
-                                            .font(.caption)
-                                    }
-                                    .buttonStyle(.borderless)
-                                }
-                                ScrollView {
-                                    Text(prompt)
-                                        .font(.system(.caption2, design: .monospaced))
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .textSelection(.enabled)
-                                        .padding(8)
-                                }
-                                .frame(height: 140)
-                                .background(Color(NSColor.textBackgroundColor).opacity(0.5))
-                                .cornerRadius(6)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-                                )
-                            }
-                            .padding(.top, 8)
-                            .padding(.leading, 20)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                        }
-                    }
-                    .padding(.top, 4)
+                    collapsibleContextPreview(
+                        title: t("View System Prompt", "查看当前级别的 System Prompt"),
+                        headerCaption: t("System Prompt for active level (Read-Only Preview)", "当前级别生效的 System Prompt（只读预览）"),
+                        copyButtonTitle: t("Copy Prompt", "复制提示词"),
+                        content: prompt,
+                        isExpanded: $showPromptPreview,
+                        copiedTip: $copiedPromptTip
+                    )
                 }
                 Divider()
                 settingRow(
@@ -572,9 +518,7 @@ struct MainView: View {
                         .font(.headline)
                     Spacer()
                     if state.micAuthorized {
-                        Label(t("Authorized", "已授权"), systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .font(.subheadline)
+                        authorizedStatusBadge()
                     } else if state.micStatus == .denied {
                         Label(t("Denied", "已拒绝"), systemImage: "xmark.circle.fill")
                             .foregroundStyle(.red)
@@ -618,9 +562,7 @@ struct MainView: View {
                         .font(.headline)
                     Spacer()
                     if state.axAuthorized {
-                        Label(t("Authorized", "已授权"), systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .font(.subheadline)
+                        authorizedStatusBadge()
                     } else {
                         Label(t("Not Authorized", "未授权"), systemImage: "xmark.circle.fill")
                             .foregroundStyle(.orange)
@@ -729,8 +671,8 @@ struct MainView: View {
                                             Image(systemName: "checkmark.seal.fill")
                                                 .foregroundStyle(.green)
                                             Text(t("Built-in", "系统内置"))
-                                                .font(.caption.bold())
-                                                .foregroundStyle(.green)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
                                         }
                                         .frame(width: 80, alignment: .trailing)
 
@@ -974,6 +916,28 @@ struct MainView: View {
                         }
                         Spacer()
                     }
+
+                    Divider()
+
+                    settingRow(
+                        title: t("Developer Vocabulary Context (Qwen3-ASR)", "程序员开发词汇增强 (Qwen3-ASR)"),
+                        subtitle: state.preferences.speechModel.contains("qwen-asr")
+                            ? t("Pass \(DeveloperASRContext.terms.count) programming & engineering terms to Qwen3-ASR context", "将 \(DeveloperASRContext.terms.count) 个开发与工程专有词汇作为 context 传入 Qwen3-ASR，提升技术口语准确率")
+                            : t("Pass \(DeveloperASRContext.terms.count) programming & engineering terms when using Qwen3-ASR (inactive on current model)", "内置 \(DeveloperASRContext.terms.count) 个开发专有词汇作为 context 传入（仅对 Qwen3-ASR 0.6B / 1.7B 生效）")
+                    ) {
+                        Toggle("", isOn: $state.preferences.developerContextEnabled)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                    }
+
+                    collapsibleContextPreview(
+                        title: t("View Developer Context (\(DeveloperASRContext.terms.count) terms)", "查看传入模型的开发词汇表（\(DeveloperASRContext.terms.count) 个）"),
+                        headerCaption: t("Qwen3-ASR System Context (Read-Only Preview)", "开启后传入 Qwen3-ASR 的 Context 内容（只读预览）"),
+                        copyButtonTitle: t("Copy Vocabulary", "复制词汇表"),
+                        content: DeveloperASRContext.contextString,
+                        isExpanded: $showDeveloperContextPreview,
+                        copiedTip: $copiedDeveloperContextTip
+                    )
 
                     Divider()
 
@@ -1575,5 +1539,93 @@ struct MainView: View {
         } message: {
             Text(t("Check that Voice Buddy can write to its local Logs folder.", "请检查 Voice Buddy 是否有权限写入本机日志文件夹。"))
         }
+    }
+
+    @ViewBuilder
+    private func authorizedStatusBadge() -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+            Text(t("Authorized", "已授权"))
+                .foregroundStyle(.secondary)
+        }
+        .font(.subheadline)
+    }
+
+    @ViewBuilder
+    private func collapsibleContextPreview(
+        title: String,
+        headerCaption: String,
+        copyButtonTitle: String,
+        content: String,
+        isExpanded: Binding<Bool>,
+        copiedTip: Binding<Bool>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 14)
+                    Image(systemName: "text.bubble")
+                        .foregroundStyle(.secondary)
+                    Text(title)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded.wrappedValue {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text(headerCaption)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button(action: {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(content, forType: .string)
+                            copiedTip.wrappedValue = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                copiedTip.wrappedValue = false
+                            }
+                        }) {
+                            Label(
+                                copiedTip.wrappedValue ? t("Copied", "已复制") : copyButtonTitle,
+                                systemImage: copiedTip.wrappedValue ? "checkmark" : "doc.on.doc"
+                            )
+                            .font(.caption)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    ScrollView {
+                        Text(content)
+                            .font(.system(.caption2, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding(8)
+                    }
+                    .frame(height: 140)
+                    .background(Color(NSColor.textBackgroundColor).opacity(0.5))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                    )
+                }
+                .padding(.top, 8)
+                .padding(.leading, 20)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.top, 4)
     }
 }

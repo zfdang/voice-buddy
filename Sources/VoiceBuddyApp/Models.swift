@@ -529,6 +529,10 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         throw VoiceBuddyError.modelUnavailable("VAD")
     }
     func transcribe(samples: [Float], language: String) async throws -> String {
+        try await transcribe(samples: samples, language: language, context: nil)
+    }
+
+    func transcribe(samples: [Float], language: String, context: String?) async throws -> String {
         if selectedID == "apple-speech" {
             guard let appleSpeech else { throw VoiceBuddyError.modelUnavailable("Apple Speech") }
             return try await appleSpeech.transcribe(samples: samples, sampleRate: 16000, language: language)
@@ -543,7 +547,11 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
             return try await whisper.transcribeAudio(samples, sampleRate: 16000, language: whisperLang)
         }
         guard let asr else { throw VoiceBuddyError.modelUnavailable("ASR") }
-        return try asr.transcribeThrowing(audio: samples, sampleRate: 16000, options: Qwen3DecodingOptions(language: language == "auto" ? nil : language))
+        let options = Qwen3DecodingOptions(
+            language: language == "auto" ? nil : language,
+            context: Qwen3ASRContextNormalizer.normalize(context)
+        )
+        return try asr.transcribeThrowing(audio: samples, sampleRate: 16000, options: options)
     }
 
     private func whisperLanguageCode(from language: String) -> String? {

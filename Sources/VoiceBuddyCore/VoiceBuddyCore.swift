@@ -132,6 +132,7 @@ public struct Preferences: Codable, Equatable {
     public var speechModel = "qwen-asr-0.6b"
     public var textModel = "qwen35-text-0.8b-int5"
     public var refinement: Refinement = .light
+    public var developerContextEnabled = true
     public var holdToTalk: Bool? = nil // nil preserves older settings and defaults to hold
     public var useFnKey = false
     public var sounds = true
@@ -160,6 +161,7 @@ public struct Preferences: Codable, Equatable {
         }
         textModel = try container.decodeIfPresent(String.self, forKey: .textModel) ?? "qwen35-text-0.8b-int5"
         refinement = try container.decodeIfPresent(Refinement.self, forKey: .refinement) ?? .light
+        developerContextEnabled = try container.decodeIfPresent(Bool.self, forKey: .developerContextEnabled) ?? true
         holdToTalk = try container.decodeIfPresent(Bool.self, forKey: .holdToTalk)
         useFnKey = try container.decodeIfPresent(Bool.self, forKey: .useFnKey) ?? false
         sounds = try container.decodeIfPresent(Bool.self, forKey: .sounds) ?? true
@@ -191,6 +193,12 @@ public struct RefinementFailure: LocalizedError {
 
 public protocol TranscriptionEngine: Sendable {
     func transcribe(samples: [Float], language: String) async throws -> String
+    func transcribe(samples: [Float], language: String, context: String?) async throws -> String
+}
+public extension TranscriptionEngine {
+    func transcribe(samples: [Float], language: String, context: String?) async throws -> String {
+        try await transcribe(samples: samples, language: language)
+    }
 }
 public protocol TextRefinementEngine: Sendable {
     func refine(_ text: String, mode: Refinement) async throws -> String
@@ -259,7 +267,7 @@ public struct Pipeline: Sendable {
         self.detector = detector; self.transcription = transcription; self.refinement = refinement
         self.onEvent = onEvent
     }
-    public func run(samples: [Float], language: String, mode: Refinement) async throws -> (original: String, result: String) {
+    public func run(samples: [Float], language: String, mode: Refinement, context: String? = nil) async throws -> (original: String, result: String) {
         onEvent(.detectionStarted)
         do {
             guard !samples.isEmpty, try await detector.containsSpeech(samples) else { throw VoiceBuddyError.noSpeech }
@@ -269,7 +277,7 @@ public struct Pipeline: Sendable {
         onEvent(.transcriptionStarted)
         let original: String
         do {
-            original = try await transcription.transcribe(samples: samples, language: language)
+            original = try await transcription.transcribe(samples: samples, language: language, context: context)
             guard !original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw VoiceBuddyError.emptyTranscript }
             onEvent(.transcriptionCompleted)
         } catch { onEvent(.transcriptionFailed); throw error }

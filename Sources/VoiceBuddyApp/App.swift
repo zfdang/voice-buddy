@@ -913,7 +913,9 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 guard samples.count >= 5600, samples.count >= lastCount + 3200 else { continue }
                 lastCount = samples.count
                 do {
-                    let text = try await self.models.transcribe(samples: samples, language: lang)
+                    // Keep 280ms live preview free of system context overhead;
+                    // the authoritative pass in finish() injects DeveloperASRContext.
+                    let text = try await self.models.transcribe(samples: samples, language: lang, context: nil)
                     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty {
                         await MainActor.run {
@@ -1067,7 +1069,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
                 }
             }
             do {
-                let output = try await pipeline.run(samples: audio, language: settings.speechLanguage, mode: settings.refinement)
+                let output = try await pipeline.run(
+                    samples: audio,
+                    language: settings.speechLanguage,
+                    mode: settings.refinement,
+                    context: DeveloperASRContext.context(enabled: settings.developerContextEnabled)
+                )
                 guard transcriptionGeneration == id else {
                     DiagnosticLog.shared.record("transcription.discarded id=\(logSession) reason=session_changed")
                     return
