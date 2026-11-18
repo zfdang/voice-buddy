@@ -15,7 +15,7 @@ trap 'rm -rf "$work_dir"' EXIT
 archive="Voice-Buddy-${TAG}-macOS.zip"
 mkdir -p "$work_dir/archives" "$work_dir/sparkle" dist
 
-gh release download "$TAG" --repo zfdang/voice-buddy \
+gh release download "$TAG" --repo "${GITHUB_REPOSITORY:-zfdang/voice-buddy}" \
     --pattern "$archive" --pattern SHA256SUMS.txt --dir "$work_dir/archives"
 # Validate only this ZIP; the checksum manifest also lists a DMG not used here.
 python3 - "$work_dir/archives" "$archive" <<'PYTHON'
@@ -45,10 +45,10 @@ print(key.publicKey.rawRepresentation.base64EncodedString())
 gh release download 2.10.1 --repo sparkle-project/Sparkle \
     --pattern Sparkle-2.10.1.tar.xz --dir "$work_dir/sparkle"
 tar -xf "$work_dir/sparkle/Sparkle-2.10.1.tar.xz" -C "$work_dir/sparkle"
-curl -fsSL https://raw.githubusercontent.com/zfdang/voice-buddy/main/appcast.xml \
+curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY:-zfdang/voice-buddy}/main/appcast.xml" \
     -o "$work_dir/archives/appcast.xml"
 printf '%s' "$SPARKLE_ED_KEY" | "$work_dir/sparkle/bin/generate_appcast" \
-    --ed-key-file - --download-url-prefix "https://github.com/zfdang/voice-buddy/releases/download/${TAG}/" \
+    --ed-key-file - --download-url-prefix "https://myvoicebuddy.com/downloads/" \
     "$work_dir/archives"
 cp "$work_dir/archives/appcast.xml" dist/appcast.xml
 python3 - dist/appcast.xml "$TAG" <<'PYTHON'
