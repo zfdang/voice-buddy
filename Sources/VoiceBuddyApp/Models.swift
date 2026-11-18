@@ -483,11 +483,14 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     }
 
     func unloadEditor() {
+        let hadLoadedModel = (qwen35Editor != nil || denseEditor != nil)
         qwen35Editor?.unload()
         qwen35Editor = nil
         denseEditor = nil
         selectedEditorID = ""
-        Qwen35MLXChat.clearGPUCache()
+        if hadLoadedModel {
+            Qwen35MLXChat.clearGPUCache()
+        }
     }
 
     func removeEditor(id: String? = nil) throws {
