@@ -10,6 +10,8 @@ final class UpdaterViewModel: NSObject, ObservableObject, SPUUpdaterDelegate, @p
 
     public nonisolated static let feedURLString = "https://raw.githubusercontent.com/zfdang/voice-buddy/main/appcast.xml"
 
+    var updaterInstance: SPUUpdater? { updaterController?.updater }
+
     override init() {
         super.init()
         let controller = SPUStandardUpdaterController(
@@ -21,10 +23,45 @@ final class UpdaterViewModel: NSObject, ObservableObject, SPUUpdaterDelegate, @p
         controller.updater.publisher(for: \.canCheckForUpdates)
             .assign(to: &$canCheckForUpdates)
         NotificationCenter.default.addObserver(self, selector: #selector(positionUpdateWindow(_:)), name: NSWindow.didBecomeKeyNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSparkleWillRestart(_:)),
+            name: NSNotification.Name.SUUpdaterWillRestart,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     nonisolated func feedURLString(for updater: SPUUpdater) -> String? {
         UpdaterViewModel.feedURLString
+    }
+
+    /// Sparkle calls this immediately before terminating the host app to relaunch after an
+    /// update. The app is a menu-bar (LSUIElement) agent that vetoes ordinary termination
+    /// requests by default, so explicitly allow this one or "Install & Relaunch" stalls.
+    func updaterWillRelaunchApplication(_ updater: SPUUpdater) {
+        VoiceBuddyAppDelegate.shared?.prepareForSparkleRelaunch()
+    }
+
+    /// Reset the pending relaunch allowance if Stage 2 aborts (for instance, the user cancels
+    /// authorization) so the menu-bar app does not remain permanently terminable.
+    func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        VoiceBuddyAppDelegate.shared?.cancelSparkleRelaunch()
+    }
+
+    @objc private func handleSparkleWillRestart(_ notification: Notification) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                VoiceBuddyAppDelegate.shared?.prepareForSparkleRelaunch()
+            }
+        } else {
+            Task { @MainActor in
+                VoiceBuddyAppDelegate.shared?.prepareForSparkleRelaunch()
+            }
+        }
     }
 
     func checkForUpdates() {

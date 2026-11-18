@@ -1596,6 +1596,10 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
     private var applicationShortcutMonitor: Any?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var allowTermination = false
+    /// Set by Sparkle immediately before it asks the host app to terminate for a relaunch.
+    /// A menu-bar (LSUIElement) app otherwise vetoes that termination and "Install & Relaunch"
+    /// silently stalls, because the normal quit path never runs.
+    private var sparkleRelaunchPending = false
 
     override init() {
         let state = AppState()
@@ -1613,12 +1617,29 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        DiagnosticLog.shared.record("app.should_terminate allow=\(allowTermination)")
-        if allowTermination {
+        let allowed = allowTermination || sparkleRelaunchPending
+        DiagnosticLog.shared.record("app.should_terminate allow=\(allowed) sparkle=\(sparkleRelaunchPending)")
+        if allowed {
             return .terminateNow
         }
         closeKeyWindow()
         return .terminateCancel
+    }
+
+    /// Called by the updater right before Sparkle relaunches the app. Without marking the
+    /// termination as allowed, `applicationShouldTerminate` would cancel Sparkle's quit request
+    /// and the update would never install. Kept internal so it can be exercised in unit tests.
+    func prepareForSparkleRelaunch() {
+        DiagnosticLog.shared.record("app.sparkle_relaunch_pending")
+        sparkleRelaunchPending = true
+    }
+
+    /// Resets the pending Sparkle relaunch flag if the update aborts before termination
+    /// (e.g., user cancels admin authorization or installation fails), restoring normal veto behavior.
+    func cancelSparkleRelaunch() {
+        guard sparkleRelaunchPending else { return }
+        DiagnosticLog.shared.record("app.sparkle_relaunch_cancelled")
+        sparkleRelaunchPending = false
     }
 
     private func configureApplicationMenu() {
