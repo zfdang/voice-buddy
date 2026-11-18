@@ -32,21 +32,21 @@ flowchart TD
 
 ### 1.1 核心组件与分工
 - **代码与测试套件**：包含 100% 完整的 Swift 源码（`Sources/`）与单元/系统弹性测试套件（`Tests/`）。
-- **官方展示网站**：位于 `pages/` 目录，通过 `.github/workflows/static.yml` 自动部署至 GitHub Pages 并绑定独立域名 `https://myvoicebuddy.com`。
+- **官方展示网站**：位于 `pages/` 目录，通过 `.github/workflows/deploy-pages.yml` 自动部署至 GitHub Pages 并绑定独立域名 `https://myvoicebuddy.com`。
 - **Sparkle 自动更新与镜像分发**：
   - 根目录与 `pages/` 同步维护 `appcast.xml`。
   - Sparkle 升级订阅源设置为 `https://myvoicebuddy.com/appcast.xml`（备用镜像为 GitHub raw）。
   - 更新源内部 enclosure 下载直链优先指向 `https://myvoicebuddy.com/downloads/Voice-Buddy-*.zip`，确保国内用户不翻墙也能高速稳定自动更新。
 - **发布与部署自动化**：
   - 手动触发 `release.yml`（通过 Actions 页面输入 tag 或推送 `v*` tag），运行编译打包、Apple 代码签名及 Sparkle 密钥验签。
-  - 发布完成后自动触发 `static.yml`，将产物与 appcast 同步至 `pages/downloads/` 并部署到 `myvoicebuddy.com`。
+  - 发布完成后自动触发 `deploy-pages.yml`，将产物与 appcast 同步至 `pages/downloads/` 并部署到 `myvoicebuddy.com`。
 
 ---
 
 ## 2. 核心红线与行为准则
 
 1. **按需控制 CI 触发范围**：
-   - `.github/workflows/macos.yml` 在合入/推送 `main` 分支时自动触发测试与构建验证（忽略仅涉及 `pages/**`、`docs/**`、`**/*.md` 的变更），并支持 `workflow_dispatch` 手动触发；暂不默认在每次 `pull_request` 事件自动触发 macOS runner，避免 PR 频繁提交期间重复排队。
+   - `.github/workflows/ci.yml` 在合入/推送 `main` 分支时自动触发测试与构建验证（忽略仅涉及 `pages/**`、`docs/**`、`**/*.md` 的变更），并支持 `workflow_dispatch` 手动触发；暂不默认在每次 `pull_request` 事件自动触发 macOS runner，避免 PR 频繁提交期间重复排队。
    - 发布工作流 `.github/workflows/release.yml` **仅允许**在打版本标签（`v*`）或手动 `workflow_dispatch` 时运行，严禁随每次 `push` 到 `main` 自动发版。
 2. **绝对禁止直接 Push 到 `main` 分支 (严格遵守 PR 流程)**：
    - **严禁任何开发者或 AI 助理向 `main` 分支执行 `git push origin main`**。

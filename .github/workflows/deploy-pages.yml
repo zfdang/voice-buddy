@@ -12,7 +12,7 @@ on:
     branches: ["main"]
     paths:
       - "pages/**"
-      - ".github/workflows/static.yml"
+      - ".github/workflows/deploy-pages.yml"
       - "scripts/prepare-pages-update-feeds.sh"
       - "scripts/verify-pages-update-feeds.py"
 
