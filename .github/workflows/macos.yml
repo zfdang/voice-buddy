@@ -14,8 +14,11 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Select Xcode toolchain (Swift 6.2+ / Xcode 26+)
+        id: xcode
         run: |
           for xcode_path in "/Applications/Xcode_26.3.app" "/Applications/Xcode_26.2.app" "/Applications/Xcode_26.1.1.app" "/Applications/Xcode_26.0.1.app" "/Applications/Xcode.app"; do
             if [ -d "$xcode_path/Contents/Developer" ]; then
@@ -26,22 +29,38 @@ jobs:
               break
             fi
           done
-          echo "Selected Swift toolchain version:"
+          dev_dir="${DEVELOPER_DIR:-$(xcode-select -p)}"
+          xcode_id="$(basename "$(dirname "$(dirname "$dev_dir")")" .app)"
+          echo "xcode_id=$xcode_id" >> "$GITHUB_OUTPUT"
+          echo "Selected Swift toolchain version ($xcode_id):"
           swift --version
 
-      - name: Cache SwiftPM and build artifacts
-        uses: actions/cache@v4
+      - name: Restore SwiftPM and build cache
+        id: swift-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm/artifacts
             .build
-          key: ${{ runner.os }}-${{ runner.arch }}-swift-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ github.sha }}
+            !.build/mlx-metallib-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-tests-v2-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-swift-${{ hashFiles('Package.resolved', 'Package.swift') }}-
-            ${{ runner.os }}-${{ runner.arch }}-swift-
+            ${{ runner.os }}-${{ runner.arch }}-swift-tests-v2-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved', 'Package.swift') }}-
+            ${{ runner.os }}-${{ runner.arch }}-swift-tests-v2-${{ steps.xcode.outputs.xcode_id }}-
+
+      - name: Cache MLX Metal shader library
+        uses: actions/cache@v4
+        with:
+          path: .build/mlx-metallib-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-mlx-metallib-v1-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-mlx-metallib-v1-${{ steps.xcode.outputs.xcode_id }}-
+
+      - name: Restore deterministic Git timestamps for incremental SwiftPM builds
+        run: python3 scripts/restore-git-mtimes.py --marker-file .build/.cached-git-sha
 
       - name: Run tests
-        run: swift test -j 4
+        run: swift test -j "$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"
 
       - name: Build and smoke-test macOS application package
         run: |
@@ -55,6 +74,20 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "dist/Voice Buddy.app/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Print :SUFeedURL" "dist/Voice Buddy.app/Contents/Info.plist"
 
+      - name: Write incremental build cache marker
+        if: steps.swift-cache.outputs.cache-hit != 'true'
+        run: python3 scripts/restore-git-mtimes.py --marker-file .build/.cached-git-sha --write-marker
+
+      - name: Save SwiftPM and build cache
+        if: steps.swift-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm/artifacts
+            .build
+            !.build/mlx-metallib-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-tests-v2-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ github.sha }}
+
   signed-development-build:
     if: github.event_name == 'workflow_dispatch'
     needs: tests
@@ -66,8 +99,11 @@ jobs:
       P12_PASSWORD: ${{ secrets.VOICE_BUDDY_SIGNING_P12_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Select Xcode toolchain (Swift 6.2+ / Xcode 26+)
+        id: xcode
         run: |
           for xcode_path in "/Applications/Xcode_26.3.app" "/Applications/Xcode_26.2.app" "/Applications/Xcode_26.1.1.app" "/Applications/Xcode_26.0.1.app" "/Applications/Xcode.app"; do
             if [ -d "$xcode_path/Contents/Developer" ]; then
@@ -78,19 +114,36 @@ jobs:
               break
             fi
           done
-          echo "Selected Swift toolchain version:"
+          dev_dir="${DEVELOPER_DIR:-$(xcode-select -p)}"
+          xcode_id="$(basename "$(dirname "$(dirname "$dev_dir")")" .app)"
+          echo "xcode_id=$xcode_id" >> "$GITHUB_OUTPUT"
+          echo "Selected Swift toolchain version ($xcode_id):"
           swift --version
 
-      - name: Cache SwiftPM and build artifacts
-        uses: actions/cache@v4
+      - name: Restore SwiftPM and release build cache
+        id: swift-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm/artifacts
             .build
-          key: ${{ runner.os }}-${{ runner.arch }}-swift-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ github.sha }}
+            !.build/mlx-metallib-cache
+            !.build/arm64-apple-macosx/debug
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-v2-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-swift-${{ hashFiles('Package.resolved', 'Package.swift') }}-
-            ${{ runner.os }}-${{ runner.arch }}-swift-
+            ${{ runner.os }}-${{ runner.arch }}-swift-v2-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved', 'Package.swift') }}-
+            ${{ runner.os }}-${{ runner.arch }}-swift-v2-${{ steps.xcode.outputs.xcode_id }}-
+
+      - name: Cache MLX Metal shader library
+        uses: actions/cache@v4
+        with:
+          path: .build/mlx-metallib-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-mlx-metallib-v1-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-mlx-metallib-v1-${{ steps.xcode.outputs.xcode_id }}-
+
+      - name: Restore deterministic Git timestamps for incremental SwiftPM builds
+        run: python3 scripts/restore-git-mtimes.py --marker-file .build/.cached-git-sha
 
       - name: Import development signing identity and build
         shell: bash
@@ -126,6 +179,21 @@ jobs:
           fi
 
           ditto -c -k --keepParent 'dist/Voice Buddy.app' "$RUNNER_TEMP/Voice-Buddy-development.zip"
+
+      - name: Write incremental build cache marker
+        if: steps.swift-cache.outputs.cache-hit != 'true'
+        run: python3 scripts/restore-git-mtimes.py --marker-file .build/.cached-git-sha --write-marker
+
+      - name: Save SwiftPM and release build cache
+        if: steps.swift-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm/artifacts
+            .build
+            !.build/mlx-metallib-cache
+            !.build/arm64-apple-macosx/debug
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-v2-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ github.sha }}
 
       - name: Cleanup signing keychain
         if: always()

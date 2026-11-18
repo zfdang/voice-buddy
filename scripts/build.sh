@@ -151,13 +151,30 @@ echo "=========================================================="
 
 # 1. Build Swift Package
 echo ""
-echo "==> Step 1/4: Compiling Swift Package (${BUILD_CONFIG})..."
-swift build -c "${BUILD_CONFIG}" -j 4
+JOBS="$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+echo "==> Step 1/4: Compiling Swift Package (${BUILD_CONFIG}, -j ${JOBS})..."
+swift build -c "${BUILD_CONFIG}" -j "${JOBS}"
+
+SPM_OUT="${ROOT_DIR}/.build/${BUILD_CONFIG}"
+if [ ! -f "${SPM_OUT}/VoiceBuddy" ] && [ -f "${ROOT_DIR}/.build/arm64-apple-macosx/${BUILD_CONFIG}/VoiceBuddy" ]; then
+    SPM_OUT="${ROOT_DIR}/.build/arm64-apple-macosx/${BUILD_CONFIG}"
+fi
 
 # 2. Build MLX Metal Library
 echo ""
 echo "==> Step 2/4: Building Metal Library (mlx.metallib)..."
+METALLIB_CACHE_DIR="${ROOT_DIR}/.build/mlx-metallib-cache/${BUILD_CONFIG}"
+if [ ! -f "${SPM_OUT}/mlx.metallib" ] && [ -f "${METALLIB_CACHE_DIR}/mlx.metallib" ] && [ -f "${METALLIB_CACHE_DIR}/mlx.metallib.sha" ]; then
+    echo "Restoring cached mlx.metallib into ${SPM_OUT}..."
+    cp -p "${METALLIB_CACHE_DIR}/mlx.metallib" "${SPM_OUT}/mlx.metallib"
+    cp -p "${METALLIB_CACHE_DIR}/mlx.metallib.sha" "${SPM_OUT}/.mlx.metallib.sha"
+fi
 BUILD_DIR="${ROOT_DIR}/.build" bash "${ROOT_DIR}/.build/checkouts/speech-swift/scripts/build_mlx_metallib.sh" "${BUILD_CONFIG}"
+if [ -f "${SPM_OUT}/mlx.metallib" ] && [ -f "${SPM_OUT}/.mlx.metallib.sha" ]; then
+    mkdir -p "${METALLIB_CACHE_DIR}"
+    cp -p "${SPM_OUT}/mlx.metallib" "${METALLIB_CACHE_DIR}/mlx.metallib"
+    cp -p "${SPM_OUT}/.mlx.metallib.sha" "${METALLIB_CACHE_DIR}/mlx.metallib.sha"
+fi
 
 # 3. Assemble App Bundle
 echo ""
@@ -169,11 +186,6 @@ fi
 APP_BUNDLE="${ROOT_DIR}/dist/Voice Buddy.app"
 rm -rf "${APP_BUNDLE}"
 mkdir -p "${APP_BUNDLE}/Contents/MacOS" "${APP_BUNDLE}/Contents/Resources" "${APP_BUNDLE}/Contents/Frameworks"
-
-SPM_OUT="${ROOT_DIR}/.build/${BUILD_CONFIG}"
-if [ ! -f "${SPM_OUT}/VoiceBuddy" ] && [ -f "${ROOT_DIR}/.build/arm64-apple-macosx/${BUILD_CONFIG}/VoiceBuddy" ]; then
-    SPM_OUT="${ROOT_DIR}/.build/arm64-apple-macosx/${BUILD_CONFIG}"
-fi
 
 cp "${SPM_OUT}/VoiceBuddy" "${APP_BUNDLE}/Contents/MacOS/VoiceBuddy"
 if [ -d "${SPM_OUT}/VoiceBuddy_VoiceBuddyApp.bundle" ]; then

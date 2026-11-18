@@ -1941,6 +1941,7 @@ final class VoiceBuddyAppDelegate: NSObject, NSApplicationDelegate, NSWindowDele
 enum VoiceBuddyApp {
     @MainActor
     static func main() {
+        Bundle.installSwiftPMResourceBundleFallback()
         let application = NSApplication.shared
         let delegate = VoiceBuddyAppDelegate()
         application.delegate = delegate
