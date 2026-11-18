@@ -137,7 +137,7 @@ struct MainView: View {
         case .permissions: return t("Permissions", "权限检查")
         case .speech: return t("Speech", "语音识别")
         case .editor: return t("Text model", "文本模型")
-        case .recovery: return t("Result", "识别结果")
+        case .recovery: return t("Recognition Result", "识别结果")
         case .about: return t("About", "关于")
         }
     }
@@ -438,6 +438,7 @@ struct MainView: View {
                     collapsibleContextPreview(
                         title: t("View System Prompt", "查看当前级别的 System Prompt"),
                         headerCaption: t("System Prompt for active level (Read-Only Preview)", "当前级别生效的 System Prompt（只读预览）"),
+                        copyButtonTitle: t("Copy Prompt", "复制提示词"),
                         content: prompt,
                         isExpanded: $showPromptPreview,
                         copiedTip: $copiedPromptTip
@@ -932,6 +933,7 @@ struct MainView: View {
                     collapsibleContextPreview(
                         title: t("View Developer Context (\(DeveloperASRContext.terms.count) terms)", "查看传入模型的开发词汇表（\(DeveloperASRContext.terms.count) 个）"),
                         headerCaption: t("Qwen3-ASR System Context (Read-Only Preview)", "开启后传入 Qwen3-ASR 的 Context 内容（只读预览）"),
+                        copyButtonTitle: t("Copy Vocabulary", "复制词汇表"),
                         content: DeveloperASRContext.contextString,
                         isExpanded: $showDeveloperContextPreview,
                         copiedTip: $copiedDeveloperContextTip
@@ -1554,6 +1556,7 @@ struct MainView: View {
     private func collapsibleContextPreview(
         title: String,
         headerCaption: String,
+        copyButtonTitle: String,
         content: String,
         isExpanded: Binding<Bool>,
         copiedTip: Binding<Bool>
@@ -1596,7 +1599,7 @@ struct MainView: View {
                             }
                         }) {
                             Label(
-                                copiedTip.wrappedValue ? t("Copied", "已复制") : t("Copy", "复制"),
+                                copiedTip.wrappedValue ? t("Copied", "已复制") : copyButtonTitle,
                                 systemImage: copiedTip.wrappedValue ? "checkmark" : "doc.on.doc"
                             )
                             .font(.caption)

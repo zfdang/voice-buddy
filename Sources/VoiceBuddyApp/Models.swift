@@ -547,10 +547,9 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
             return try await whisper.transcribeAudio(samples, sampleRate: 16000, language: whisperLang)
         }
         guard let asr else { throw VoiceBuddyError.modelUnavailable("ASR") }
-        let normalizedContext = context?.trimmingCharacters(in: .whitespacesAndNewlines)
         let options = Qwen3DecodingOptions(
             language: language == "auto" ? nil : language,
-            context: (normalizedContext?.isEmpty == false) ? normalizedContext : nil
+            context: Qwen3ASRContextNormalizer.normalize(context)
         )
         return try asr.transcribeThrowing(audio: samples, sampleRate: 16000, options: options)
     }
