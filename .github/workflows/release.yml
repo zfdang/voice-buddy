@@ -38,6 +38,7 @@ env:
 
 jobs:
   release:
+    name: Build, Sign & Publish Release
     if: github.event_name != 'workflow_dispatch' || !inputs.sign_existing
     runs-on: macos-15
     timeout-minutes: 60
@@ -53,11 +54,12 @@ jobs:
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Select Xcode toolchain (Swift 6.2+ / Xcode 26+)
+      - name: Select Xcode toolchain
         id: xcode
         run: |
           for xcode_path in "/Applications/Xcode_26.3.app" "/Applications/Xcode_26.2.app" "/Applications/Xcode_26.1.1.app" "/Applications/Xcode_26.0.1.app" "/Applications/Xcode.app"; do
@@ -75,7 +77,7 @@ jobs:
           echo "Selected Swift toolchain version ($xcode_id):"
           swift --version
 
-      - name: Resolve release tag
+      - name: Resolve release version tag
         id: tag
         env:
           INPUT_TAG: ${{ github.event.inputs.tag }}
@@ -100,7 +102,7 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve and verify release commit
+      - name: Verify release commit on main
         id: commit
         env:
           TAG: ${{ steps.tag.outputs.tag }}
@@ -124,7 +126,7 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "short=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Restore SwiftPM and release build cache
+      - name: Restore SwiftPM release cache
         id: swift-cache
         uses: actions/cache/restore@v4
         with:
@@ -146,14 +148,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-mlx-metallib-v1-${{ steps.xcode.outputs.xcode_id }}-
 
-      - name: Restore deterministic Git timestamps for incremental SwiftPM builds
+      - name: Restore Git timestamps for incremental build
         run: python3 scripts/restore-git-mtimes.py --marker-file .build/.cached-git-sha
 
-      - name: Run test suite
+      - name: Run unit tests
         if: github.event_name != 'workflow_dispatch' || inputs.run_tests
         run: swift test -j "$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"
 
-      - name: Setup signing keychain
+      - name: Import release signing certificate
         shell: bash
         run: |
           set -euo pipefail
@@ -178,7 +180,7 @@ jobs:
           echo "Discovered codesigning identities in keychain:"
           security find-identity -v -p codesigning "$keychain"
 
-      - name: Build and package signed release
+      - name: Build, sign & package release
         id: build
         run: |
           tag="${{ steps.tag.outputs.tag }}"
@@ -213,7 +215,7 @@ jobs:
             exit 1
           fi
 
-      - name: Apple Notarization and Stapling
+      - name: Apple notarization & stapling
         id: notarize
         run: |
           set -euo pipefail
@@ -268,7 +270,7 @@ jobs:
           # Recompute SHA256 checksums
           (cd dist && shasum -a 256 "${zip_file##*/}" "${dmg_file##*/}" > SHA256SUMS.txt)
 
-      - name: Generate Sparkle Appcast and Signature
+      - name: Generate Sparkle appcast & EdDSA signature
         id: sparkle
         env:
           TAG: ${{ steps.tag.outputs.tag }}
@@ -340,11 +342,11 @@ jobs:
           echo "Generated dist/appcast.xml:"
           cat "dist/appcast.xml"
 
-      - name: Write incremental build cache marker
+      - name: Record build cache commit marker
         if: steps.swift-cache.outputs.cache-hit != 'true'
         run: python3 scripts/restore-git-mtimes.py --marker-file .build/.cached-git-sha --write-marker
 
-      - name: Save SwiftPM and release build cache
+      - name: Save SwiftPM release cache
         if: steps.swift-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
@@ -355,7 +357,7 @@ jobs:
             !.build/arm64-apple-macosx/debug
           key: ${{ runner.os }}-${{ runner.arch }}-swift-v2-${{ steps.xcode.outputs.xcode_id }}-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ steps.commit.outputs.sha }}
 
-      - name: Publish Release to GitHub
+      - name: Publish GitHub Release
         id: publish
         env:
           TAG: ${{ steps.tag.outputs.tag }}
@@ -405,7 +407,7 @@ jobs:
               $prerelease_flag
           fi
 
-      - name: Update appcast.xml in main branch
+      - name: Commit updated appcast.xml to main
         env:
           TAG: ${{ steps.tag.outputs.tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -437,7 +439,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Deployment Summary
+      - name: Write release summary
         env:
           TAG: ${{ steps.tag.outputs.tag }}
           COMMIT: ${{ steps.commit.outputs.sha }}
@@ -465,18 +467,20 @@ jobs:
           fi
 
   sign-existing:
+    name: Re-sign Existing Release Appcast
     if: github.event_name == 'workflow_dispatch' && inputs.sign_existing
     runs-on: macos-15
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - name: Download, verify, and sign the existing release
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Download, verify & sign existing release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SPARKLE_ED_KEY: ${{ secrets.SPARKLE_ED_KEY }}
           TAG: ${{ inputs.tag }}
         run: bash scripts/sign-existing-release.sh
-      - name: Save signed update feed
+      - name: Upload signed appcast.xml
         uses: actions/upload-artifact@v4
         with:
           name: signed-appcast-${{ inputs.tag }}
