@@ -45,7 +45,9 @@ final class SystemResilienceTests: XCTestCase {
     }
 
     func testAppleSpeechOfflineDoesNotRequireVAD() async throws {
-        let models = LocalModels()
+        let isolatedRoot = FileManager.default.temporaryDirectory.appendingPathComponent("vb-apple-speech-offline-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: isolatedRoot) }
+        let models = LocalModels(root: isolatedRoot)
         // Try prepareSpeech for apple-speech; must complete without network or Silero VAD error
         final class ProgressBox: @unchecked Sendable { var value: Double = 0 }
         let box = ProgressBox()

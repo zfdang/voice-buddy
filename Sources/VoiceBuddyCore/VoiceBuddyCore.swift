@@ -123,6 +123,22 @@ public struct RefinementPrompts {
         case .rewrite: return level3ProfessionalRewrite
         }
     }
+
+    // Mirrors the XML delimiter tags used in RefinementPrompts and LocalModels.refine(_:mode:).
+    private static let controlTagRegex = try! NSRegularExpression(
+        pattern: #"<(/?)(asr_text|asr_input|polished_text|think)\b([^>]*)>"#,
+        options: [.caseInsensitive]
+    )
+
+    /// Escape XML boundary tags inside untrusted ASR transcripts so literal tag strings cannot close `<asr_text>`.
+    public static func escapeControlTags(in text: String) -> String {
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return controlTagRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "&lt;$1$2$3&gt;")
+    }
+
+    public static func wrapUserTranscript(_ text: String) -> String {
+        "<asr_text>\(escapeControlTags(in: text))</asr_text>"
+    }
 }
 
 public struct Preferences: Codable, Equatable {

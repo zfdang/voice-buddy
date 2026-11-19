@@ -106,8 +106,138 @@ public final class SenseVoiceASRModel: @unchecked Sendable {
 
         let features = try runPreprocessor(audio: normalizedAudio)
         let langId = languageId(for: language ?? "auto")
-        let (logits, validFrames) = try runEncoder(features: features, language: langId)
-        return decode(logits: logits, validFrames: validFrames)
+        let totalFrames = features.shape.count >= 2 ? features.shape[1].intValue : 0
+        guard totalFrames > 0 else { return "" }
+
+        let maxFrames = buckets.last ?? 1800
+        if totalFrames <= maxFrames {
+            let (logits, validFrames) = try runEncoder(features: features, frameOffset: 0, frameCount: totalFrames, language: langId)
+            return decode(logits: logits, validFrames: validFrames)
+        }
+
+        let overlapFrames = min(60, max(1, maxFrames / 10))
+        let stepFrames = max(1, maxFrames - overlapFrames)
+        DiagnosticLog.shared.record("sensevoice.chunked_inference total_frames=\(totalFrames) max_frames=\(maxFrames) overlap=\(overlapFrames)")
+        var chunks: [String] = []
+        var offset = 0
+        while offset < totalFrames {
+            let count = min(maxFrames, totalFrames - offset)
+            let (logits, validFrames) = try runEncoder(features: features, frameOffset: offset, frameCount: count, language: langId)
+            let text = decode(logits: logits, validFrames: validFrames)
+            if !text.isEmpty {
+                chunks.append(text)
+            }
+            if offset + count >= totalFrames {
+                break
+            }
+            offset += stepFrames
+        }
+        return Self.mergeChunkTranscripts(chunks, languageId: langId)
+    }
+
+    static func mergeChunkTranscripts(_ chunks: [String], languageId: Int32) -> String {
+        let cleaned = chunks
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard var merged = cleaned.first else { return "" }
+
+        for next in cleaned.dropFirst() {
+            let overlapCount = longestBoundaryOverlap(suffixOf: merged, prefixOf: next, maxChars: 200)
+            let remainder = overlapCount > 0
+                ? String(next.dropFirst(overlapCount)).trimmingCharacters(in: .whitespaces)
+                : next
+            guard !remainder.isEmpty else { continue }
+
+            if needsSpaceBetween(merged.last, remainder.first, languageId: languageId) {
+                merged += " " + remainder
+            } else {
+                merged += remainder
+            }
+        }
+        return merged
+    }
+
+    private static func isASCIIWordChar(_ ch: Character?) -> Bool {
+        guard let ch else { return false }
+        return ch.isASCII && (ch.isLetter || ch.isNumber)
+    }
+
+    private static func isCJKSyllabicOrPunct(_ ch: Character) -> Bool {
+        ch.unicodeScalars.contains { scalar in
+            let v = scalar.value
+            return (0x4E00...0x9FFF).contains(v) // CJK Unified Ideographs
+                || (0x3400...0x4DBF).contains(v) // CJK Extension A
+                || (0x3040...0x30FF).contains(v) // Hiragana & Katakana
+                || (0x3000...0x303F).contains(v) // CJK Symbols and Punctuation
+                || (0xFF00...0xFFEF).contains(v) // Fullwidth forms
+        }
+    }
+
+    private static func longestBoundaryOverlap(suffixOf lhs: String, prefixOf rhs: String, maxChars: Int) -> Int {
+        let lhsChars = Array(lhs)
+        let rhsChars = Array(rhs)
+        let limit = min(maxChars, lhsChars.count, rhsChars.count)
+        guard limit > 0 else { return 0 }
+
+        for len in stride(from: limit, through: 1, by: -1) {
+            let startIdx = lhsChars.count - len
+            let lhsSlice = lhsChars[startIdx..<lhsChars.count]
+            let rhsSlice = rhsChars[0..<len]
+            guard zip(lhsSlice, rhsSlice).allSatisfy({ $0 == $1 }) else { continue }
+
+            // Enforce ASCII word boundaries on both ends so partial word collisions
+            // like "stop" + "open" ("op") are never treated as chunk overlap.
+            let prevChar: Character? = startIdx > 0 ? lhsChars[startIdx - 1] : nil
+            let nextChar: Character? = len < rhsChars.count ? rhsChars[len] : nil
+            if isASCIIWordChar(rhsSlice.first) && isASCIIWordChar(prevChar) {
+                continue
+            }
+            if isASCIIWordChar(rhsSlice.last) && isASCIIWordChar(nextChar) {
+                continue
+            }
+
+            let containsNonASCII = rhsSlice.contains { !$0.isASCII }
+            if containsNonASCII || len >= 2 || (isASCIIWordChar(rhsSlice.first) && !isASCIIWordChar(prevChar) && !isASCIIWordChar(nextChar)) {
+                return len
+            }
+        }
+        return 0
+    }
+
+    private static func needsSpaceBetween(_ left: Character?, _ right: Character?, languageId: Int32) -> Bool {
+        guard let left, let right else { return false }
+
+        let closingPunctuation: Set<Character> = [".", ",", "!", "?", ";", ":", "。", "，", "！", "？", "、", "；", "：", ")", "]", "}", "”", "’", "》", "」"]
+        if closingPunctuation.contains(right) {
+            return false
+        }
+
+        let openingPunctuation: Set<Character> = ["(", "[", "{", "“", "‘", "（", "【", "《", "「"]
+        if openingPunctuation.contains(left) {
+            return false
+        }
+
+        let leftIsASCIILetterOrDigit = isASCIIWordChar(left)
+        let rightIsASCIILetterOrDigit = isASCIIWordChar(right)
+        let asciiBoundaryPunct: Set<Character> = [".", ",", "!", "?", ";", ":"]
+
+        // Chinese (3), Cantonese (7), Japanese (11): avoid spaces around CJK/Kana,
+        // while preserving spaces between ASCII words and after ASCII punctuation before ASCII words.
+        if languageId == 3 || languageId == 7 || languageId == 11 {
+            return rightIsASCIILetterOrDigit && (leftIsASCIILetterOrDigit || asciiBoundaryPunct.contains(left))
+        }
+
+        // Korean (12) and English (4) are space-delimited languages.
+        if languageId == 4 || languageId == 12 {
+            return true
+        }
+
+        // Auto / multilingual (0): omit spaces next to Han/Kana characters, preserve spaces
+        // between Latin/ASCII words, after ASCII punctuation, and between Hangul words.
+        if isCJKSyllabicOrPunct(left) || isCJKSyllabicOrPunct(right) {
+            return false
+        }
+        return true
     }
 
     private func runPreprocessor(audio: [Float]) throws -> MLMultiArray {
@@ -126,23 +256,17 @@ public final class SenseVoiceASRModel: @unchecked Sendable {
         return features
     }
 
-    private func runEncoder(features: MLMultiArray, language: Int32) throws -> (MLMultiArray, Int) {
+    private func runEncoder(features: MLMultiArray, frameOffset: Int, frameCount: Int, language: Int32) throws -> (MLMultiArray, Int) {
         let dim = 560
-        var t = features.shape[1].intValue
         let maxFrames = buckets.last ?? 1800
-        if t > maxFrames { t = maxFrames }
+        let t = min(frameCount, maxFrames)
         let bucket = buckets.first { $0 >= t } ?? maxFrames
 
         let speech = try MLMultiArray(shape: [1, bucket as NSNumber, dim as NSNumber], dataType: .float32)
         let sptr = speech.dataPointer.assumingMemoryBound(to: Float32.self)
         memset(sptr, 0, bucket * dim * MemoryLayout<Float32>.size)
 
-        let count = t * dim
-        if features.dataType == .float32 {
-            memcpy(sptr, features.dataPointer, count * MemoryLayout<Float32>.size)
-        } else {
-            for i in 0..<count { sptr[i] = features[i].floatValue }
-        }
+        try Self.copyFeatures(features, frameOffset: frameOffset, frameCount: t, expectedDim: dim, to: sptr)
 
         let lengths = try MLMultiArray(shape: [1], dataType: .int32)
         lengths[0] = NSNumber(value: t)
@@ -164,21 +288,73 @@ public final class SenseVoiceASRModel: @unchecked Sendable {
         return (logits, 4 + t)
     }
 
+    static func copyFeatures(
+        _ features: MLMultiArray,
+        frameOffset: Int,
+        frameCount: Int,
+        expectedDim: Int = 560,
+        to destination: UnsafeMutablePointer<Float32>
+    ) throws {
+        guard features.shape.count == 3 else {
+            throw VoiceBuddyError.modelUnavailable("Unexpected SenseVoice feature rank: \(features.shape.count)")
+        }
+        let totalFrames = features.shape[1].intValue
+        let featureDim = features.shape[2].intValue
+        guard featureDim == expectedDim else {
+            throw VoiceBuddyError.modelUnavailable("Unexpected SenseVoice feature dimension: \(featureDim), expected \(expectedDim)")
+        }
+        guard frameOffset >= 0, frameCount >= 0, frameOffset + frameCount <= totalFrames else {
+            throw VoiceBuddyError.modelUnavailable("SenseVoice feature slice out of bounds: offset=\(frameOffset) count=\(frameCount) total=\(totalFrames)")
+        }
+        guard frameCount > 0 else { return }
+
+        let strides = features.strides.map(\.intValue)
+        let rowStride = strides.count >= 2 ? strides[1] : expectedDim
+        let colStride = strides.count >= 3 ? strides[2] : 1
+
+        if features.dataType == .float32 && colStride == 1 && rowStride == expectedDim {
+            let src = features.dataPointer.assumingMemoryBound(to: Float32.self) + frameOffset * rowStride
+            memcpy(destination, src, frameCount * expectedDim * MemoryLayout<Float32>.size)
+        } else if features.dataType == .float32 && colStride == 1 && rowStride > expectedDim {
+            let srcBase = features.dataPointer.assumingMemoryBound(to: Float32.self)
+            for frame in 0..<frameCount {
+                let srcRow = srcBase + (frameOffset + frame) * rowStride
+                let dstRow = destination + frame * expectedDim
+                memcpy(dstRow, srcRow, expectedDim * MemoryLayout<Float32>.size)
+            }
+        } else {
+            for frame in 0..<frameCount {
+                let srcFrame = frameOffset + frame
+                let dstOffset = frame * expectedDim
+                for col in 0..<expectedDim {
+                    destination[dstOffset + col] = features[[0, srcFrame as NSNumber, col as NSNumber]].floatValue
+                }
+            }
+        }
+    }
+
     private func decode(logits: MLMultiArray, validFrames: Int) -> String {
+        Self.decodeCTC(logits: logits, validFrames: validFrames, vocabulary: vocabulary)
+    }
+
+    static func decodeCTC(logits: MLMultiArray, validFrames: Int, vocabulary: [String]) -> String {
+        guard logits.shape.count >= 3, logits.strides.count >= 3 else { return "" }
         let frames = min(validFrames, logits.shape[1].intValue)
         let vocab = logits.shape[2].intValue
-        let stride = logits.strides[1].intValue
+        guard frames > 0, vocab > 0 else { return "" }
+        let frameStride = logits.strides[1].intValue
+        let vocabStride = logits.strides[2].intValue
 
         var ids: [Int] = []
         ids.reserveCapacity(frames)
         var prev = -1
 
-        if logits.dataType == .float32 {
+        if logits.dataType == .float32 && vocabStride == 1 {
             let ptr = logits.dataPointer.assumingMemoryBound(to: Float32.self)
             for t in 0..<frames {
                 var bestVal: Float = 0
                 var bestIdx: vDSP_Length = 0
-                vDSP_maxvi(ptr + t * stride, 1, &bestVal, &bestIdx, vDSP_Length(vocab))
+                vDSP_maxvi(ptr + t * frameStride, 1, &bestVal, &bestIdx, vDSP_Length(vocab))
                 let id = Int(bestIdx)
                 if id != 0 && id != prev {
                     ids.append(id)

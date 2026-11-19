@@ -312,7 +312,15 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
             }
         }
         if id == "apple-speech" {
-            // Apple Speech is completely built into macOS and does not use Silero VAD.
+            // Keep Apple Speech zero-download out of the box, while loading Silero VAD if already cached.
+            let vadCached = hasSafetensors(in: directory("silero-vad"))
+            if vad == nil && vadCached {
+                vad = try? await SileroVADModel.fromPretrained(
+                    cacheDir: directory("silero-vad"),
+                    offlineMode: true,
+                    progressHandler: { value, message in progress(0.9 + value * 0.1, message) }
+                )
+            }
             progress(1.0, "Apple Speech ready")
             return
         }
@@ -513,23 +521,107 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
     }
     func containsSpeech(_ samples: [Float]) async throws -> Bool {
-        if selectedID == "apple-speech" {
-            guard !samples.isEmpty else { return false }
-            // Filter out digital silence / zero audio; SFSpeechRecognizer has built-in acoustic
-            // speech recognition and returns emptyTranscript on background noise / non-speech.
-            var maxAbs: Float = 0
-            for s in samples {
-                let a = abs(s)
-                if a > maxAbs { maxAbs = a }
-                if maxAbs > 0.005 { return true }
-            }
-            return false
-        }
         if let vad {
             vad.resetState()
             return !vad.detectSpeech(audio: samples, sampleRate: 16000).isEmpty
         }
+        if selectedID == "apple-speech" {
+            // Zero-download fallback when Silero VAD has not been downloaded yet:
+            // 1. Quiet-contrast clips (`p20 < 0.005` and `maxRMS >= max(0.005, 2.5 * p20)`):
+            //    gate against an adaptive noise floor capped at `0.02`.
+            // 2. Continuous loud/normal speech-band clips (`maxRMS >= 0.025 && meanZCR >= 0.015`):
+            //    pass with a `0.025` RMS threshold without requiring envelope modulation, so loud
+            //    continuous speech/signals pass even in short or steady sustained segments (accepting
+            //    that steady high-amplitude speech-band tones >= 0.025 AC RMS also pass, while
+            //    60/100Hz mains hums are still rejected by ZCR).
+            // 3. Moderate/soft continuous signals without silence frames: require both speech-band
+            //    ZCR (`>= 0.015`) and frame-to-frame envelope modulation (`rmsCV >= 0.08`) against a
+            //    `0.006` RMS floor, rejecting steady moderate hums while passing modulated soft speech.
+            return Self.containsSpeechByEnergyGate(samples)
+        }
         throw VoiceBuddyError.modelUnavailable("VAD")
+    }
+
+    static func containsSpeechByEnergyGate(_ samples: [Float], sampleRate: Int = 16_000) -> Bool {
+        guard !samples.isEmpty else { return false }
+        let frameSize = max(2, (sampleRate * 20) / 1000) // 20 ms frames
+        let baseRmsThreshold: Float = 0.005
+        let basePeakThreshold: Float = 0.010
+        let minActiveFrames = 3
+
+        var frameStats: [(acRMS: Float, peak: Float, zcr: Float)] = []
+        frameStats.reserveCapacity((samples.count + frameSize - 1) / frameSize)
+
+        var offset = 0
+        while offset < samples.count {
+            let end = min(samples.count, offset + frameSize)
+            let countInt = end - offset
+            guard countInt >= 2 else { break }
+            let count = Float(countInt)
+            var sum: Float = 0
+            var peak: Float = 0
+            for i in offset..<end {
+                let s = samples[i]
+                sum += s
+                let a = abs(s)
+                if a > peak { peak = a }
+            }
+            let mean = sum / count
+            var sumSqAC: Float = 0
+            var crossings = 0
+            var prevCentered = samples[offset] - mean
+            sumSqAC += prevCentered * prevCentered
+            for i in (offset + 1)..<end {
+                let centered = samples[i] - mean
+                sumSqAC += centered * centered
+                if (prevCentered < 0 && centered >= 0) || (prevCentered >= 0 && centered < 0) {
+                    crossings += 1
+                }
+                prevCentered = centered
+            }
+            let zcr = Float(crossings) / Float(countInt - 1)
+            frameStats.append((acRMS: sqrt(sumSqAC / count), peak: peak, zcr: zcr))
+            offset = end
+        }
+
+        guard frameStats.count >= minActiveFrames else { return false }
+
+        let sortedRMS = frameStats.map(\.acRMS).sorted()
+        let p20Index = min(sortedRMS.count - 1, max(0, (sortedRMS.count - 1) / 5))
+        let noiseFloorRMS = sortedRMS[p20Index]
+        let maxRMS = sortedRMS.last ?? 0
+        let meanZCR = frameStats.reduce(Float(0)) { $0 + $1.zcr } / Float(frameStats.count)
+
+        let effectiveRmsThreshold: Float
+        if noiseFloorRMS < baseRmsThreshold && maxRMS >= max(baseRmsThreshold, noiseFloorRMS * 2.5) {
+            // Clip contains a quiet/silent baseline: gate against adaptive noise floor.
+            effectiveRmsThreshold = min(0.02, max(baseRmsThreshold, noiseFloorRMS * 2.5))
+        } else if maxRMS >= 0.025 && meanZCR >= 0.015 {
+            // Continuous normal/loud speech-band signal above steady-hum floor.
+            effectiveRmsThreshold = 0.025
+        } else {
+            // Moderate/soft continuous signal without silence frames: require speech-band ZCR
+            // (rejects 60/100Hz mains hum) and frame-to-frame envelope modulation (rejects steady tones).
+            let meanRMS = frameStats.reduce(Float(0)) { $0 + $1.acRMS } / Float(frameStats.count)
+            let variance = frameStats.reduce(Float(0)) { acc, frame in
+                let d = frame.acRMS - meanRMS
+                return acc + d * d
+            } / Float(frameStats.count)
+            let rmsCV = meanRMS > 0 ? sqrt(variance) / meanRMS : 0
+            guard meanZCR >= 0.015 && rmsCV >= 0.08 else {
+                return false
+            }
+            effectiveRmsThreshold = 0.006
+        }
+
+        var activeFrames = 0
+        for frame in frameStats where frame.acRMS >= effectiveRmsThreshold && frame.peak >= basePeakThreshold {
+            activeFrames += 1
+            if activeFrames >= minActiveFrames {
+                return true
+            }
+        }
+        return false
     }
     func transcribe(samples: [Float], language: String) async throws -> String {
         try await transcribe(samples: samples, language: language, context: nil)
@@ -581,7 +673,7 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         guard let instruction = RefinementPrompts.prompt(for: mode) else {
             return text
         }
-        let userMessage = "<asr_text>\(text)</asr_text>"
+        let userMessage = RefinementPrompts.wrapUserTranscript(text)
         let tokenBudget = max(512, min(text.count * 4 + 128, 2048))
         let messages: [ChatMessage] = [
             .init(role: .system, content: instruction),
