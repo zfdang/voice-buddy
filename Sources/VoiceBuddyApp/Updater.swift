@@ -8,7 +8,7 @@ final class UpdaterViewModel: NSObject, ObservableObject, SPUUpdaterDelegate, @p
     private var updateScreenFrame: NSRect?
     private var showingModalAlert = false
 
-    public nonisolated static let feedURLString = "https://raw.githubusercontent.com/zfdang/voice-buddy/main/appcast.xml"
+    public nonisolated static let feedURLString = "https://myvoicebuddy.com/appcast.xml"
 
     var updaterInstance: SPUUpdater? { updaterController?.updater }
 
@@ -36,7 +36,13 @@ final class UpdaterViewModel: NSObject, ObservableObject, SPUUpdaterDelegate, @p
     }
 
     nonisolated func feedURLString(for updater: SPUUpdater) -> String? {
-        UpdaterViewModel.feedURLString
+        if let infoFeedURL = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String {
+            let trimmed = infoFeedURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        return UpdaterViewModel.feedURLString
     }
 
     /// Sparkle calls this immediately before terminating the host app to relaunch after an

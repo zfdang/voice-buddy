@@ -64,4 +64,14 @@ final class UpdateTerminationTests: XCTestCase {
         XCTAssertEqual(delegate.applicationShouldTerminate(NSApp), .terminateCancel,
                        "Aborting or cancelling an update must restore the default termination veto")
     }
+
+    func testUpdaterFeedURLDefaultsToOfficialMyVoiceBuddyFeed() throws {
+        let updater = try XCTUnwrap(delegate.appState.updater.updaterInstance)
+        XCTAssertEqual(UpdaterViewModel.feedURLString, "https://myvoicebuddy.com/appcast.xml")
+        XCTAssertEqual(
+            delegate.appState.updater.feedURLString(for: updater),
+            "https://myvoicebuddy.com/appcast.xml",
+            "Sparkle feed URL must stay unified on myvoicebuddy.com instead of diverging from Info.plist"
+        )
+    }
 }
