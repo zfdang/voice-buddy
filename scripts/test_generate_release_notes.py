@@ -59,13 +59,15 @@ class ReleaseNotesTests(unittest.TestCase):
             subprocess.run(["git", "commit", "-m", "feat(core): initial"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
             subprocess.run(["git", "tag", "v1.0.0"], cwd=repo, check=True)
 
-            for msg in [
+            for idx, msg in enumerate([
                 "chore(release): update appcast.xml for v1.0.0 [skip ci]",
                 "feat(vad): add Silero adaptive threshold",
-                "fix(pr64): tweak review comment wording",
+                "feat(pr64): review follow-up under feat prefix",
+                "refactor(pr65): review follow-up under refactor prefix",
                 "fix(asr): handle empty buffer",
-            ]:
-                (repo / "file.txt").write_text(msg + "\n", encoding="utf-8")
+                "fix(asr): handle empty buffer",
+            ]):
+                (repo / "file.txt").write_text(f"{idx}: {msg}\n", encoding="utf-8")
                 subprocess.run(["git", "add", "file.txt"], cwd=repo, check=True)
                 subprocess.run(["git", "commit", "-m", msg], cwd=repo, check=True, stdout=subprocess.DEVNULL)
 
@@ -86,13 +88,31 @@ class ReleaseNotesTests(unittest.TestCase):
             self.assertIn("### Features", notes)
             self.assertIn("- **vad**: Add Silero adaptive threshold", notes)
             self.assertIn("### Bug Fixes", notes)
-            self.assertIn("- **asr**: Handle empty buffer", notes)
+            # Identical subjects across distinct commits are both preserved
+            self.assertEqual(notes.count("- **asr**: Handle empty buffer"), 2)
             self.assertNotIn("appcast.xml", notes)
-            self.assertNotIn("fix(pr64)", notes)
+            self.assertNotIn("(pr64)", notes)
+            self.assertNotIn("(pr65)", notes)
             self.assertIn("[Full Changelog](https://github.com/zfdang/voice-buddy/compare/v1.0.0...v1.1.0)", notes)
             self.assertIn("<details>", notes)
             self.assertIn("deadbeef  Voice-Buddy-v1.1.0-macOS.dmg", notes)
             self.assertNotIn("raw.githubusercontent.com", notes)
+
+    def test_empty_after_filtering_notes_omitted_count_and_escapes_markdown(self):
+        entry = grn.classify_subject("fix(ui): escape [evil](https://x.test) and <tag> but keep `AppState<T>`")
+        self.assertEqual(
+            entry.description,
+            "Escape \\[evil\\](https://x.test) and &lt;tag&gt; but keep `AppState<T>`",
+        )
+
+        lines = grn.format_changelog_sections([], filtered_count=2)
+        self.assertIn(
+            "- Maintenance and build updates (2 automated/housekeeping commits omitted).",
+            lines,
+        )
+
+    def test_semver_supports_build_metadata(self):
+        self.assertEqual(grn.parse_semver("v1.6.0+build.5"), (1, 6, 0, 1, ()))
 
     def test_resolve_previous_tag_skips_prereleases_for_stable_release(self):
         with tempfile.TemporaryDirectory() as tmp:

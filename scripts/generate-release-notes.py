@@ -11,7 +11,7 @@ import subprocess
 
 
 SEMVER_RE = re.compile(
-    r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$"
+    r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$"
 )
 CONVENTIONAL_RE = re.compile(
     r"^(?P<kind>[A-Za-z]+)(?:\((?P<scope>[^)]+)\))?(?P<breaking>!)?:\s*(?P<desc>.+)$"
@@ -19,8 +19,9 @@ CONVENTIONAL_RE = re.compile(
 GH_BULLET_RE = re.compile(
     r"^\s*[-*]\s+(?P<title>.+?)(?:\s+by\s+@[A-Za-z0-9_-]+(?:\[bot\])?(?:\s+in\s+(?P<url>https://github\.com/[^/\s]+/[^/\s]+/pull/(?P<pr>\d+)))?)?\s*$"
 )
-PR_FIXUP_RE = re.compile(r"^(?:fix|chore|docs|style|test|ci)\(pr\d+\):", re.IGNORECASE)
+PR_FIXUP_RE = re.compile(r"^[A-Za-z]+\(pr\d+\):", re.IGNORECASE)
 RELEASE_COMMIT_RE = re.compile(r"^chore\(release\):", re.IGNORECASE)
+CODE_SPAN_SPLIT_RE = re.compile(r"(`[^`]*`)")
 
 CATEGORY_ORDER = (
     "Breaking Changes",
@@ -136,28 +137,45 @@ def _capitalize_first(text: str) -> str:
     return text
 
 
+def _escape_markdown(text: str) -> str:
+    """Escape HTML angle brackets and markdown link brackets outside inline code spans."""
+    parts = CODE_SPAN_SPLIT_RE.split(text)
+    for idx in range(0, len(parts), 2):
+        segment = parts[idx]
+        segment = (
+            segment.replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("[", "\\[")
+            .replace("]", "\\]")
+        )
+        parts[idx] = segment
+    return "".join(parts)
+
+
 def classify_subject(subject: str, ref_suffix: str = "") -> ChangelogEntry:
     match = CONVENTIONAL_RE.match(subject.strip())
     if not match:
         return ChangelogEntry(
             category="Other Changes",
             scope=None,
-            description=_capitalize_first(subject.strip()),
+            description=_escape_markdown(_capitalize_first(subject.strip())),
             ref_suffix=ref_suffix,
         )
 
     kind = match.group("kind").lower()
-    scope = match.group("scope").strip() if match.group("scope") else None
+    raw_scope = match.group("scope").strip() if match.group("scope") else None
+    scope = _escape_markdown(raw_scope) if raw_scope else None
     breaking = bool(match.group("breaking"))
-    desc = _capitalize_first(match.group("desc").strip())
+    desc = _escape_markdown(_capitalize_first(match.group("desc").strip()))
 
     category = "Breaking Changes" if breaking else KIND_TO_CATEGORY.get(kind, "Other Changes")
     return ChangelogEntry(category=category, scope=scope, description=desc, ref_suffix=ref_suffix)
 
 
-def parse_github_notes(raw_body: str) -> list[ChangelogEntry]:
-    """Extract clean PR changelog entries from GitHub generate-notes output."""
+def parse_github_notes_with_stats(raw_body: str) -> tuple[list[ChangelogEntry], int]:
+    """Extract clean PR changelog entries and count filtered noise entries."""
     entries: list[ChangelogEntry] = []
+    filtered_count = 0
     in_contributors = False
 
     for line in raw_body.splitlines():
@@ -172,11 +190,18 @@ def parse_github_notes(raw_body: str) -> list[ChangelogEntry]:
             continue
         title = match.group("title").strip()
         if _is_noise_subject(title):
+            filtered_count += 1
             continue
         pr_num = match.group("pr")
         ref_suffix = f" (#{pr_num})" if pr_num else ""
         entries.append(classify_subject(title, ref_suffix=ref_suffix))
 
+    return entries, filtered_count
+
+
+def parse_github_notes(raw_body: str) -> list[ChangelogEntry]:
+    """Extract clean PR changelog entries from GitHub generate-notes output."""
+    entries, _ = parse_github_notes_with_stats(raw_body)
     return entries
 
 
@@ -185,10 +210,10 @@ def fetch_github_generated_notes(
     tag: str,
     commit: str | None,
     previous_tag: str | None,
-) -> list[ChangelogEntry]:
+) -> tuple[list[ChangelogEntry], int, bool]:
     """Query GitHub's release note generator for PR-level titles when gh is available."""
     if not shutil.which("gh"):
-        return []
+        return [], 0, False
 
     cmd = [
         "gh",
@@ -207,25 +232,26 @@ def fetch_github_generated_notes(
     try:
         body = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL, timeout=15)
     except Exception:
-        return []
-    return parse_github_notes(body)
+        return [], 0, False
+    entries, filtered_count = parse_github_notes_with_stats(body)
+    return entries, filtered_count, True
 
 
 def fetch_git_log_entries(
     repo_dir: Path,
     commit: str | None,
     previous_tag: str | None,
-) -> list[ChangelogEntry]:
+) -> tuple[list[ChangelogEntry], int]:
     """Build changelog entries directly from git commits when GitHub API is unavailable."""
     target = commit or "HEAD"
     log_range = f"{previous_tag}..{target}" if previous_tag else target
     try:
         out = _run_git(repo_dir, ["log", "--no-merges", "--format=%H%x1f%s%x1e", log_range])
     except Exception:
-        return []
+        return [], 0
 
     entries: list[ChangelogEntry] = []
-    seen_subjects: set[str] = set()
+    filtered_count = 0
     for record in out.split("\x1e"):
         record = record.strip()
         if not record or "\x1f" not in record:
@@ -233,21 +259,24 @@ def fetch_git_log_entries(
         sha, subject = record.split("\x1f", 1)
         subject = subject.strip()
         if _is_noise_subject(subject):
+            filtered_count += 1
             continue
-        key = subject.lower()
-        if key in seen_subjects:
-            continue
-        seen_subjects.add(key)
         entries.append(classify_subject(subject, ref_suffix=f" (`{sha[:7]}`)"))
 
-    return entries
+    return entries, filtered_count
 
 
-def format_changelog_sections(entries: list[ChangelogEntry]) -> list[str]:
+def format_changelog_sections(entries: list[ChangelogEntry], filtered_count: int = 0) -> list[str]:
     """Group and format changelog entries into concise markdown sections."""
     lines = ["## What's Changed", ""]
     if not entries:
-        lines.append("- Maintenance and build updates.")
+        if filtered_count > 0:
+            noun = "commit" if filtered_count == 1 else "commits"
+            lines.append(
+                f"- Maintenance and build updates ({filtered_count} automated/housekeeping {noun} omitted)."
+            )
+        else:
+            lines.append("- Maintenance and build updates.")
         lines.append("")
         return lines
 
@@ -282,12 +311,15 @@ def generate_notes(
     prev_tag = previous_tag if previous_tag is not None else resolve_previous_tag(root_dir, tag, commit or None)
 
     entries: list[ChangelogEntry] = []
+    filtered_count = 0
+    api_ok = False
     if use_github_api:
-        entries = fetch_github_generated_notes(repository, tag, commit or None, prev_tag)
-    if not entries:
-        entries = fetch_git_log_entries(root_dir, commit or None, prev_tag)
+        entries, filtered_count, api_ok = fetch_github_generated_notes(repository, tag, commit or None, prev_tag)
+    if not entries and not (api_ok and filtered_count > 0):
+        entries, git_filtered_count = fetch_git_log_entries(root_dir, commit or None, prev_tag)
+        filtered_count = max(filtered_count, git_filtered_count)
 
-    notes = format_changelog_sections(entries)
+    notes = format_changelog_sections(entries, filtered_count=filtered_count)
 
     dmg_name = dmg_file.name
     checksums = checksums_file.read_text(encoding="utf-8").strip() if checksums_file.exists() else ""
