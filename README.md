@@ -17,7 +17,7 @@ Voice Buddy 是一款从底层遵循「本地优先（Local-First）」哲学打
 
 ### 1. 100% 本地模型端侧推理 · 极致隐私与安全（核心主打）
 - **零数据上云**：麦克风音频流仅在 Apple Silicon 统一内存中流转，全程离线计算。在飞行模式、无网络环境下依旧 100% 顺畅工作。
-- **零录音留存**：识别完成后即刻释放音频，从不在本地磁盘写入录音文件或音频缓存，杜绝物理泄露。
+- **零录音留存**：本地模型（Whisper / SenseVoice / Qwen3-ASR）全程在内存中处理音频；仅在使用系统原生 Apple Speech 时会短暂写入临时 WAV 文件并在识别结束后立即删除，绝不保留历史录音。
 - **零 API 费用与额度焦虑**：无需配置 OpenAI、DeepSeek、百度等云端 Key，无需按字按次扣费，无使用门槛。
 - **密码框拦截与剪贴板防护**：焦点移入密码输入控件时自动拦截，防止敏感信息误注入；剪贴板写入自带 macOS Transient 瞬态隐私标记，不污染 Raycast、Paste、Maccy 等剪贴板历史工具。
 
@@ -101,7 +101,7 @@ Voice Buddy 是一款从底层遵循「本地优先（Local-First）」哲学打
 ### 系统与环境要求
 - macOS 15.0 (Sequoia) 或更高版本
 - Apple Silicon（arm64，M1 及后续芯片）
-- Xcode 16.0+（Swift 6.0+，支持 Metal 工具链）
+- Xcode 26+（Swift 6.2+，支持 Metal 工具链）
 
 ### 运行单元测试
 
@@ -111,7 +111,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 
 ### 本地编译与打包
 
-提供开箱即用的一键构建脚本 `./build.sh`（或 `scripts/build.sh`），会自动检查 Xcode 依赖环境、自动从本地钥匙串匹配签名证书，并将打包产物输出至 `dist/` 目录：
+提供开箱即用的一键构建脚本 `./build.sh`（或 `scripts/build.sh`），会自动检查 Xcode 依赖环境；签名时优先匹配 `"Voice Buddy Local Development"` 开发证书，未匹配时默认回退为 ad-hoc（`-`）签名（如需指定 `Developer ID Application` 等证书，请通过 `-s "<身份>"` 或环境变量 `VOICE_BUDDY_SIGN_IDENTITY` 显式传入），并将打包产物输出至 `dist/` 目录：
 
 ```bash
 # 一键编译 Release 版本并完成本地签名（产物输出至 dist/Voice Buddy.app）
@@ -148,7 +148,7 @@ Voice Buddy 集成了 Sparkle 框架以支持无缝静默更新检测：
 ## 🔒 隐私与安全承诺
 
 Voice Buddy 是一款从架构底层遵循本地优先（Local-First）原则的生产力工具：
-- **音频零留存**：麦克风音频流仅在内存中供端侧模型推理处理，从不写入本地音频文件，也绝不向云端发送任何数据。
+- **音频零留存**：本地模型音频流仅在内存中推理处理；使用 Apple Speech 时短暂写入系统临时 WAV 并在识别完成后即刻删除，绝不留存录音或上传云端。
 - **文字绝不上云**：语音转写与 AI 整理的文字完全由本地芯片运行的大模型生成，不与任何外部服务器通信。
 - **系统安全防范**：输入焦点进入密码框时自动拦截，剪贴板写入自带瞬态标记保护历史隐私。
 

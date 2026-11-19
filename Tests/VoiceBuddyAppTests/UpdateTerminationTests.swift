@@ -74,4 +74,44 @@ final class UpdateTerminationTests: XCTestCase {
             "Sparkle feed URL must stay unified on myvoicebuddy.com instead of diverging from Info.plist"
         )
     }
+
+    func testUpdaterFeedURLPrefersInfoPlistOverFallback() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("vb-bundle-\(UUID().uuidString).bundle", isDirectory: true)
+        let contentsDir = tempDir.appendingPathComponent("Contents", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try FileManager.default.createDirectory(at: contentsDir, withIntermediateDirectories: true)
+
+        let plistURL = contentsDir.appendingPathComponent("Info.plist")
+        let customPlist: [String: Any] = [
+            "CFBundleIdentifier": "com.voicebuddy.testbundle",
+            "SUFeedURL": "https://custom.example.com/appcast.xml"
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: customPlist, format: .xml, options: 0)
+        try data.write(to: plistURL)
+
+        let customBundle = try XCTUnwrap(Bundle(url: tempDir))
+        XCTAssertEqual(
+            UpdaterViewModel.resolveFeedURLString(bundle: customBundle),
+            "https://custom.example.com/appcast.xml",
+            "Info.plist SUFeedURL must take precedence over static fallback"
+        )
+
+        // Empty SUFeedURL falls back cleanly
+        let emptyPlist: [String: Any] = [
+            "CFBundleIdentifier": "com.voicebuddy.testbundle-empty",
+            "SUFeedURL": "   "
+        ]
+        let emptyDir = FileManager.default.temporaryDirectory.appendingPathComponent("vb-bundle-empty-\(UUID().uuidString).bundle", isDirectory: true)
+        let emptyContents = emptyDir.appendingPathComponent("Contents", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: emptyDir) }
+        try FileManager.default.createDirectory(at: emptyContents, withIntermediateDirectories: true)
+        try PropertyListSerialization.data(fromPropertyList: emptyPlist, format: .xml, options: 0)
+            .write(to: emptyContents.appendingPathComponent("Info.plist"))
+        let emptyBundle = try XCTUnwrap(Bundle(url: emptyDir))
+        XCTAssertEqual(
+            UpdaterViewModel.resolveFeedURLString(bundle: emptyBundle),
+            "https://myvoicebuddy.com/appcast.xml",
+            "Blank Info.plist SUFeedURL must fall back to official feed"
+        )
+    }
 }

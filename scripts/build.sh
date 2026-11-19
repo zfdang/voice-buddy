@@ -65,16 +65,16 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -v|--version)
-            if [[ $# -lt 2 || -z "${2:-}" ]]; then
-                echo "Error: $1 requires a version argument." >&2
+            if [[ $# -lt 2 || -z "${2:-}" || "${2:0:1}" == "-" ]]; then
+                echo "Error: $1 requires a valid version argument." >&2
                 exit 2
             fi
             CUSTOM_VERSION="$2"
             shift 2
             ;;
         -s|--sign)
-            if [[ $# -lt 2 || -z "${2:-}" ]]; then
-                echo "Error: $1 requires a signing identity argument." >&2
+            if [[ $# -lt 2 || -z "${2:-}" || ( "${2}" != "-" && "${2:0:1}" == "-" ) ]]; then
+                echo "Error: $1 requires a valid signing identity argument (use '-' for ad-hoc)." >&2
                 exit 2
             fi
             CUSTOM_IDENTITY="$2"
@@ -233,6 +233,9 @@ if [ -f "${ICON_SRC}" ]; then
 fi
 if [ -d "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources" ]; then
     cp -R "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/"* "${APP_BUNDLE}/Contents/Resources/" 2>/dev/null || true
+fi
+if [ -f "${ROOT_DIR}/LICENSE" ]; then
+    cp "${ROOT_DIR}/LICENSE" "${APP_BUNDLE}/Contents/Resources/LICENSE"
 fi
 
 cat > "${APP_BUNDLE}/Contents/Info.plist" <<PLIST

@@ -35,14 +35,18 @@ final class UpdaterViewModel: NSObject, ObservableObject, SPUUpdaterDelegate, @p
         NotificationCenter.default.removeObserver(self)
     }
 
-    nonisolated func feedURLString(for updater: SPUUpdater) -> String? {
-        if let infoFeedURL = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String {
+    nonisolated static func resolveFeedURLString(bundle: Bundle = .main) -> String {
+        if let infoFeedURL = bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String {
             let trimmed = infoFeedURL.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
                 return trimmed
             }
         }
         return UpdaterViewModel.feedURLString
+    }
+
+    nonisolated func feedURLString(for updater: SPUUpdater) -> String? {
+        Self.resolveFeedURLString()
     }
 
     /// Sparkle calls this immediately before terminating the host app to relaunch after an

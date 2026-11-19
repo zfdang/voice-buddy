@@ -2,13 +2,13 @@
 
 ## Supported Versions
 
-Security fixes are released on the latest version on the `main` branch and published through [GitHub Releases](https://github.com/zfdang/voice-buddy/releases) and the official Sparkle update feed (`https://myvoicebuddy.com/appcast.xml`).
+Security fixes are released on the latest tagged release and published through [GitHub Releases](https://github.com/zfdang/voice-buddy/releases) and the official Sparkle update feed (`https://myvoicebuddy.com/appcast.xml`).
 
 ## Privacy & Local-First Design
 
 Voice Buddy processes microphone audio, speech recognition, and LLM text refinement entirely on-device on Apple Silicon Macs:
 
-- Audio buffers are kept in memory and never persisted to disk or sent to cloud APIs.
+- Audio buffers are kept in memory for local model inference (Whisper / SenseVoice / Qwen3-ASR) and never uploaded to cloud APIs. When using the built-in Apple Speech engine, a temporary WAV file is briefly written to the system temp directory and deleted immediately after recognition completes.
 - Secure input fields (`IsSecureEventInputEnabled()`, `AXSecureTextField`, `AXProtectedContent`, and sensitive field identifiers) are blocked from automatic insertion.
 - Clipboard writes used for pasting are tagged with `org.nspasteboard.ConcealedType` and `org.nspasteboard.TransientType` and restored when untouched.
 
