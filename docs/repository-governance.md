@@ -35,7 +35,7 @@ flowchart TD
 - **官方展示网站**：位于 `pages/` 目录，通过 `.github/workflows/deploy-pages.yml` 自动部署至 GitHub Pages 并绑定独立域名 `https://myvoicebuddy.com`。
 - **Sparkle 自动更新与镜像分发**：
   - 根目录与 `pages/` 同步维护 `appcast.xml`。
-  - Sparkle 升级订阅源设置为 `https://myvoicebuddy.com/appcast.xml`（备用镜像为 GitHub raw）。
+  - Sparkle 升级订阅源统一设置为 `https://myvoicebuddy.com/appcast.xml`。
   - 更新源内部 enclosure 下载直链优先指向 `https://myvoicebuddy.com/downloads/Voice-Buddy-*.zip`，确保国内用户不翻墙也能高速稳定自动更新。
 - **发布与部署自动化**：
   - 手动触发 `release.yml`（通过 Actions 页面输入 tag 或推送 `v*` tag），运行编译打包、Apple 代码签名及 Sparkle 密钥验签。

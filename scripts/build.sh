@@ -65,10 +65,18 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -v|--version)
+            if [[ $# -lt 2 || -z "${2:-}" || "${2:0:1}" == "-" ]]; then
+                echo "Error: $1 requires a valid version argument." >&2
+                exit 2
+            fi
             CUSTOM_VERSION="$2"
             shift 2
             ;;
         -s|--sign)
+            if [[ $# -lt 2 || -z "${2:-}" || ( "${2}" != "-" && "${2:0:1}" == "-" ) ]]; then
+                echo "Error: $1 requires a valid signing identity argument (use '-' for ad-hoc)." >&2
+                exit 2
+            fi
             CUSTOM_IDENTITY="$2"
             shift 2
             ;;
@@ -114,8 +122,7 @@ BUNDLE_VERSION="${RAW_VERSION#v}"
 # Priority:
 # 1. Explicit argument / VOICE_BUDDY_SIGN_IDENTITY
 # 2. "Voice Buddy Local Development" in Keychain
-# 3. Any valid codesigning identity in Keychain
-# 4. Ad-hoc fallback (-)
+# 3. Ad-hoc fallback (-) unless an explicit identity is passed (prevents accidental signing with unrelated keychain certificates)
 if [ -n "${CUSTOM_IDENTITY}" ]; then
     SIGN_IDENTITY="${CUSTOM_IDENTITY}"
     SIGN_REASON="explicitly specified"
@@ -123,14 +130,8 @@ elif security find-identity -v -p codesigning 2>/dev/null | grep -q '"Voice Budd
     SIGN_IDENTITY="Voice Buddy Local Development"
     SIGN_REASON="automatically detected private development certificate"
 else
-    DISCOVERED_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk -F '"' '/"/ {print $2; exit}' || true)"
-    if [ -n "${DISCOVERED_IDENTITY}" ]; then
-        SIGN_IDENTITY="${DISCOVERED_IDENTITY}"
-        SIGN_REASON="detected codesigning certificate in keychain"
-    else
-        SIGN_IDENTITY="-"
-        SIGN_REASON="ad-hoc signing (no keychain certificate found)"
-    fi
+    SIGN_IDENTITY="-"
+    SIGN_REASON="ad-hoc signing (no Voice Buddy certificate matched; pass -s to select another identity)"
 fi
 
 if [ "${STRICT_SIGNING:-false}" = "true" ] && [ "${SIGN_IDENTITY}" = "-" ] && [ "${ALLOW_ADHOC:-false}" != "true" ]; then
@@ -232,6 +233,9 @@ if [ -f "${ICON_SRC}" ]; then
 fi
 if [ -d "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources" ]; then
     cp -R "${ROOT_DIR}/Sources/VoiceBuddyApp/Resources/"* "${APP_BUNDLE}/Contents/Resources/" 2>/dev/null || true
+fi
+if [ -f "${ROOT_DIR}/LICENSE" ]; then
+    cp "${ROOT_DIR}/LICENSE" "${APP_BUNDLE}/Contents/Resources/LICENSE"
 fi
 
 cat > "${APP_BUNDLE}/Contents/Info.plist" <<PLIST
@@ -394,7 +398,8 @@ echo "Smoke testing application binary startup..."
 python3 -c "
 import subprocess, sys
 
-proc = subprocess.Popen(['${APP_BUNDLE}/Contents/MacOS/VoiceBuddy'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+binary_path = sys.argv[1]
+proc = subprocess.Popen([binary_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 try:
     stdout, stderr = proc.communicate(timeout=1.5)
     if proc.returncode != 0:
@@ -407,7 +412,7 @@ except subprocess.TimeoutExpired:
     except subprocess.TimeoutExpired:
         proc.kill()
     print('Smoke test passed: binary launched cleanly without crash.')
-"
+" "${APP_BUNDLE}/Contents/MacOS/VoiceBuddy"
 
 if [ "${STRICT_SIGNING:-false}" = "true" ] && [ "${ALLOW_ADHOC:-false}" != "true" ]; then
     if codesign -dvvv "${APP_BUNDLE}" 2>&1 | grep -q "Signature=adhoc"; then

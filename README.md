@@ -3,7 +3,7 @@
 > **100% 本地运行的 macOS 语音输入搭子 · 零数据上云 · 隐私安全**
 >
 > 🌐 **官方网站**：[https://myvoicebuddy.com](https://myvoicebuddy.com)  
-> 📦 **最新版本**：[v1.2.1 Releases](https://github.com/zfdang/voice-buddy/releases/tag/v1.2.1) · 适用于 Apple Silicon (M1/M2/M3/M4) · macOS 15.0+
+> 📦 **最新版本**：[GitHub Releases (Latest)](https://github.com/zfdang/voice-buddy/releases/latest) · 适用于 Apple Silicon (M1/M2/M3/M4) · macOS 15.0+
 
 Voice Buddy 是一款从底层遵循「本地优先（Local-First）」哲学打造的 macOS 极速语音输入工具。无论是在微信、飞书、文档、浏览器还是终端中，长按快捷键说话，松手即可直接在当前光标位置自动完成端侧转写、大模型智能润色并键入文字。
 
@@ -17,7 +17,7 @@ Voice Buddy 是一款从底层遵循「本地优先（Local-First）」哲学打
 
 ### 1. 100% 本地模型端侧推理 · 极致隐私与安全（核心主打）
 - **零数据上云**：麦克风音频流仅在 Apple Silicon 统一内存中流转，全程离线计算。在飞行模式、无网络环境下依旧 100% 顺畅工作。
-- **零录音留存**：识别完成后即刻释放音频，从不在本地磁盘写入录音文件或音频缓存，杜绝物理泄露。
+- **零录音留存**：本地模型（Whisper / SenseVoice / Qwen3-ASR）全程在内存中处理音频；仅在使用系统原生 Apple Speech 时会短暂写入临时 WAV 文件并在识别结束后立即删除，绝不保留历史录音。
 - **零 API 费用与额度焦虑**：无需配置 OpenAI、DeepSeek、百度等云端 Key，无需按字按次扣费，无使用门槛。
 - **密码框拦截与剪贴板防护**：焦点移入密码输入控件时自动拦截，防止敏感信息误注入；剪贴板写入自带 macOS Transient 瞬态隐私标记，不污染 Raycast、Paste、Maccy 等剪贴板历史工具。
 
@@ -40,9 +40,10 @@ Voice Buddy 是一款从底层遵循「本地优先（Local-First）」哲学打
 - **Apple Speech** (系统原生 · 0 MB)：系统内置听写服务，0 磁盘占用，免下载即刻可用。
 
 ### 4. 4 款分级本地文本模型矩阵
-- **Qwen 3.5 0.8B (INT5 / INT8)**：极速轻量，显存占用极低，日常快速听写与标点整理首选。
-- **Qwen 3 1.7B (Dense 4-bit)**：逻辑进阶，倒装句理顺与口语重构更自然，理解力强。
-- **Qwen 3 4B (4-bit)**：深度重写与旗舰级指令遵循，深度段落逻辑重构与书面文风润色。
+- **Qwen 3.5 0.8B (INT5)**（494 MB）：极速轻量，显存占用极低，日常快速听写与标点整理首选。
+- **Qwen 3.5 0.8B (INT8)**（763 MB）：高精量化，表达更加严谨细腻，适合正式长文与重写润色。
+- **Qwen 3 1.7B (Dense 4-bit)**（923 MB）：逻辑进阶，倒装句理顺与口语重构更自然，理解力强。
+- **Qwen 3 4B (4-bit)**（2.26 GB）：深度重写与旗舰级指令遵循，深度段落逻辑重构与书面文风润色。
 
 ### 5. 为 macOS 深度定制的输入体验
 - **跨应用光标直入与粘贴保护**：全局系统级唤醒，无需切换应用窗口；若遇无法直接输入的特殊控件，自动保留在剪贴板并提示一键 `Cmd+V` 粘贴。
@@ -69,11 +70,10 @@ Voice Buddy 是一款从底层遵循「本地优先（Local-First）」哲学打
 
 运行 Voice Buddy 需要 **macOS 15.0 或更高版本**以及 **Apple Silicon（M1 / M2 / M3 / M4 系列芯片）**。
 
-| 交付形式 | 下载链接 | 说明 |
+| 交付形式 | 下载渠道 | 说明 |
 | :--- | :--- | :--- |
-| **DMG 安装镜像 (推荐)** | [Voice-Buddy-v1.2.1-macOS.dmg](https://github.com/zfdang/voice-buddy/releases/download/v1.2.1/Voice-Buddy-v1.2.1-macOS.dmg) | 双击打开并将 Voice Buddy 拖入「应用程序」即可 |
-| **ZIP 绿色压缩包** | [Voice-Buddy-v1.2.1-macOS.zip](https://github.com/zfdang/voice-buddy/releases/download/v1.2.1/Voice-Buddy-v1.2.1-macOS.zip) | 解压即用 |
-| **校验和文件** | [SHA256SUMS.txt](https://github.com/zfdang/voice-buddy/releases/download/v1.2.1/SHA256SUMS.txt) | SHA256 完整性校验 |
+| **官网镜像直链 (推荐)** | [myvoicebuddy.com](https://myvoicebuddy.com) | 提供最新版本的 DMG 安装镜像与 ZIP 包直链下载 |
+| **GitHub Releases** | [Latest Release](https://github.com/zfdang/voice-buddy/releases/latest) | 包含最新 `Voice-Buddy-v*-macOS.dmg`、`Voice-Buddy-v*-macOS.zip` 与 `SHA256SUMS.txt` |
 
 ### 首次配置步骤
 1. 打开应用，按引导授予「麦克风」权限（用于录音）与「辅助功能」权限（用于自动向光标处键入文字）。
@@ -101,7 +101,7 @@ Voice Buddy 是一款从底层遵循「本地优先（Local-First）」哲学打
 ### 系统与环境要求
 - macOS 15.0 (Sequoia) 或更高版本
 - Apple Silicon（arm64，M1 及后续芯片）
-- Xcode 16.0+（Swift 6.0+，支持 Metal 工具链）
+- Xcode 26+（Swift 6.2+，支持 Metal 工具链）
 
 ### 运行单元测试
 
@@ -111,7 +111,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 
 ### 本地编译与打包
 
-提供开箱即用的一键构建脚本 `./build.sh`（或 `scripts/build.sh`），会自动检查 Xcode 依赖环境、自动从本地钥匙串匹配签名证书，并将打包产物输出至 `dist/` 目录：
+提供开箱即用的一键构建脚本 `./build.sh`（或 `scripts/build.sh`），会自动检查 Xcode 依赖环境；签名时优先匹配 `"Voice Buddy Local Development"` 开发证书，未匹配时默认回退为 ad-hoc（`-`）签名（如需指定 `Developer ID Application` 等证书，请通过 `-s "<身份>"` 或环境变量 `VOICE_BUDDY_SIGN_IDENTITY` 显式传入），并将打包产物输出至 `dist/` 目录：
 
 ```bash
 # 一键编译 Release 版本并完成本地签名（产物输出至 dist/Voice Buddy.app）
@@ -127,7 +127,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ./build.sh --package
 
 # 指定自定义版本号并打包
-./build.sh -v 1.2.1 --package
+./build.sh -v 1.5.1 --package
 ```
 
 构建产物输出至 `dist/` 目录：
@@ -139,8 +139,8 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 ## 🔄 自动更新 (Sparkle)
 
 Voice Buddy 集成了 Sparkle 框架以支持无缝静默更新检测：
-- 官方升级订阅源：`https://myvoicebuddy.com/appcast.xml`（备用镜像：`https://raw.githubusercontent.com/zfdang/voice-buddy/main/appcast.xml`）
-- 更新安装包优先通过官网镜像（`https://myvoicebuddy.com/downloads/`）直链下载，无需代理即可快速更新，彻底避免直接访问 GitHub 出现网络受阻或超时。
+- 官方统一升级订阅源：`https://myvoicebuddy.com/appcast.xml`
+- 更新安装包通过官网镜像（`https://myvoicebuddy.com/downloads/`）直链下载，无需代理即可快速更新。
 - 可在「关于」面板中随时手动点击「检查更新」。
 
 ---
@@ -148,9 +148,15 @@ Voice Buddy 集成了 Sparkle 框架以支持无缝静默更新检测：
 ## 🔒 隐私与安全承诺
 
 Voice Buddy 是一款从架构底层遵循本地优先（Local-First）原则的生产力工具：
-- **音频零留存**：麦克风音频流仅在内存中供端侧模型推理处理，从不写入本地音频文件，也绝不向云端发送任何数据。
+- **音频零留存**：本地模型音频流仅在内存中推理处理；使用 Apple Speech 时短暂写入系统临时 WAV 并在识别完成后即刻删除，绝不留存录音或上传云端。
 - **文字绝不上云**：语音转写与 AI 整理的文字完全由本地芯片运行的大模型生成，不与任何外部服务器通信。
 - **系统安全防范**：输入焦点进入密码框时自动拦截，剪贴板写入自带瞬态标记保护历史隐私。
+
+---
+
+## 📄 开源协议 (License)
+
+本项目基于 [MIT License](LICENSE) 开源；参与贡献请参考 [CONTRIBUTING.md](CONTRIBUTING.md)，安全漏洞报告请参见 [SECURITY.md](SECURITY.md)。
 
 ---
 
