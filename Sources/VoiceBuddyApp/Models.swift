@@ -527,12 +527,16 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
         if selectedID == "apple-speech" {
             // Zero-download fallback when Silero VAD has not been downloaded yet:
-            // 1. When quiet contrast exists (p90 >= max(0.005, 2 * p20)), gate against an adaptive
-            //    noise floor capped at 0.02.
-            // 2. For continuous signals without quiet frames, loud signals (>= 0.04 AC RMS) pass
-            //    directly, while moderate/soft continuous signals must exhibit both speech-band
-            //    zero-crossing rate (>= 0.015, rejecting 60/100Hz mains hum) and frame-to-frame
-            //    envelope modulation (RMS CV >= 0.08, rejecting steady constant-amplitude tones).
+            // 1. Quiet-contrast clips (`p20 < 0.005` and `maxRMS >= max(0.005, 2.5 * p20)`):
+            //    gate against an adaptive noise floor capped at `0.02`.
+            // 2. Continuous loud/normal speech-band clips (`maxRMS >= 0.025 && meanZCR >= 0.015`):
+            //    pass with a `0.025` RMS threshold without requiring envelope modulation, so loud
+            //    continuous speech/signals pass even in short or steady sustained segments (accepting
+            //    that steady high-amplitude speech-band tones >= 0.025 AC RMS also pass, while
+            //    60/100Hz mains hums are still rejected by ZCR).
+            // 3. Moderate/soft continuous signals without silence frames: require both speech-band
+            //    ZCR (`>= 0.015`) and frame-to-frame envelope modulation (`rmsCV >= 0.08`) against a
+            //    `0.006` RMS floor, rejecting steady moderate hums while passing modulated soft speech.
             return Self.containsSpeechByEnergyGate(samples)
         }
         throw VoiceBuddyError.modelUnavailable("VAD")

@@ -235,14 +235,21 @@ final class EngineSafetyTests: XCTestCase {
         let dcOffset = [Float](repeating: 0.015, count: 6400)
         XCTAssertFalse(LocalModels.containsSpeechByEnergyGate(dcOffset))
 
-        // Steady 60Hz mains hum and 254Hz constant-amplitude equipment hum (0.011-0.020)
-        // must be rejected (no syllabic envelope modulation / sub-speech ZCR)
+        // Steady mains hum (60Hz/100Hz) and constant-amplitude moderate equipment hum (0.015)
+        // must be rejected (sub-speech ZCR or lack of syllabic envelope modulation).
         let mainsHum60Hz = (0..<6400).map { Float(0.020 * sin(2.0 * .pi * 60.0 * Double($0) / 16000.0)) }
         XCTAssertFalse(LocalModels.containsSpeechByEnergyGate(mainsHum60Hz))
+        let mainsHum100Hz = (0..<6400).map { Float(0.040 * sin(2.0 * .pi * 100.0 * Double($0) / 16000.0)) }
+        XCTAssertFalse(LocalModels.containsSpeechByEnergyGate(mainsHum100Hz))
         let equipmentHum254Hz = (0..<6400).map { Float(0.015 * sin(2.0 * .pi * 254.0 * Double($0) / 16000.0)) }
         XCTAssertFalse(LocalModels.containsSpeechByEnergyGate(equipmentHum254Hz))
 
-        // Continuous soft speech with natural syllabic envelope modulation (~0.015 peak, 254Hz carrier)
+        // Documented trade-off: loud steady speech-band signals (maxRMS >= 0.025, meanZCR >= 0.015)
+        // pass without modulation check so short/sustained loud speech is never dropped.
+        let loudSteadySpeechBand = (0..<6400).map { Float(0.040 * sin(2.0 * .pi * 254.0 * Double($0) / 16000.0)) }
+        XCTAssertTrue(LocalModels.containsSpeechByEnergyGate(loudSteadySpeechBand))
+
+        // Continuous soft speech with natural syllabic envelope modulation (~0.018 peak, 254Hz carrier)
         // without silence MUST be accepted
         let modulatedSoftSpeech = (0..<6400).map { idx -> Float in
             let envelope = Float(0.25 + 0.75 * abs(sin(2.0 * .pi * 4.0 * Double(idx) / 16000.0)))
