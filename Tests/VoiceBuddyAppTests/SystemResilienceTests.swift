@@ -135,8 +135,11 @@ final class SystemResilienceTests: XCTestCase {
     }
 
     func testStuckBusyStateSelfHealing() {
-        let state = AppState()
+        let isolatedRoot = FileManager.default.temporaryDirectory.appendingPathComponent("vb-busy-heal-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: isolatedRoot) }
+        let state = AppState(models: LocalModels(root: isolatedRoot))
         state.preferences.sounds = false
+        state.preferences.speechModel = "apple-speech"
         state.busy = true
         state.recording = false
         defer { state.cancel() }

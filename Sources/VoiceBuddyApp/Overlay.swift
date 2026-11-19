@@ -243,6 +243,10 @@ final class Overlay {
     private var escMonitor: Any?
 
     func show(state: AppState, screenPoint: CGPoint? = nil) {
+        show(hud: state.hud, preferencesStore: state.preferencesStore, screenPoint: screenPoint)
+    }
+
+    func show(hud: LiveHUDState, preferencesStore: PreferencesStore, screenPoint: CGPoint? = nil) {
         presentationID = UUID()
         if escMonitor == nil {
             escMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -272,7 +276,7 @@ final class Overlay {
             panel.hasShadow = false
             panel.ignoresMouseEvents = true
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            let hostingView = NSHostingView(rootView: OverlayView(state: state, animModel: animModel))
+            let hostingView = NSHostingView(rootView: OverlayView(hud: hud, preferencesStore: preferencesStore, animModel: animModel))
             hostingView.wantsLayer = true
             hostingView.layer?.isOpaque = false
             hostingView.layer?.backgroundColor = NSColor.clear.cgColor
@@ -294,8 +298,8 @@ final class Overlay {
         }
     }
 
-    func showStatus(state: AppState) {
-        show(state: state)
+    func showStatus(hud: LiveHUDState, preferencesStore: PreferencesStore) {
+        show(hud: hud, preferencesStore: preferencesStore)
         let id = presentationID
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             guard let self, self.presentationID == id else { return }
@@ -369,7 +373,8 @@ private struct BreathingCursorView: View {
 // MARK: - Overlay Main View
 
 private struct OverlayView: View {
-    @ObservedObject var state: AppState
+    var hud: LiveHUDState
+    var preferencesStore: PreferencesStore
     @ObservedObject var animModel: OverlayAnimationModel
 
     var body: some View {
@@ -377,24 +382,24 @@ private struct OverlayView: View {
             // Upper Section: Text Preview Area (Three-State Visual Hierarchy)
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top) {
-                    if !state.liveTranscriptState.isEmpty {
+                    if !hud.liveTranscriptState.isEmpty {
                         FlowLayout(spacing: 4, lineSpacing: 8) {
                             // 1. Confirmed Text: High-contrast pure white font
-                            ForEach(Array(tokenizeText(state.liveTranscriptState.confirmedText).enumerated()), id: \.offset) { _, token in
+                            ForEach(Array(tokenizeText(hud.liveTranscriptState.confirmedText).enumerated()), id: \.offset) { _, token in
                                 Text(token)
                                     .font(.system(size: 20, weight: .semibold, design: .rounded))
                                     .foregroundColor(.white)
                             }
 
                             // 2. Live Inline Correction: Strikethrough old word + Cyan capsule new word
-                            if let old = state.liveTranscriptState.correctionOld, !old.isEmpty {
+                            if let old = hud.liveTranscriptState.correctionOld, !old.isEmpty {
                                 Text(old)
                                     .font(.system(size: 20, weight: .semibold, design: .rounded))
                                     .strikethrough(true, color: .white.opacity(0.65))
                                     .foregroundColor(.white.opacity(0.42))
                             }
 
-                            if let new = state.liveTranscriptState.correctionNew, !new.isEmpty {
+                            if let new = hud.liveTranscriptState.correctionNew, !new.isEmpty {
                                 Text(new)
                                     .font(.system(size: 19, weight: .bold, design: .rounded))
                                     .foregroundColor(Color(red: 0.03, green: 0.10, blue: 0.16))
@@ -417,7 +422,7 @@ private struct OverlayView: View {
                             }
 
                             // 3. Streaming Addition: Soft blue-cyan glowing gradient text
-                            ForEach(Array(tokenizeText(state.liveTranscriptState.streamingText).enumerated()), id: \.offset) { _, token in
+                            ForEach(Array(tokenizeText(hud.liveTranscriptState.streamingText).enumerated()), id: \.offset) { _, token in
                                 Text(token)
                                     .font(.system(size: 20, weight: .semibold, design: .rounded))
                                     .foregroundColor(Color(red: 0.42, green: 0.82, blue: 1.0))
@@ -425,7 +430,7 @@ private struct OverlayView: View {
                             }
 
                             // Breathing cursor following the streaming tail
-                            if state.recording {
+                            if hud.recording {
                                 BreathingCursorView()
                             }
                         }
@@ -433,11 +438,11 @@ private struct OverlayView: View {
                     } else {
                         // Empty / Listening placeholder state
                         HStack(spacing: 8) {
-                            Text(state.recording ? state.label("Listening…", "正在听你说…") : state.status)
+                            Text(hud.recording ? preferencesStore.t("Listening…") : hud.status)
                                 .font(.system(size: 19, weight: .medium, design: .rounded))
                                 .foregroundColor(.white.opacity(0.65))
 
-                            if state.recording {
+                            if hud.recording {
                                 BreathingCursorView()
                             }
                         }
@@ -588,12 +593,12 @@ private struct OverlayView: View {
     }
 
     private func barHeight(index: Int, isLeft: Bool) -> CGFloat {
-        guard state.recording else { return 5 }
+        guard hud.recording else { return 5 }
         let leftMultipliers: [CGFloat] = [0.25, 0.4, 0.6, 0.85, 1.15, 1.45, 1.7, 1.85, 1.6, 1.75, 1.35, 1.1, 0.85, 0.6, 0.45, 0.3]
         let rightMultipliers: [CGFloat] = [0.3, 0.45, 0.6, 0.85, 1.1, 1.35, 1.75, 1.6, 1.85, 1.7, 1.45, 1.15, 0.85, 0.6, 0.4, 0.25]
         let mult = isLeft ? leftMultipliers[index % 16] : rightMultipliers[index % 16]
         let base: CGFloat = 6
-        let dynamic = CGFloat(min(state.level * 180, 1.0)) * 28 * mult
+        let dynamic = CGFloat(min(hud.level * 180, 1.0)) * 28 * mult
         return max(base, min(38, base + dynamic))
     }
 }

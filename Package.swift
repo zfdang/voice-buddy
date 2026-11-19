@@ -35,7 +35,8 @@ let package = Package(
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
                 .product(name: "Sparkle", package: "Sparkle")
             ],
-            exclude: ["Resources"]
+            exclude: ["Resources"],
+            resources: [.process("Localization/Localizable.xcstrings")]
         ),
         .testTarget(name: "VoiceBuddyCoreTests", dependencies: ["VoiceBuddyCore", .product(name: "Qwen3ASR", package: "speech-swift"), .product(name: "SpeechVAD", package: "speech-swift"), .product(name: "Qwen3Chat", package: "speech-swift")]),
         .testTarget(name: "VoiceBuddyAppTests", dependencies: ["VoiceBuddyApp"])
