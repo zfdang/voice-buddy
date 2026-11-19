@@ -38,12 +38,39 @@ final class DictationSessionCoordinator {
     private var fnLocalMonitor: Any?
     private var escMonitor: Any?
 
+    struct EventMonitorDriver {
+        var addGlobalMonitor: (NSEvent.EventTypeMask, @escaping @Sendable (NSEvent) -> Void) -> Any?
+        var addLocalMonitor: (NSEvent.EventTypeMask, @escaping (NSEvent) -> NSEvent?) -> Any?
+        var removeMonitor: (Any) -> Void
+
+        static let system = EventMonitorDriver(
+            addGlobalMonitor: { mask, handler in
+                NSEvent.addGlobalMonitorForEvents(matching: mask, handler: handler)
+            },
+            addLocalMonitor: { mask, handler in
+                NSEvent.addLocalMonitorForEvents(matching: mask, handler: handler)
+            },
+            removeMonitor: { monitor in
+                NSEvent.removeMonitor(monitor)
+            }
+        )
+
+        static let noop = EventMonitorDriver(
+            addGlobalMonitor: { _, _ in NSObject() },
+            addLocalMonitor: { _, _ in NSObject() },
+            removeMonitor: { _ in }
+        )
+    }
+
     private let isBusy: () -> Bool
     private let setBusy: (Bool) -> Void
     private let onTranscriptProduced: (String, String) -> Void
     private let getResult: () -> String
     private let registerSystemShortcuts: Bool
+    private let eventMonitorDriver: EventMonitorDriver
+    #if DEBUG
     private(set) var activeShortcutUsesFnForTesting = false
+    #endif
 
     init(
         preferencesStore: PreferencesStore,
@@ -51,6 +78,7 @@ final class DictationSessionCoordinator {
         modelCatalog: ModelCatalogStore,
         hud: LiveHUDState,
         registerSystemShortcuts: Bool = !AppState.isRunningUnitTests,
+        eventMonitorDriver: EventMonitorDriver? = nil,
         isBusy: @escaping () -> Bool,
         setBusy: @escaping (Bool) -> Void,
         onTranscriptProduced: @escaping (String, String) -> Void,
@@ -61,6 +89,7 @@ final class DictationSessionCoordinator {
         self.modelCatalog = modelCatalog
         self.hud = hud
         self.registerSystemShortcuts = registerSystemShortcuts
+        self.eventMonitorDriver = eventMonitorDriver ?? (registerSystemShortcuts ? .system : .noop)
         self.isBusy = isBusy
         self.setBusy = setBusy
         self.onTranscriptProduced = onTranscriptProduced
@@ -68,9 +97,9 @@ final class DictationSessionCoordinator {
     }
 
     deinit {
-        if let fnGlobalMonitor { NSEvent.removeMonitor(fnGlobalMonitor) }
-        if let fnLocalMonitor { NSEvent.removeMonitor(fnLocalMonitor) }
-        if let escMonitor { NSEvent.removeMonitor(escMonitor) }
+        if let fnGlobalMonitor { eventMonitorDriver.removeMonitor(fnGlobalMonitor) }
+        if let fnLocalMonitor { eventMonitorDriver.removeMonitor(fnLocalMonitor) }
+        if let escMonitor { eventMonitorDriver.removeMonitor(escMonitor) }
     }
 
     func setupKeyboardShortcuts() {
@@ -85,22 +114,25 @@ final class DictationSessionCoordinator {
 
     func configureShortcutMode() {
         fnGesture.reset()
-        fnOtherModifiers = NSEvent.modifierFlags.intersection([.shift, .control, .option, .command])
+        fnOtherModifiers = registerSystemShortcuts
+            ? NSEvent.modifierFlags.intersection([.shift, .control, .option, .command])
+            : []
         gesture.reset()
         fnStartedRecording = false
-        if let fnGlobalMonitor { NSEvent.removeMonitor(fnGlobalMonitor); self.fnGlobalMonitor = nil }
-        if let fnLocalMonitor { NSEvent.removeMonitor(fnLocalMonitor); self.fnLocalMonitor = nil }
+        clearFnMonitors()
+        #if DEBUG
         activeShortcutUsesFnForTesting = preferencesStore.preferences.useFnKey
+        #endif
         if preferencesStore.preferences.useFnKey {
             if registerSystemShortcuts {
                 KeyboardShortcuts.disable(.toggleDictation)
             }
             let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown]
-            fnGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
+            fnGlobalMonitor = eventMonitorDriver.addGlobalMonitor(mask) { [weak self] event in
                 let flags = event.modifierFlags, type = event.type
                 Task { @MainActor in self?.handleFnEvent(flags: flags, type: type) }
             }
-            fnLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            fnLocalMonitor = eventMonitorDriver.addLocalMonitor(mask) { [weak self] event in
                 let flags = event.modifierFlags, type = event.type
                 Task { @MainActor in self?.handleFnEvent(flags: flags, type: type) }
                 return event
@@ -111,6 +143,15 @@ final class DictationSessionCoordinator {
                 KeyboardShortcuts.enable(.toggleDictation)
             }
         }
+    }
+
+    private func clearFnMonitors() {
+        if let fnGlobalMonitor { eventMonitorDriver.removeMonitor(fnGlobalMonitor); self.fnGlobalMonitor = nil }
+        if let fnLocalMonitor { eventMonitorDriver.removeMonitor(fnLocalMonitor); self.fnLocalMonitor = nil }
+    }
+
+    private func clearEscMonitor() {
+        if let escMonitor { eventMonitorDriver.removeMonitor(escMonitor); self.escMonitor = nil }
     }
 
     private func handleFnEvent(flags: NSEvent.ModifierFlags, type: NSEvent.EventType) {
@@ -250,7 +291,7 @@ final class DictationSessionCoordinator {
             meter = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
                 Task { @MainActor in self?.hud.level = self?.recorder.currentLevel ?? 0 }
             }
-            escMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            escMonitor = eventMonitorDriver.addGlobalMonitor(.keyDown) { [weak self] event in
                 if event.keyCode == 53 { Task { @MainActor in self?.cancel() } }
             }
         } catch {
@@ -314,7 +355,7 @@ final class DictationSessionCoordinator {
         hud.liveTranscript = ""
         hud.liveTranscriptState.clear()
         tracker.reset()
-        if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
+        clearEscMonitor()
         transcriptionGeneration = UUID()
         gesture.reset()
         transcriptionTask?.cancel()
@@ -408,7 +449,7 @@ final class DictationSessionCoordinator {
         mediaPlayback.resumeIfPaused()
         liveTask?.cancel()
         liveTask = nil
-        if let monitor = escMonitor { NSEvent.removeMonitor(monitor); escMonitor = nil }
+        clearEscMonitor()
         let capture = recorder.stop()
         hud.recording = false
         meter?.invalidate()

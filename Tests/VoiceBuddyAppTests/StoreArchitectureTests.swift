@@ -121,6 +121,57 @@ final class StoreArchitectureTests: XCTestCase {
         XCTAssertFalse(state.dictation.isFnMonitorActiveForTesting, "Disabling Fn key mode must tear down Fn event monitors")
     }
 
+    func testDictationCoordinatorInstallsAndRemovesMonitorsThroughDriver() {
+        let suiteName = "VoiceBuddy.MonitorDriverTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        var globalInstalls = 0
+        var localInstalls = 0
+        var removals = 0
+        let driver = DictationSessionCoordinator.EventMonitorDriver(
+            addGlobalMonitor: { _, _ in globalInstalls += 1; return NSObject() },
+            addLocalMonitor: { _, _ in localInstalls += 1; return NSObject() },
+            removeMonitor: { _ in removals += 1 }
+        )
+
+        let prefsStore = PreferencesStore(defaults: defaults, defaultsKey: "prefs")
+        let permissionsStore = PermissionsStore()
+        let hud = LiveHUDState()
+        let catalog = ModelCatalogStore(
+            models: LocalModels(),
+            preferencesStore: prefsStore,
+            hud: hud,
+            isBusy: { false },
+            setBusy: { _ in },
+            getOriginal: { "" },
+            setResult: { _ in }
+        )
+        var coordinator: DictationSessionCoordinator? = DictationSessionCoordinator(
+            preferencesStore: prefsStore,
+            permissionsStore: permissionsStore,
+            modelCatalog: catalog,
+            hud: hud,
+            registerSystemShortcuts: false,
+            eventMonitorDriver: driver,
+            isBusy: { false },
+            setBusy: { _ in },
+            onTranscriptProduced: { _, _ in },
+            getResult: { "" }
+        )
+
+        prefsStore.preferences.useFnKey = true
+        coordinator?.configureShortcutMode()
+        XCTAssertEqual(globalInstalls, 1)
+        XCTAssertEqual(localInstalls, 1)
+        XCTAssertEqual(removals, 0)
+        XCTAssertTrue(coordinator?.isFnMonitorActiveForTesting == true)
+
+        // Deinit must remove both active monitors automatically without relying on OS event taps
+        coordinator = nil
+        XCTAssertEqual(removals, 2)
+    }
+
     func testMenuBarControllerBuildsLocalizedMenuItemsWithoutStatusItem() throws {
         let suiteName = "VoiceBuddy.MenuBarTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

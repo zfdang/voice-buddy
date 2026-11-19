@@ -79,7 +79,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     func rebuildMenu() {
-        statusMenu = buildMenu()
+        guard let menu = buildMenu() else { return }
+        statusMenu = menu
     }
 
     func buildMenu() -> NSMenu? {
