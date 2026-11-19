@@ -178,8 +178,13 @@ final class AppleSpeechEngine: @unchecked Sendable {
 
         let session = AppleSpeechRecognitionSession()
         return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { continuation in
                 session.attach(continuation: continuation, timeoutSeconds: timeoutSeconds)
+                guard !Task.isCancelled else {
+                    session.cancel()
+                    return
+                }
                 let task = recognizer.recognitionTask(with: request) { result, error in
                     if let error = error {
                         let nsError = error as NSError

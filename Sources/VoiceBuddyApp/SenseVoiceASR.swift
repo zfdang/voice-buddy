@@ -212,6 +212,11 @@ public final class SenseVoiceASRModel: @unchecked Sendable {
             return false
         }
 
+        let openingPunctuation: Set<Character> = ["(", "[", "{", "“", "‘", "（", "【", "《", "「"]
+        if openingPunctuation.contains(left) {
+            return false
+        }
+
         let leftIsASCIILetterOrDigit = isASCIIWordChar(left)
         let rightIsASCIILetterOrDigit = isASCIIWordChar(right)
         let asciiBoundaryPunct: Set<Character> = [".", ",", "!", "?", ";", ":"]

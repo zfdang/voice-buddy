@@ -191,6 +191,20 @@ final class EngineSafetyTests: XCTestCase {
         )
         XCTAssertEqual(englishCommaSpace, "hello, World")
 
+        // Opening bracket before word must NOT inject an extra space
+        let openingBracket = SenseVoiceASRModel.mergeChunkTranscripts(
+            ["(", "hello)"],
+            languageId: 4
+        )
+        XCTAssertEqual(openingBracket, "(hello)")
+
+        // Deliberate trade-off: identical phrases spanning a chunk boundary are collapsed as overlap
+        let repeatedBoundary = SenseVoiceASRModel.mergeChunkTranscripts(
+            ["we should go", "we should go"],
+            languageId: 4
+        )
+        XCTAssertEqual(repeatedBoundary, "we should go")
+
         // Korean chunks preserve word spacing
         let koreanMerged = SenseVoiceASRModel.mergeChunkTranscripts(
             ["안녕하세요", "반갑습니다"],
@@ -221,11 +235,20 @@ final class EngineSafetyTests: XCTestCase {
         let dcOffset = [Float](repeating: 0.015, count: 6400)
         XCTAssertFalse(LocalModels.containsSpeechByEnergyGate(dcOffset))
 
-        // Continuous soft speech (0.012 and 0.015 amplitude) without silence MUST still be accepted
-        let continuousSoftSpeech = (0..<6400).map { Float(0.012 * sin(Double($0) * 0.2)) }
-        XCTAssertTrue(LocalModels.containsSpeechByEnergyGate(continuousSoftSpeech))
-        let continuousModerateSoftSpeech = (0..<6400).map { Float(0.015 * sin(Double($0) * 0.2)) }
-        XCTAssertTrue(LocalModels.containsSpeechByEnergyGate(continuousModerateSoftSpeech))
+        // Steady 60Hz mains hum and 254Hz constant-amplitude equipment hum (0.011-0.020)
+        // must be rejected (no syllabic envelope modulation / sub-speech ZCR)
+        let mainsHum60Hz = (0..<6400).map { Float(0.020 * sin(2.0 * .pi * 60.0 * Double($0) / 16000.0)) }
+        XCTAssertFalse(LocalModels.containsSpeechByEnergyGate(mainsHum60Hz))
+        let equipmentHum254Hz = (0..<6400).map { Float(0.015 * sin(2.0 * .pi * 254.0 * Double($0) / 16000.0)) }
+        XCTAssertFalse(LocalModels.containsSpeechByEnergyGate(equipmentHum254Hz))
+
+        // Continuous soft speech with natural syllabic envelope modulation (~0.015 peak, 254Hz carrier)
+        // without silence MUST be accepted
+        let modulatedSoftSpeech = (0..<6400).map { idx -> Float in
+            let envelope = Float(0.25 + 0.75 * abs(sin(2.0 * .pi * 4.0 * Double(idx) / 16000.0)))
+            return envelope * Float(0.018 * sin(2.0 * .pi * 254.0 * Double(idx) / 16000.0))
+        }
+        XCTAssertTrue(LocalModels.containsSpeechByEnergyGate(modulatedSoftSpeech))
 
         // Soft speech preceded/followed by silence must also be accepted
         let softSpeechWithSilence = (0..<6400).map { $0 < 3200 ? Float(0.012 * sin(Double($0) * 0.2)) : Float(0) }
