@@ -124,6 +124,7 @@ public struct RefinementPrompts {
         }
     }
 
+    // Mirrors the XML delimiter tags used in RefinementPrompts and LocalModels.refine(_:mode:).
     private static let controlTagRegex = try! NSRegularExpression(
         pattern: #"<(/?)(asr_text|asr_input|polished_text|think)\b([^>]*)>"#,
         options: [.caseInsensitive]

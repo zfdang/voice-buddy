@@ -120,6 +120,24 @@ final class EngineSafetyTests: XCTestCase {
         }
     }
 
+    func testAppleSpeechSessionCancelBeforeAttachResumesImmediately() async {
+        let session = AppleSpeechRecognitionSession()
+        let taskHandle = MockSpeechTaskHandle()
+        session.cancel()
+
+        do {
+            _ = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
+                session.attach(continuation: cont, timeoutSeconds: 10)
+                session.setTask(taskHandle)
+            }
+            XCTFail("Expected CancellationError when cancel() precedes attach()")
+        } catch is CancellationError {
+            XCTAssertEqual(taskHandle.cancelCount, 1)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testAppleSpeechSessionTimesOutAndCancelsTask() async {
         let session = AppleSpeechRecognitionSession()
         let taskHandle = MockSpeechTaskHandle()
@@ -130,16 +148,35 @@ final class EngineSafetyTests: XCTestCase {
                 session.setTask(taskHandle)
             }
             XCTFail("Expected timeout error")
-        } catch let error as VoiceBuddyError {
+        } catch let error as AppleSpeechError {
             XCTAssertEqual(taskHandle.cancelCount, 1)
-            if case .modelUnavailable(let msg) = error {
-                XCTAssertTrue(msg.contains("timed out"))
-            } else {
-                XCTFail("Expected modelUnavailable timeout, got \(error)")
-            }
+            XCTAssertEqual(error, .timedOut)
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
+    }
+
+    func testSenseVoiceMergeChunkTranscriptsHandlesChineseAndOverlap() {
+        // Chinese chunks must not inject artificial spaces and must deduplicate overlap
+        let zhMerged = SenseVoiceASRModel.mergeChunkTranscripts(
+            ["今天天气真不错，我们", "，我们一起去公园散步。"],
+            languageId: 3
+        )
+        XCTAssertEqual(zhMerged, "今天天气真不错，我们一起去公园散步。")
+
+        // English chunks preserve word boundary spacing and deduplicate overlap
+        let enMerged = SenseVoiceASRModel.mergeChunkTranscripts(
+            ["hello world this is", "this is a long test"],
+            languageId: 4
+        )
+        XCTAssertEqual(enMerged, "hello world this is a long test")
+
+        // Mixed auto mode avoids spaces around Chinese characters while preserving English word spaces
+        let autoZh = SenseVoiceASRModel.mergeChunkTranscripts(
+            ["打开项目目录", "然后运行测试"],
+            languageId: 0
+        )
+        XCTAssertEqual(autoZh, "打开项目目录然后运行测试")
     }
 
     func testEnergyGateRejectsSingleSpikeAndLowNoiseButAcceptsSpeech() {
@@ -151,9 +188,13 @@ final class EngineSafetyTests: XCTestCase {
         spike[101] = -0.4
         XCTAssertFalse(LocalModels.containsSpeechByEnergyGate(spike))
 
-        // Low background hum
-        let hum = (0..<3200).map { Float(0.003 * sin(Double($0) * 0.1)) }
-        XCTAssertFalse(LocalModels.containsSpeechByEnergyGate(hum))
+        // Steady background hum / fan noise must be rejected via adaptive noise floor
+        let steadyHum = (0..<6400).map { Float(0.01 * sin(Double($0) * 0.1)) }
+        XCTAssertFalse(LocalModels.containsSpeechByEnergyGate(steadyHum))
+
+        // Soft speech in quiet surroundings (~0.012 amplitude) should be accepted
+        let softSpeech = (0..<6400).map { $0 < 3200 ? Float(0.012 * sin(Double($0) * 0.2)) : Float(0) }
+        XCTAssertTrue(LocalModels.containsSpeechByEnergyGate(softSpeech))
 
         // Sustained voiced signal (~200 ms)
         let speech = (0..<3200).map { Float(0.05 * sin(Double($0) * 0.2)) }

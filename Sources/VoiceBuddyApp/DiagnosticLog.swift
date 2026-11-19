@@ -37,7 +37,7 @@ final class DiagnosticLog {
         options: []
     )
     private static let sensitiveFieldRegex = try! NSRegularExpression(
-        pattern: #"\b(transcript|raw_text|polished_text|text|content)=([^\s]+)"#,
+        pattern: #"\b(transcript|raw_text|polished_text|text|content)=(?:\"[^\"]*\"|'[^']*'|[^\s]+)"#,
         options: [.caseInsensitive]
     )
 

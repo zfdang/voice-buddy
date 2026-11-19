@@ -48,7 +48,7 @@ final class DiagnosticLogTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let log = DiagnosticLog(directory: root, limit: 4096)
 
-        log.record("diagnostic.test user=alice@example.com\nFAKE_LINE token=sk-1234567890abcdef123456 transcript=secret_words")
+        log.record("diagnostic.test user=alice@example.com\nFAKE_LINE token=sk-1234567890abcdef123456 transcript=secret_words text=\"hello world\" content='private note'")
         let file = try log.readyFile()
         let content = try String(contentsOf: file, encoding: .utf8)
         let lines = content.split(separator: "\n")
@@ -57,8 +57,12 @@ final class DiagnosticLogTests: XCTestCase {
         XCTAssertFalse(content.contains("alice@example.com"))
         XCTAssertFalse(content.contains("sk-1234567890abcdef123456"))
         XCTAssertFalse(content.contains("secret_words"))
+        XCTAssertFalse(content.contains("hello world"))
+        XCTAssertFalse(content.contains("private note"))
         XCTAssertTrue(content.contains("[REDACTED_EMAIL]"))
         XCTAssertTrue(content.contains("[REDACTED_TOKEN]"))
         XCTAssertTrue(content.contains("transcript=[REDACTED]"))
+        XCTAssertTrue(content.contains("text=[REDACTED]"))
+        XCTAssertTrue(content.contains("content=[REDACTED]"))
     }
 }

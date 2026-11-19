@@ -527,7 +527,8 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
         if selectedID == "apple-speech" {
             // Zero-download fallback when Silero VAD has not been downloaded yet:
-            // require sustained multi-frame RMS energy above background noise floor rather than a single sample peak.
+            // estimate background noise floor from frame RMS percentiles and require sustained
+            // multi-frame energy above that floor rather than a single sample peak.
             return Self.containsSpeechByEnergyGate(samples)
         }
         throw VoiceBuddyError.modelUnavailable("VAD")
@@ -536,11 +537,13 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     static func containsSpeechByEnergyGate(_ samples: [Float], sampleRate: Int = 16_000) -> Bool {
         guard !samples.isEmpty else { return false }
         let frameSize = max(1, (sampleRate * 20) / 1000) // 20 ms frames
-        let rmsThreshold: Float = 0.008
-        let peakThreshold: Float = 0.015
+        let baseRmsThreshold: Float = 0.004
+        let basePeakThreshold: Float = 0.010
         let minActiveFrames = 3
 
-        var activeFrames = 0
+        var frameStats: [(rms: Float, peak: Float)] = []
+        frameStats.reserveCapacity((samples.count + frameSize - 1) / frameSize)
+
         var offset = 0
         while offset < samples.count {
             let end = min(samples.count, offset + frameSize)
@@ -553,14 +556,27 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
                 let a = abs(s)
                 if a > peak { peak = a }
             }
-            let rms = sqrt(sumSq / Float(count))
-            if rms >= rmsThreshold && peak >= peakThreshold {
-                activeFrames += 1
-                if activeFrames >= minActiveFrames {
-                    return true
-                }
-            }
+            frameStats.append((rms: sqrt(sumSq / Float(count)), peak: peak))
             offset = end
+        }
+
+        guard frameStats.count >= minActiveFrames else { return false }
+
+        // Estimate background noise floor from the 20th-percentile frame RMS (capped below 0.02
+        // so short all-speech clips are not suppressed by their own voiced energy).
+        let sortedRMS = frameStats.map(\.rms).sorted()
+        let p20Index = min(sortedRMS.count - 1, max(0, (sortedRMS.count - 1) / 5))
+        let noiseFloorRMS = sortedRMS[p20Index]
+        let effectiveRmsThreshold = noiseFloorRMS < 0.02
+            ? max(baseRmsThreshold, noiseFloorRMS * 2.5)
+            : 0.02
+
+        var activeFrames = 0
+        for frame in frameStats where frame.rms >= effectiveRmsThreshold && frame.peak >= basePeakThreshold {
+            activeFrames += 1
+            if activeFrames >= minActiveFrames {
+                return true
+            }
         }
         return false
     }

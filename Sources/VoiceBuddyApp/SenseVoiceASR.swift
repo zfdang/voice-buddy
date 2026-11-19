@@ -115,7 +115,9 @@ public final class SenseVoiceASRModel: @unchecked Sendable {
             return decode(logits: logits, validFrames: validFrames)
         }
 
-        DiagnosticLog.shared.record("sensevoice.chunked_inference total_frames=\(totalFrames) max_frames=\(maxFrames)")
+        let overlapFrames = min(60, max(1, maxFrames / 10))
+        let stepFrames = max(1, maxFrames - overlapFrames)
+        DiagnosticLog.shared.record("sensevoice.chunked_inference total_frames=\(totalFrames) max_frames=\(maxFrames) overlap=\(overlapFrames)")
         var chunks: [String] = []
         var offset = 0
         while offset < totalFrames {
@@ -125,9 +127,63 @@ public final class SenseVoiceASRModel: @unchecked Sendable {
             if !text.isEmpty {
                 chunks.append(text)
             }
-            offset += count
+            if offset + count >= totalFrames {
+                break
+            }
+            offset += stepFrames
         }
-        return chunks.joined(separator: " ")
+        return Self.mergeChunkTranscripts(chunks, languageId: langId)
+    }
+
+    static func mergeChunkTranscripts(_ chunks: [String], languageId: Int32) -> String {
+        let cleaned = chunks
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard var merged = cleaned.first else { return "" }
+
+        for next in cleaned.dropFirst() {
+            let overlapCount = longestBoundaryOverlap(suffixOf: merged, prefixOf: next, maxChars: 24)
+            let remainder = overlapCount > 0
+                ? String(next.dropFirst(overlapCount)).trimmingCharacters(in: .whitespaces)
+                : next
+            guard !remainder.isEmpty else { continue }
+
+            if needsSpaceBetween(merged.last, remainder.first, languageId: languageId) {
+                merged += " " + remainder
+            } else {
+                merged += remainder
+            }
+        }
+        return merged
+    }
+
+    private static func longestBoundaryOverlap(suffixOf lhs: String, prefixOf rhs: String, maxChars: Int) -> Int {
+        let lhsChars = Array(lhs)
+        let rhsChars = Array(rhs)
+        let limit = min(maxChars, lhsChars.count, rhsChars.count)
+        guard limit > 0 else { return 0 }
+
+        for len in stride(from: limit, through: 1, by: -1) {
+            let lhsSlice = lhsChars[(lhsChars.count - len)..<lhsChars.count]
+            let rhsSlice = rhsChars[0..<len]
+            if zip(lhsSlice, rhsSlice).allSatisfy({ $0 == $1 }) {
+                if len >= 2 || rhsChars[0].unicodeScalars.allSatisfy({ !($0.isASCII && $0.properties.isAlphabetic) }) {
+                    return len
+                }
+            }
+        }
+        return 0
+    }
+
+    private static func needsSpaceBetween(_ left: Character?, _ right: Character?, languageId: Int32) -> Bool {
+        guard let left, let right else { return false }
+        let cjkSpaceFreeLanguage = (languageId == 3 || languageId == 7 || languageId == 11)
+        let leftIsASCIILetterOrDigit = left.isASCII && (left.isLetter || left.isNumber)
+        let rightIsASCIILetterOrDigit = right.isASCII && (right.isLetter || right.isNumber)
+        if cjkSpaceFreeLanguage && !(leftIsASCIILetterOrDigit && rightIsASCIILetterOrDigit) {
+            return false
+        }
+        return leftIsASCIILetterOrDigit && rightIsASCIILetterOrDigit
     }
 
     private func runPreprocessor(audio: [Float]) throws -> MLMultiArray {

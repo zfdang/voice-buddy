@@ -3,6 +3,17 @@ import Foundation
 import Speech
 import VoiceBuddyCore
 
+enum AppleSpeechError: LocalizedError, Equatable {
+    case timedOut
+
+    var errorDescription: String? {
+        switch self {
+        case .timedOut:
+            return "Apple Speech recognition timed out. Please try again."
+        }
+    }
+}
+
 /// Protocol abstraction for cancellable speech recognition tasks (enables unit testing).
 protocol AppleSpeechTaskHandle: AnyObject, Sendable {
     func cancel()
@@ -20,28 +31,27 @@ final class AppleSpeechRecognitionSession: @unchecked Sendable {
     private var timeoutWorkItem: DispatchWorkItem?
 
     func attach(continuation: CheckedContinuation<String, Error>, timeoutSeconds: TimeInterval) {
-        var shouldCancelImmediately = false
+        var immediateError: Error?
         lock.lock()
-        if isFinished {
-            lock.unlock()
-            return
-        }
-        self.continuation = continuation
         if isCancelled {
             isFinished = true
-            self.continuation = nil
-            shouldCancelImmediately = true
-        } else if timeoutSeconds > 0 {
-            let work = DispatchWorkItem { [weak self] in
-                self?.timeout()
+            immediateError = CancellationError()
+        } else if isFinished {
+            immediateError = AppleSpeechError.timedOut
+        } else {
+            self.continuation = continuation
+            if timeoutSeconds > 0 {
+                let work = DispatchWorkItem { [weak self] in
+                    self?.timeout()
+                }
+                self.timeoutWorkItem = work
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + timeoutSeconds, execute: work)
             }
-            self.timeoutWorkItem = work
-            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + timeoutSeconds, execute: work)
         }
         lock.unlock()
 
-        if shouldCancelImmediately {
-            continuation.resume(throwing: CancellationError())
+        if let immediateError {
+            continuation.resume(throwing: immediateError)
         }
     }
 
@@ -114,7 +124,7 @@ final class AppleSpeechRecognitionSession: @unchecked Sendable {
         lock.unlock()
 
         task?.cancel()
-        cont?.resume(throwing: VoiceBuddyError.modelUnavailable("Apple Speech recognition timed out."))
+        cont?.resume(throwing: AppleSpeechError.timedOut)
     }
 }
 
