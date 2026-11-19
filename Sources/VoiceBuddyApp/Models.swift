@@ -527,8 +527,9 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
         if selectedID == "apple-speech" {
             // Zero-download fallback when Silero VAD has not been downloaded yet:
-            // estimate background noise floor from frame RMS percentiles and require sustained
-            // multi-frame energy above that floor rather than a single sample peak.
+            // When the clip contains quiet contrast (p90 >= 2 * p20), gate frames against an
+            // adaptive noise floor; for continuous signals without quiet frames, evaluate AC RMS
+            // against a calibrated absolute speech floor so continuous soft speech is not rejected.
             return Self.containsSpeechByEnergyGate(samples)
         }
         throw VoiceBuddyError.modelUnavailable("VAD")
@@ -537,42 +538,53 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
     static func containsSpeechByEnergyGate(_ samples: [Float], sampleRate: Int = 16_000) -> Bool {
         guard !samples.isEmpty else { return false }
         let frameSize = max(1, (sampleRate * 20) / 1000) // 20 ms frames
-        let baseRmsThreshold: Float = 0.004
+        let baseRmsThreshold: Float = 0.005
         let basePeakThreshold: Float = 0.010
         let minActiveFrames = 3
 
-        var frameStats: [(rms: Float, peak: Float)] = []
+        var frameStats: [(acRMS: Float, peak: Float)] = []
         frameStats.reserveCapacity((samples.count + frameSize - 1) / frameSize)
 
         var offset = 0
         while offset < samples.count {
             let end = min(samples.count, offset + frameSize)
-            let count = end - offset
-            var sumSq: Float = 0
+            let count = Float(end - offset)
+            var sum: Float = 0
             var peak: Float = 0
             for i in offset..<end {
                 let s = samples[i]
-                sumSq += s * s
+                sum += s
                 let a = abs(s)
                 if a > peak { peak = a }
             }
-            frameStats.append((rms: sqrt(sumSq / Float(count)), peak: peak))
+            let mean = sum / count
+            var sumSqAC: Float = 0
+            for i in offset..<end {
+                let centered = samples[i] - mean
+                sumSqAC += centered * centered
+            }
+            frameStats.append((acRMS: sqrt(sumSqAC / count), peak: peak))
             offset = end
         }
 
         guard frameStats.count >= minActiveFrames else { return false }
 
-        // Estimate background noise floor from the 20th-percentile frame RMS (capped below 0.02
-        // so short all-speech clips are not suppressed by their own voiced energy).
-        let sortedRMS = frameStats.map(\.rms).sorted()
+        let sortedRMS = frameStats.map(\.acRMS).sorted()
         let p20Index = min(sortedRMS.count - 1, max(0, (sortedRMS.count - 1) / 5))
+        let p90Index = min(sortedRMS.count - 1, max(0, ((sortedRMS.count - 1) * 9) / 10))
         let noiseFloorRMS = sortedRMS[p20Index]
-        let effectiveRmsThreshold = noiseFloorRMS < 0.02
-            ? max(baseRmsThreshold, noiseFloorRMS * 2.5)
-            : 0.02
+        let upperRMS = sortedRMS[p90Index]
+
+        let hasQuietContrast = upperRMS >= max(baseRmsThreshold, noiseFloorRMS * 2.0)
+        let effectiveRmsThreshold: Float
+        if hasQuietContrast {
+            effectiveRmsThreshold = min(0.02, max(baseRmsThreshold, noiseFloorRMS * 2.5))
+        } else {
+            effectiveRmsThreshold = 0.006
+        }
 
         var activeFrames = 0
-        for frame in frameStats where frame.rms >= effectiveRmsThreshold && frame.peak >= basePeakThreshold {
+        for frame in frameStats where frame.acRMS >= effectiveRmsThreshold && frame.peak >= basePeakThreshold {
             activeFrames += 1
             if activeFrames >= minActiveFrames {
                 return true

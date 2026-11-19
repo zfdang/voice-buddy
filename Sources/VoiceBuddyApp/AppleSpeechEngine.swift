@@ -5,11 +5,14 @@ import VoiceBuddyCore
 
 enum AppleSpeechError: LocalizedError, Equatable {
     case timedOut
+    case aborted
 
     var errorDescription: String? {
         switch self {
         case .timedOut:
             return "Apple Speech recognition timed out. Please try again."
+        case .aborted:
+            return "Apple Speech recognition ended before attaching."
         }
     }
 }
@@ -37,7 +40,8 @@ final class AppleSpeechRecognitionSession: @unchecked Sendable {
             isFinished = true
             immediateError = CancellationError()
         } else if isFinished {
-            immediateError = AppleSpeechError.timedOut
+            // Defensive guard if a session finishes before attach; unreachable under normal call order.
+            immediateError = AppleSpeechError.aborted
         } else {
             self.continuation = continuation
             if timeoutSeconds > 0 {

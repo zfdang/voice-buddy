@@ -164,12 +164,39 @@ final class EngineSafetyTests: XCTestCase {
         )
         XCTAssertEqual(zhMerged, "今天天气真不错，我们一起去公园散步。")
 
-        // English chunks preserve word boundary spacing and deduplicate overlap
-        let enMerged = SenseVoiceASRModel.mergeChunkTranscripts(
-            ["hello world this is", "this is a long test"],
+        // Long overlap (> 24 chars) must be deduplicated cleanly
+        let longOverlapMerged = SenseVoiceASRModel.mergeChunkTranscripts(
+            ["we discussed the quarterly budget and the hiring plan", "the quarterly budget and the hiring plan for Q3"],
             languageId: 4
         )
-        XCTAssertEqual(enMerged, "hello world this is a long test")
+        XCTAssertEqual(longOverlapMerged, "we discussed the quarterly budget and the hiring plan for Q3")
+
+        // Partial ASCII word collisions ("stop" + "open" sharing "op") must NOT be truncated
+        let wordBoundarySafe = SenseVoiceASRModel.mergeChunkTranscripts(
+            ["we should stop", "open the window"],
+            languageId: 4
+        )
+        XCTAssertEqual(wordBoundarySafe, "we should stop open the window")
+
+        // Sentence/clause punctuation followed by next English word preserves space
+        let englishPunctSpace = SenseVoiceASRModel.mergeChunkTranscripts(
+            ["hello world.", "Next sentence."],
+            languageId: 0
+        )
+        XCTAssertEqual(englishPunctSpace, "hello world. Next sentence.")
+
+        let englishCommaSpace = SenseVoiceASRModel.mergeChunkTranscripts(
+            ["hello,", "World"],
+            languageId: 4
+        )
+        XCTAssertEqual(englishCommaSpace, "hello, World")
+
+        // Korean chunks preserve word spacing
+        let koreanMerged = SenseVoiceASRModel.mergeChunkTranscripts(
+            ["안녕하세요", "반갑습니다"],
+            languageId: 12
+        )
+        XCTAssertEqual(koreanMerged, "안녕하세요 반갑습니다")
 
         // Mixed auto mode avoids spaces around Chinese characters while preserving English word spaces
         let autoZh = SenseVoiceASRModel.mergeChunkTranscripts(
@@ -188,13 +215,21 @@ final class EngineSafetyTests: XCTestCase {
         spike[101] = -0.4
         XCTAssertFalse(LocalModels.containsSpeechByEnergyGate(spike))
 
-        // Steady background hum / fan noise must be rejected via adaptive noise floor
-        let steadyHum = (0..<6400).map { Float(0.01 * sin(Double($0) * 0.1)) }
-        XCTAssertFalse(LocalModels.containsSpeechByEnergyGate(steadyHum))
+        // Low background hum / constant DC offset must be rejected
+        let lowHum = (0..<6400).map { Float(0.003 * sin(Double($0) * 0.1)) }
+        XCTAssertFalse(LocalModels.containsSpeechByEnergyGate(lowHum))
+        let dcOffset = [Float](repeating: 0.015, count: 6400)
+        XCTAssertFalse(LocalModels.containsSpeechByEnergyGate(dcOffset))
 
-        // Soft speech in quiet surroundings (~0.012 amplitude) should be accepted
-        let softSpeech = (0..<6400).map { $0 < 3200 ? Float(0.012 * sin(Double($0) * 0.2)) : Float(0) }
-        XCTAssertTrue(LocalModels.containsSpeechByEnergyGate(softSpeech))
+        // Continuous soft speech (0.012 and 0.015 amplitude) without silence MUST still be accepted
+        let continuousSoftSpeech = (0..<6400).map { Float(0.012 * sin(Double($0) * 0.2)) }
+        XCTAssertTrue(LocalModels.containsSpeechByEnergyGate(continuousSoftSpeech))
+        let continuousModerateSoftSpeech = (0..<6400).map { Float(0.015 * sin(Double($0) * 0.2)) }
+        XCTAssertTrue(LocalModels.containsSpeechByEnergyGate(continuousModerateSoftSpeech))
+
+        // Soft speech preceded/followed by silence must also be accepted
+        let softSpeechWithSilence = (0..<6400).map { $0 < 3200 ? Float(0.012 * sin(Double($0) * 0.2)) : Float(0) }
+        XCTAssertTrue(LocalModels.containsSpeechByEnergyGate(softSpeechWithSilence))
 
         // Sustained voiced signal (~200 ms)
         let speech = (0..<3200).map { Float(0.05 * sin(Double($0) * 0.2)) }

@@ -142,7 +142,7 @@ public final class SenseVoiceASRModel: @unchecked Sendable {
         guard var merged = cleaned.first else { return "" }
 
         for next in cleaned.dropFirst() {
-            let overlapCount = longestBoundaryOverlap(suffixOf: merged, prefixOf: next, maxChars: 24)
+            let overlapCount = longestBoundaryOverlap(suffixOf: merged, prefixOf: next, maxChars: 200)
             let remainder = overlapCount > 0
                 ? String(next.dropFirst(overlapCount)).trimmingCharacters(in: .whitespaces)
                 : next
@@ -157,6 +157,22 @@ public final class SenseVoiceASRModel: @unchecked Sendable {
         return merged
     }
 
+    private static func isASCIIWordChar(_ ch: Character?) -> Bool {
+        guard let ch else { return false }
+        return ch.isASCII && (ch.isLetter || ch.isNumber)
+    }
+
+    private static func isCJKSyllabicOrPunct(_ ch: Character) -> Bool {
+        ch.unicodeScalars.contains { scalar in
+            let v = scalar.value
+            return (0x4E00...0x9FFF).contains(v) // CJK Unified Ideographs
+                || (0x3400...0x4DBF).contains(v) // CJK Extension A
+                || (0x3040...0x30FF).contains(v) // Hiragana & Katakana
+                || (0x3000...0x303F).contains(v) // CJK Symbols and Punctuation
+                || (0xFF00...0xFFEF).contains(v) // Fullwidth forms
+        }
+    }
+
     private static func longestBoundaryOverlap(suffixOf lhs: String, prefixOf rhs: String, maxChars: Int) -> Int {
         let lhsChars = Array(lhs)
         let rhsChars = Array(rhs)
@@ -164,12 +180,25 @@ public final class SenseVoiceASRModel: @unchecked Sendable {
         guard limit > 0 else { return 0 }
 
         for len in stride(from: limit, through: 1, by: -1) {
-            let lhsSlice = lhsChars[(lhsChars.count - len)..<lhsChars.count]
+            let startIdx = lhsChars.count - len
+            let lhsSlice = lhsChars[startIdx..<lhsChars.count]
             let rhsSlice = rhsChars[0..<len]
-            if zip(lhsSlice, rhsSlice).allSatisfy({ $0 == $1 }) {
-                if len >= 2 || rhsChars[0].unicodeScalars.allSatisfy({ !($0.isASCII && $0.properties.isAlphabetic) }) {
-                    return len
-                }
+            guard zip(lhsSlice, rhsSlice).allSatisfy({ $0 == $1 }) else { continue }
+
+            // Enforce ASCII word boundaries on both ends so partial word collisions
+            // like "stop" + "open" ("op") are never treated as chunk overlap.
+            let prevChar: Character? = startIdx > 0 ? lhsChars[startIdx - 1] : nil
+            let nextChar: Character? = len < rhsChars.count ? rhsChars[len] : nil
+            if isASCIIWordChar(rhsSlice.first) && isASCIIWordChar(prevChar) {
+                continue
+            }
+            if isASCIIWordChar(rhsSlice.last) && isASCIIWordChar(nextChar) {
+                continue
+            }
+
+            let containsNonASCII = rhsSlice.contains { !$0.isASCII }
+            if containsNonASCII || len >= 2 || (isASCIIWordChar(rhsSlice.first) && !isASCIIWordChar(prevChar) && !isASCIIWordChar(nextChar)) {
+                return len
             }
         }
         return 0
@@ -177,13 +206,33 @@ public final class SenseVoiceASRModel: @unchecked Sendable {
 
     private static func needsSpaceBetween(_ left: Character?, _ right: Character?, languageId: Int32) -> Bool {
         guard let left, let right else { return false }
-        let cjkSpaceFreeLanguage = (languageId == 3 || languageId == 7 || languageId == 11)
-        let leftIsASCIILetterOrDigit = left.isASCII && (left.isLetter || left.isNumber)
-        let rightIsASCIILetterOrDigit = right.isASCII && (right.isLetter || right.isNumber)
-        if cjkSpaceFreeLanguage && !(leftIsASCIILetterOrDigit && rightIsASCIILetterOrDigit) {
+
+        let closingPunctuation: Set<Character> = [".", ",", "!", "?", ";", ":", "。", "，", "！", "？", "、", "；", "：", ")", "]", "}", "”", "’", "》", "」"]
+        if closingPunctuation.contains(right) {
             return false
         }
-        return leftIsASCIILetterOrDigit && rightIsASCIILetterOrDigit
+
+        let leftIsASCIILetterOrDigit = isASCIIWordChar(left)
+        let rightIsASCIILetterOrDigit = isASCIIWordChar(right)
+        let asciiBoundaryPunct: Set<Character> = [".", ",", "!", "?", ";", ":"]
+
+        // Chinese (3), Cantonese (7), Japanese (11): avoid spaces around CJK/Kana,
+        // while preserving spaces between ASCII words and after ASCII punctuation before ASCII words.
+        if languageId == 3 || languageId == 7 || languageId == 11 {
+            return rightIsASCIILetterOrDigit && (leftIsASCIILetterOrDigit || asciiBoundaryPunct.contains(left))
+        }
+
+        // Korean (12) and English (4) are space-delimited languages.
+        if languageId == 4 || languageId == 12 {
+            return true
+        }
+
+        // Auto / multilingual (0): omit spaces next to Han/Kana characters, preserve spaces
+        // between Latin/ASCII words, after ASCII punctuation, and between Hangul words.
+        if isCJKSyllabicOrPunct(left) || isCJKSyllabicOrPunct(right) {
+            return false
+        }
+        return true
     }
 
     private func runPreprocessor(audio: [Float]) throws -> MLMultiArray {
