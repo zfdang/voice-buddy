@@ -106,8 +106,28 @@ public final class SenseVoiceASRModel: @unchecked Sendable {
 
         let features = try runPreprocessor(audio: normalizedAudio)
         let langId = languageId(for: language ?? "auto")
-        let (logits, validFrames) = try runEncoder(features: features, language: langId)
-        return decode(logits: logits, validFrames: validFrames)
+        let totalFrames = features.shape.count >= 2 ? features.shape[1].intValue : 0
+        guard totalFrames > 0 else { return "" }
+
+        let maxFrames = buckets.last ?? 1800
+        if totalFrames <= maxFrames {
+            let (logits, validFrames) = try runEncoder(features: features, frameOffset: 0, frameCount: totalFrames, language: langId)
+            return decode(logits: logits, validFrames: validFrames)
+        }
+
+        DiagnosticLog.shared.record("sensevoice.chunked_inference total_frames=\(totalFrames) max_frames=\(maxFrames)")
+        var chunks: [String] = []
+        var offset = 0
+        while offset < totalFrames {
+            let count = min(maxFrames, totalFrames - offset)
+            let (logits, validFrames) = try runEncoder(features: features, frameOffset: offset, frameCount: count, language: langId)
+            let text = decode(logits: logits, validFrames: validFrames)
+            if !text.isEmpty {
+                chunks.append(text)
+            }
+            offset += count
+        }
+        return chunks.joined(separator: " ")
     }
 
     private func runPreprocessor(audio: [Float]) throws -> MLMultiArray {
@@ -126,23 +146,17 @@ public final class SenseVoiceASRModel: @unchecked Sendable {
         return features
     }
 
-    private func runEncoder(features: MLMultiArray, language: Int32) throws -> (MLMultiArray, Int) {
+    private func runEncoder(features: MLMultiArray, frameOffset: Int, frameCount: Int, language: Int32) throws -> (MLMultiArray, Int) {
         let dim = 560
-        var t = features.shape[1].intValue
         let maxFrames = buckets.last ?? 1800
-        if t > maxFrames { t = maxFrames }
+        let t = min(frameCount, maxFrames)
         let bucket = buckets.first { $0 >= t } ?? maxFrames
 
         let speech = try MLMultiArray(shape: [1, bucket as NSNumber, dim as NSNumber], dataType: .float32)
         let sptr = speech.dataPointer.assumingMemoryBound(to: Float32.self)
         memset(sptr, 0, bucket * dim * MemoryLayout<Float32>.size)
 
-        let count = t * dim
-        if features.dataType == .float32 {
-            memcpy(sptr, features.dataPointer, count * MemoryLayout<Float32>.size)
-        } else {
-            for i in 0..<count { sptr[i] = features[i].floatValue }
-        }
+        try Self.copyFeatures(features, frameOffset: frameOffset, frameCount: t, expectedDim: dim, to: sptr)
 
         let lengths = try MLMultiArray(shape: [1], dataType: .int32)
         lengths[0] = NSNumber(value: t)
@@ -164,21 +178,73 @@ public final class SenseVoiceASRModel: @unchecked Sendable {
         return (logits, 4 + t)
     }
 
+    static func copyFeatures(
+        _ features: MLMultiArray,
+        frameOffset: Int,
+        frameCount: Int,
+        expectedDim: Int = 560,
+        to destination: UnsafeMutablePointer<Float32>
+    ) throws {
+        guard features.shape.count == 3 else {
+            throw VoiceBuddyError.modelUnavailable("Unexpected SenseVoice feature rank: \(features.shape.count)")
+        }
+        let totalFrames = features.shape[1].intValue
+        let featureDim = features.shape[2].intValue
+        guard featureDim == expectedDim else {
+            throw VoiceBuddyError.modelUnavailable("Unexpected SenseVoice feature dimension: \(featureDim), expected \(expectedDim)")
+        }
+        guard frameOffset >= 0, frameCount >= 0, frameOffset + frameCount <= totalFrames else {
+            throw VoiceBuddyError.modelUnavailable("SenseVoice feature slice out of bounds: offset=\(frameOffset) count=\(frameCount) total=\(totalFrames)")
+        }
+        guard frameCount > 0 else { return }
+
+        let strides = features.strides.map(\.intValue)
+        let rowStride = strides.count >= 2 ? strides[1] : expectedDim
+        let colStride = strides.count >= 3 ? strides[2] : 1
+
+        if features.dataType == .float32 && colStride == 1 && rowStride == expectedDim {
+            let src = features.dataPointer.assumingMemoryBound(to: Float32.self) + frameOffset * rowStride
+            memcpy(destination, src, frameCount * expectedDim * MemoryLayout<Float32>.size)
+        } else if features.dataType == .float32 && colStride == 1 && rowStride > expectedDim {
+            let srcBase = features.dataPointer.assumingMemoryBound(to: Float32.self)
+            for frame in 0..<frameCount {
+                let srcRow = srcBase + (frameOffset + frame) * rowStride
+                let dstRow = destination + frame * expectedDim
+                memcpy(dstRow, srcRow, expectedDim * MemoryLayout<Float32>.size)
+            }
+        } else {
+            for frame in 0..<frameCount {
+                let srcFrame = frameOffset + frame
+                let dstOffset = frame * expectedDim
+                for col in 0..<expectedDim {
+                    destination[dstOffset + col] = features[[0, srcFrame as NSNumber, col as NSNumber]].floatValue
+                }
+            }
+        }
+    }
+
     private func decode(logits: MLMultiArray, validFrames: Int) -> String {
+        Self.decodeCTC(logits: logits, validFrames: validFrames, vocabulary: vocabulary)
+    }
+
+    static func decodeCTC(logits: MLMultiArray, validFrames: Int, vocabulary: [String]) -> String {
+        guard logits.shape.count >= 3, logits.strides.count >= 3 else { return "" }
         let frames = min(validFrames, logits.shape[1].intValue)
         let vocab = logits.shape[2].intValue
-        let stride = logits.strides[1].intValue
+        guard frames > 0, vocab > 0 else { return "" }
+        let frameStride = logits.strides[1].intValue
+        let vocabStride = logits.strides[2].intValue
 
         var ids: [Int] = []
         ids.reserveCapacity(frames)
         var prev = -1
 
-        if logits.dataType == .float32 {
+        if logits.dataType == .float32 && vocabStride == 1 {
             let ptr = logits.dataPointer.assumingMemoryBound(to: Float32.self)
             for t in 0..<frames {
                 var bestVal: Float = 0
                 var bestIdx: vDSP_Length = 0
-                vDSP_maxvi(ptr + t * stride, 1, &bestVal, &bestIdx, vDSP_Length(vocab))
+                vDSP_maxvi(ptr + t * frameStride, 1, &bestVal, &bestIdx, vDSP_Length(vocab))
                 let id = Int(bestIdx)
                 if id != 0 && id != prev {
                     ids.append(id)

@@ -312,7 +312,15 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
             }
         }
         if id == "apple-speech" {
-            // Apple Speech is completely built into macOS and does not use Silero VAD.
+            // Keep Apple Speech zero-download out of the box, while loading Silero VAD if already cached.
+            let vadCached = hasSafetensors(in: directory("silero-vad"))
+            if vad == nil && vadCached {
+                vad = try? await SileroVADModel.fromPretrained(
+                    cacheDir: directory("silero-vad"),
+                    offlineMode: true,
+                    progressHandler: { value, message in progress(0.9 + value * 0.1, message) }
+                )
+            }
             progress(1.0, "Apple Speech ready")
             return
         }
@@ -513,23 +521,48 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         }
     }
     func containsSpeech(_ samples: [Float]) async throws -> Bool {
-        if selectedID == "apple-speech" {
-            guard !samples.isEmpty else { return false }
-            // Filter out digital silence / zero audio; SFSpeechRecognizer has built-in acoustic
-            // speech recognition and returns emptyTranscript on background noise / non-speech.
-            var maxAbs: Float = 0
-            for s in samples {
-                let a = abs(s)
-                if a > maxAbs { maxAbs = a }
-                if maxAbs > 0.005 { return true }
-            }
-            return false
-        }
         if let vad {
             vad.resetState()
             return !vad.detectSpeech(audio: samples, sampleRate: 16000).isEmpty
         }
+        if selectedID == "apple-speech" {
+            // Zero-download fallback when Silero VAD has not been downloaded yet:
+            // require sustained multi-frame RMS energy above background noise floor rather than a single sample peak.
+            return Self.containsSpeechByEnergyGate(samples)
+        }
         throw VoiceBuddyError.modelUnavailable("VAD")
+    }
+
+    static func containsSpeechByEnergyGate(_ samples: [Float], sampleRate: Int = 16_000) -> Bool {
+        guard !samples.isEmpty else { return false }
+        let frameSize = max(1, (sampleRate * 20) / 1000) // 20 ms frames
+        let rmsThreshold: Float = 0.008
+        let peakThreshold: Float = 0.015
+        let minActiveFrames = 3
+
+        var activeFrames = 0
+        var offset = 0
+        while offset < samples.count {
+            let end = min(samples.count, offset + frameSize)
+            let count = end - offset
+            var sumSq: Float = 0
+            var peak: Float = 0
+            for i in offset..<end {
+                let s = samples[i]
+                sumSq += s * s
+                let a = abs(s)
+                if a > peak { peak = a }
+            }
+            let rms = sqrt(sumSq / Float(count))
+            if rms >= rmsThreshold && peak >= peakThreshold {
+                activeFrames += 1
+                if activeFrames >= minActiveFrames {
+                    return true
+                }
+            }
+            offset = end
+        }
+        return false
     }
     func transcribe(samples: [Float], language: String) async throws -> String {
         try await transcribe(samples: samples, language: language, context: nil)
@@ -581,7 +614,7 @@ actor LocalModels: TranscriptionEngine, SpeechDetector, TextRefinementEngine {
         guard let instruction = RefinementPrompts.prompt(for: mode) else {
             return text
         }
-        let userMessage = "<asr_text>\(text)</asr_text>"
+        let userMessage = RefinementPrompts.wrapUserTranscript(text)
         let tokenBudget = max(512, min(text.count * 4 + 128, 2048))
         let messages: [ChatMessage] = [
             .init(role: .system, content: instruction),

@@ -42,4 +42,23 @@ final class DiagnosticLogTests: XCTestCase {
         let content6 = try String(contentsOf: stale6URL, encoding: .utf8)
         XCTAssertFalse(content6.contains("stale_content_6"), "Rotation must overwrite stale diagnostics.6.log content without error")
     }
+
+    func testSanitizePreventsLogInjectionAndRedactsSensitiveFields() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let log = DiagnosticLog(directory: root, limit: 4096)
+
+        log.record("diagnostic.test user=alice@example.com\nFAKE_LINE token=sk-1234567890abcdef123456 transcript=secret_words")
+        let file = try log.readyFile()
+        let content = try String(contentsOf: file, encoding: .utf8)
+        let lines = content.split(separator: "\n")
+
+        XCTAssertEqual(lines.count, 1, "Newlines inside event must be flattened to prevent log injection")
+        XCTAssertFalse(content.contains("alice@example.com"))
+        XCTAssertFalse(content.contains("sk-1234567890abcdef123456"))
+        XCTAssertFalse(content.contains("secret_words"))
+        XCTAssertTrue(content.contains("[REDACTED_EMAIL]"))
+        XCTAssertTrue(content.contains("[REDACTED_TOKEN]"))
+        XCTAssertTrue(content.contains("transcript=[REDACTED]"))
+    }
 }
