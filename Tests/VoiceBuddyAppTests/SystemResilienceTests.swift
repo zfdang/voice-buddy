@@ -231,4 +231,16 @@ final class SystemResilienceTests: XCTestCase {
         let state = AppState()
         XCTAssertFalse(state.hasMenuBarControllerForTesting, "Unit tests must not register system menu bar icons")
     }
+
+    func testSidebarTabGroupsCoverAllTabsInThreeSections() {
+        XCTAssertEqual(
+            AppTab.sidebarGroups,
+            [
+                [.general, .permissions, .speech, .editor],
+                [.recovery],
+                [.about]
+            ]
+        )
+        XCTAssertEqual(AppTab.sidebarGroups.flatMap { $0 }, AppTab.allCases)
+    }
 }

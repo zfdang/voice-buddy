@@ -87,8 +87,15 @@ struct MainView: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 0) {
-                    ForEach(AppTab.allCases) { tab in
-                        sidebarButton(tab)
+                    ForEach(Array(AppTab.sidebarGroups.enumerated()), id: \.offset) { index, tabs in
+                        if index > 0 {
+                            Divider()
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                        }
+                        ForEach(tabs) { tab in
+                            sidebarButton(tab)
+                        }
                     }
                 }
                 .padding(.top, 6)

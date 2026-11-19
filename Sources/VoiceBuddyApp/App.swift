@@ -15,6 +15,12 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     case recovery = 4
     case about = 5
     public var id: Int { rawValue }
+
+    public static let sidebarGroups: [[AppTab]] = [
+        [.general, .permissions, .speech, .editor],
+        [.recovery],
+        [.about]
+    ]
 }
 
 @MainActor final class AppState: ObservableObject {
