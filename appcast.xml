@@ -3,6 +3,15 @@
     <channel>
         <title>Voice Buddy</title>
         <item>
+            <title>1.7.0</title>
+            <pubDate>Thu, 19 Nov 2026 03:57:41 +0000</pubDate>
+            <sparkle:version>1.7.0</sparkle:version>
+            <sparkle:shortVersionString>1.7.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://myvoicebuddy.com/downloads/Voice-Buddy-v1.7.0-macOS.zip" length="50993966" type="application/octet-stream" sparkle:edSignature="tjLqcBDkqi4bL8tDhn2V47Ywg44WDI0KDxv9HQS+YiMG/XCuSdUyd8u/R2SL8KuQaLSmyRcAA/yE3UJ8T8LTAw=="/>
+        </item>
+        <item>
             <title>1.6.0</title>
             <pubDate>Thu, 19 Nov 2026 01:32:53 +0000</pubDate>
             <sparkle:version>1.6.0</sparkle:version>
@@ -19,15 +28,6 @@
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <enclosure url="https://myvoicebuddy.com/downloads/Voice-Buddy-v1.5.1-macOS.zip" length="51048867" type="application/octet-stream" sparkle:edSignature="27KH0Hazo5ipD6+mZo3oMYxJaDDcgRIe4nVHpcEmjyvcLaKG85V2CnN4z7g820HT9aPxg3at847JZZDzxpNaDw=="/>
-        </item>
-        <item>
-            <title>1.5.0</title>
-            <pubDate>Wed, 18 Nov 2026 11:27:45 +0000</pubDate>
-            <sparkle:version>1.5.0</sparkle:version>
-            <sparkle:shortVersionString>1.5.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://myvoicebuddy.com/downloads/Voice-Buddy-v1.5.0-macOS.zip" length="51044478" type="application/octet-stream" sparkle:edSignature="FaUaeP7vjbr3UVpcb4WYXMxKiME1QdFd821OPO3cmC3VR1qL4VRUSAH6w3qwUd6kwnXbL3/2C8ejkwoj48JhCQ=="/>
         </item>
     </channel>
 </rss>
