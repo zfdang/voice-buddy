@@ -6,10 +6,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private var statusMenu: NSMenu?
     private weak var appState: AppState?
 
-    init(appState: AppState) {
+    init(appState: AppState, registerStatusItem: Bool = true) {
         self.appState = appState
         super.init()
-        setupStatusItem()
+        if registerStatusItem {
+            setupStatusItem()
+        }
     }
 
     deinit {
@@ -77,7 +79,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     func rebuildMenu() {
-        guard let appState else { return }
+        statusMenu = buildMenu()
+    }
+
+    func buildMenu() -> NSMenu? {
+        guard let appState else { return nil }
         let menu = NSMenu()
         menu.delegate = self
 
@@ -125,7 +131,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         quitItem.target = self
         menu.addItem(quitItem)
 
-        self.statusMenu = menu
+        return menu
     }
 
     @objc private func menuOpenSettings() {

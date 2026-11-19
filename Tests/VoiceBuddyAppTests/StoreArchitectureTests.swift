@@ -96,4 +96,59 @@ final class StoreArchitectureTests: XCTestCase {
         await catalog.testRefinement(mode: .original)
         XCTAssertEqual(result, "原始文本")
     }
+
+    func testCancelDownloadLocalizationKeyResolvesInBothLanguages() {
+        XCTAssertEqual(AppLocalizer.string("Cancel Download", interfaceLanguage: "en"), "Cancel Download")
+        XCTAssertEqual(AppLocalizer.string("Cancel Download", interfaceLanguage: "zh"), "取消下载")
+    }
+
+    func testShortcutModeSwitchingTogglesFnMonitors() {
+        let suiteName = "VoiceBuddy.ShortcutModeTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let state = AppState(defaults: defaults, defaultsKey: "prefs")
+        XCTAssertFalse(state.preferences.useFnKey)
+        XCTAssertFalse(state.dictation.activeShortcutUsesFnForTesting)
+        XCTAssertFalse(state.dictation.isFnMonitorActiveForTesting)
+
+        state.preferences.useFnKey = true
+        XCTAssertTrue(state.dictation.activeShortcutUsesFnForTesting)
+        XCTAssertTrue(state.dictation.isFnMonitorActiveForTesting, "Enabling Fn key mode must install Fn event monitors")
+
+        state.preferences.useFnKey = false
+        XCTAssertFalse(state.dictation.activeShortcutUsesFnForTesting)
+        XCTAssertFalse(state.dictation.isFnMonitorActiveForTesting, "Disabling Fn key mode must tear down Fn event monitors")
+    }
+
+    func testMenuBarControllerBuildsLocalizedMenuItemsWithoutStatusItem() throws {
+        let suiteName = "VoiceBuddy.MenuBarTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let state = AppState(defaults: defaults, defaultsKey: "prefs")
+        state.preferences.interfaceLanguage = "en"
+        let controller = MenuBarController(appState: state, registerStatusItem: false)
+
+        let enMenu = try XCTUnwrap(controller.buildMenu())
+        let enTitles = enMenu.items.filter { !$0.isSeparatorItem }.map(\.title)
+        XCTAssertEqual(enTitles, [
+            "Settings…",
+            "Recognition Result…",
+            "About Voice Buddy…",
+            "Check for Updates…",
+            "Quit Voice Buddy"
+        ])
+
+        state.preferences.interfaceLanguage = "zh"
+        let zhMenu = try XCTUnwrap(controller.buildMenu())
+        let zhTitles = zhMenu.items.filter { !$0.isSeparatorItem }.map(\.title)
+        XCTAssertEqual(zhTitles, [
+            "设置…",
+            "识别结果…",
+            "关于 Voice Buddy…",
+            "检查更新…",
+            "退出 Voice Buddy"
+        ])
+    }
 }

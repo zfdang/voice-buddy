@@ -88,12 +88,15 @@ struct SpeechModelsView: View {
                                         }
                                         .frame(width: 80, alignment: .trailing)
 
-                                        Button(t("Cancel")) {
+                                        Button(role: .destructive) {
                                             modelCatalog.cancelSpeechDownload(id: spec.id)
+                                        } label: {
+                                            Text(t("Cancel"))
                                         }
                                         .controlSize(.small)
+                                        .buttonStyle(.bordered)
                                         .frame(minWidth: 90)
-                                        .accessibilityLabel(t("Cancel"))
+                                        .accessibilityLabel(t("Cancel Download"))
                                     } else if isCached {
                                         HStack(spacing: 4) {
                                             Circle().fill(Color.green).frame(width: 8, height: 8)

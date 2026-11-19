@@ -42,12 +42,15 @@ final class DictationSessionCoordinator {
     private let setBusy: (Bool) -> Void
     private let onTranscriptProduced: (String, String) -> Void
     private let getResult: () -> String
+    private let registerSystemShortcuts: Bool
+    private(set) var activeShortcutUsesFnForTesting = false
 
     init(
         preferencesStore: PreferencesStore,
         permissionsStore: PermissionsStore,
         modelCatalog: ModelCatalogStore,
         hud: LiveHUDState,
+        registerSystemShortcuts: Bool = !AppState.isRunningUnitTests,
         isBusy: @escaping () -> Bool,
         setBusy: @escaping (Bool) -> Void,
         onTranscriptProduced: @escaping (String, String) -> Void,
@@ -57,13 +60,21 @@ final class DictationSessionCoordinator {
         self.permissionsStore = permissionsStore
         self.modelCatalog = modelCatalog
         self.hud = hud
+        self.registerSystemShortcuts = registerSystemShortcuts
         self.isBusy = isBusy
         self.setBusy = setBusy
         self.onTranscriptProduced = onTranscriptProduced
         self.getResult = getResult
     }
 
+    deinit {
+        if let fnGlobalMonitor { NSEvent.removeMonitor(fnGlobalMonitor) }
+        if let fnLocalMonitor { NSEvent.removeMonitor(fnLocalMonitor) }
+        if let escMonitor { NSEvent.removeMonitor(escMonitor) }
+    }
+
     func setupKeyboardShortcuts() {
+        guard registerSystemShortcuts else { return }
         KeyboardShortcuts.onKeyDown(for: .toggleDictation) { [weak self] in
             self?.hotkeyDown()
         }
@@ -79,8 +90,11 @@ final class DictationSessionCoordinator {
         fnStartedRecording = false
         if let fnGlobalMonitor { NSEvent.removeMonitor(fnGlobalMonitor); self.fnGlobalMonitor = nil }
         if let fnLocalMonitor { NSEvent.removeMonitor(fnLocalMonitor); self.fnLocalMonitor = nil }
+        activeShortcutUsesFnForTesting = preferencesStore.preferences.useFnKey
         if preferencesStore.preferences.useFnKey {
-            KeyboardShortcuts.disable(.toggleDictation)
+            if registerSystemShortcuts {
+                KeyboardShortcuts.disable(.toggleDictation)
+            }
             let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown]
             fnGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
                 let flags = event.modifierFlags, type = event.type
@@ -93,7 +107,9 @@ final class DictationSessionCoordinator {
             }
             DiagnosticLog.shared.record("shortcut.fn.monitor global=\(fnGlobalMonitor != nil) local=\(fnLocalMonitor != nil)")
         } else {
-            KeyboardShortcuts.enable(.toggleDictation)
+            if registerSystemShortcuts {
+                KeyboardShortcuts.enable(.toggleDictation)
+            }
         }
     }
 
@@ -688,6 +704,10 @@ final class DictationSessionCoordinator {
 
     func getActivePasteboardSessionForTesting() -> TemporaryPasteboard? {
         self.activePasteboardSession
+    }
+
+    var isFnMonitorActiveForTesting: Bool {
+        fnGlobalMonitor != nil && fnLocalMonitor != nil
     }
     #endif
 }
